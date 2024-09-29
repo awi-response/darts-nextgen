@@ -32,7 +32,7 @@ nav:
 
 theme:
   name: material
-  logo: assets/awi_logo.svg
+  logo: assets/awi_logo.png
   favicon: assets/favicon.svg
   language: en
   custom_dir: docs/overrides
