@@ -1,0 +1,14 @@
+{
+    "recommendations": [
+        "aaron-bond.better-comments",
+        "usernamehw.errorlens",
+        "tamasfe.even-better-toml",
+        "ms-toolsai.jupyter",
+        "yzhang.markdown-all-in-one",
+        "davidanson.vscode-markdownlint",
+        "ms-python.python",
+        "charliermarsh.ruff",
+        "redhat.vscode-yaml",
+        "njpwerner.autodocstring"
+    ]
+}

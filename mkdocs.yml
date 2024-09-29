@@ -1,0 +1,168 @@
+site_name: DARTS nextgen
+site_url: https://awi-response.github.io/darts-nextgen
+site_author: Tobias Hölzer
+
+repo_name: darts-nextgen
+repo_url: https://github.com/awi-response/darts-nextgen
+edit_uri: edit/main/docs/
+
+nav:
+  - Home: index.md
+  - Packages:
+      - Acquisition:
+          - Quickstart: darts-acquisition/quickstart.md
+          - Reference: darts-acquisition/ref.md
+      - Preprocessing:
+          - Quickstart: darts-preprocessing/quickstart.md
+          - Reference: darts-preprocessing/ref.md
+      - Ensemble:
+          - Quickstart: darts-ensemble/quickstart.md
+          - Reference: darts-ensemble/ref.md
+      - Export:
+          - Quickstart: darts-export/quickstart.md
+          - Reference: darts-export/ref.md
+      - Segmentation:
+          - Quickstart: darts-segmentation/quickstart.md
+          - Reference: darts-segmentation/ref.md
+      - Superresolution:
+          - Quickstart: darts-superresolution/quickstart.md
+          - Reference: darts-superresolution/ref.md
+      - Reference: ref.md
+  - Contribute: contribute.md
+
+theme:
+  name: material
+  logo: assets/awi_logo.svg
+  favicon: assets/favicon.svg
+  language: en
+  custom_dir: docs/overrides
+  icon:
+    repo: fontawesome/brands/github
+    edit: material/pencil
+    view: material/eye
+  palette:
+    # Palette toggle for automatic mode
+    - media: '(prefers-color-scheme)'
+      primary: light blue # 00ABE8
+      accent: teal
+      toggle:
+        icon: material/brightness-auto
+        name: Switch to light mode
+
+    # Palette toggle for light mode
+    - scheme: default
+      media: '(prefers-color-scheme: light)'
+      primary: light blue
+      accent: teal
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+
+    # Palette toggle for dark mode
+    - scheme: slate
+      media: '(prefers-color-scheme: dark)'
+      primary: light blue
+      accent: teal
+      toggle:
+        icon: material/brightness-4
+        name: Switch to system preference
+  font:
+    text: Montserrat
+    code: Roboto Mono
+  features:
+    - navigation.instant
+    - navigation.instant.progress
+    - navigation.tracking
+    - navigation.tabs
+    - navigation.tabs.sticky
+    - navigation.indexes
+    - toc.follow
+    - navigation.top
+    - search.suggest
+    - search.highlight
+    - search.share
+    - navigation.footer
+    - content.action.edit
+    - content.code.copy
+    - content.code.annotate
+plugins:
+  - mkdocstrings:
+      handlers:
+        python:
+          paths:
+            - 'darts-acquisition/src'
+            - 'darts-ensemble/src'
+            - 'darts-export/src'
+            - 'darts-preprocessing/src'
+            - 'darts-segmentation/src'
+            - 'darts-superresolution/src'
+          options:
+            show_root_heading: true
+            allow_inspection: false
+            heading_level: 2
+            show_symbol_type_heading: true
+            show_symbol_type_toc: true
+            group_by_category: true
+            show_category_heading: true
+            show_if_no_docstring: true
+  - privacy:
+      enabled: !ENV [CI, false]
+  - search:
+      lang: en
+  - social:
+      enabled: !ENV [CI, false]
+  - git-revision-date-localized:
+      enabled: !ENV [CI, false]
+      enable_creation_date: true
+      type: date
+  - git-committers:
+      enabled: !ENV [CI, false]
+      repository: awi-response/darts-nextgen
+      branch: main
+extra:
+  version:
+    provider: mike
+    default: latest
+    alias: true
+  social:
+    - icon: fontawesome/brands/github
+      name: GitHub
+      link: https://github.com/awi-response/darts-nextgen
+  consent:
+    title: Cookie consent
+    description: >-
+      We use cookies to recognize your repeated visits and preferences, as well
+      as to measure the effectiveness of our documentation and whether users
+      find what they're searching for. With your consent, you're helping us to
+      make our documentation better.
+    cookies:
+      fonts:
+        name: Google Fonts
+        checked: false
+      github:
+        name: GitHub
+        checked: false
+    actions:
+      - accept
+      - manage
+      - reject
+copyright: >
+  Copyright &copy; 2024 Ingmar Nitze, Konrad Heidler, Jonas Küpper, Lucas von Chamier, Tobias Hölzer -
+  <a href="#__consent">Change cookie settings</a>
+markdown_extensions:
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.tasklist:
+      custom_checkbox: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.superfences
+  - pymdownx.details
+  - admonition
+  - tables
+  - def_list
+  - toc:
+      permalink: true
+      title: Table of Contents

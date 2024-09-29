@@ -1,0 +1,24 @@
+# python generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# venv
+.venv
+
+# artifacts
+models
+data
+logs
+
+# Mkdocs
+.cache
+
+# Ruff
+.ruff_cache
+
+# Tobis playgrounds
+notebooks/playground.ipynb

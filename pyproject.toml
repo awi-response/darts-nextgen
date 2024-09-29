@@ -1,0 +1,79 @@
+[project]
+name = "darts-nextgen"
+version = "0.1.0"
+description = "Panarctic Database of Active Layer Detatchment Slides and Retrogressive Thaw Slumps from Deep Learning on High Resolution Satellite Imagery."
+dependencies = []
+readme = "README.md"
+requires-python = ">= 3.11"
+authors = [
+    { name = "Ingmar Nitze", email = "ingmar.nitze@awi.de" },
+    { name = "Konrad Heidler", email = "k.heidler@tum.de" },
+    { name = "Jonas Küpper", email = "jonas.kuepper@awi.de" },
+    { name = "Tobias Hölzer", email = "tobias.hoelzer@awi.de" },
+    { name = "Lucas von Chamier", email = "lucas.chamier@awi.de" }
+]
+
+[tool.rye]
+managed = true
+virtual = true
+dev-dependencies = [
+    "ipykernel>=6.29.5",
+    "noise>=1.2.2", # Used for generating random data, may delete in future
+    "matplotlib>=3.9.2",
+    "ruff>=0.6.8",
+    "mkdocs>=1.6.1",
+    "mkdocs-material[imaging]>=9.5.38",
+    "mike>=2.1.3",
+    "mkdocs-git-revision-date-localized-plugin>=1.2.9",
+    "mkdocs-git-committers-plugin-2>=2.3.0",
+    "mkdocstrings[python]>=0.26.1",
+]
+
+[tool.rye.workspace]
+members = ["darts-*"]
+
+[[tool.rye.sources]]
+name = "nvidia"
+url = "https://pypi.nvidia.com"
+
+[[tool.rye.sources]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+
+[[tool.rye.sources]]
+name = "pytorch-cu11"
+url = "https://download.pytorch.org/whl/cu118"
+
+[[tool.rye.sources]]
+name = "pytorch-cu12"
+url = "https://download.pytorch.org/whl/cu121"
+
+[tool.ruff]
+line-length = 120
+indent-width = 4  # This is the default
+
+[tool.ruff.lint]
+# Default selected Rules are F, E4, E7 and E9 (all stable)
+# We also enable preview Rules from E
+# See https://docs.astral.sh/ruff/rules/ which rules do what
+# F: Pyflakes
+# E, W: Pycodestyle
+# C: McCabe (code complexity)
+# I: isort (import sorting)
+# N: pip8-naming (naming conventions)
+# D: pydocstyle (docstring formatting) <- this should help us to write documentation
+# UP: pyupgrade <- this should help writing up-to-date code
+# PD: pandas-vet <- this should help writing better pandas code
+# FLY: flynt <- write f-strings
+# NPY: numpy <- this should help writing better numpy code
+# FURB: refurb <- this should help writing up-to-date code
+# DOC: pydoclint <- this should help writing better docstrings
+# RUF: ruff
+preview = true
+select = ["F", "E", "W", "C", "I", "N", "D", "UP", "PD", "FLY", "NPY", "FURB", "DOC", "RUF"]
+
+
+# Ignore `E402` (import violations) in all `__init__.py` files, and in selected subdirectories.
+[tool.ruff.lint.per-file-ignores]
+"__init__.py" = ["E402"]
+"**/{tests,docs,tools}/*" = ["E402"]
