@@ -134,30 +134,21 @@ jobs:
           draft: false
           prerelease: false
 
-      - name: Upload packages to GitHub Release
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          for file in dist/*.{whl,tar.gz}; do
-            echo "Uploading $file..."
-            curl -sSL \
-              -X POST \
-              -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
-              -H "Content-Type: $(file -b --mime-type $file)" \
-              --data-binary @$file \
-              "${{ steps.create_release.outputs.upload_url }}?name=$(basename $file)"
-          done
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/*.{whl,tar.gz}
 
   build-and-publish-docs:
     runs-on: ubuntu-latest
     needs:
       - update-version
-    permissions:
-      contents: write
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v2
+        with:
+          fetch-depth: 0
 
       - name: Configure Git Credentials
         run: |
