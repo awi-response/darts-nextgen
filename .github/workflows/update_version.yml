@@ -105,6 +105,11 @@ jobs:
             cd ${{ github.event.inputs.package }} && rye build && cd ..
           fi
 
+      # Get the new version with rye version and save it as an variable
+      - name: Get new version
+        id: get_version
+        run: echo "VERSION=$(rye version)" >> $GITHUB_OUTPUT
+
       # - name: Publish to PyPI
       #   run: |
       #     if [ ${{ github.event.inputs.package }} == 'all' ]; then
@@ -133,7 +138,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          for file in ${{ github.event.inputs.package }}/dist/*.{whl,tar.gz}; do
+          for file in dist/*.{whl,tar.gz}; do
             echo "Uploading $file..."
             curl -sSL \
               -X POST \
