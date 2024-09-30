@@ -152,10 +152,11 @@ jobs:
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
 
-      - name: Setup Python
-        uses: actions/setup-python@v5
+      - name: Install rye
+        uses: eifinger/setup-rye@v4
         with:
-          python-version: 3.x
+          enable-cache: true
+          version: '0.39.0'
 
       - name: Get cache id
         run: echo "cache_id=$(date --utc '+%V')" >> $GITHUB_ENV
@@ -171,6 +172,11 @@ jobs:
       - name: Install dependencies
         run: |
           pip install "mkdocs-material[imaging]>=9.5.38" "mkdocstrings[python]>=0.26.1" "mike>=2.1.3" "mkdocs-git-revision-date-localized-plugin>=1.2.9" "mkdocs-git-committers-plugin-2>=2.3.0"
+
+      # Get the new version with rye version and save it as an variable
+      - name: Get new version
+        id: get_version
+        run: echo "VERSION=$(rye version)" >> $GITHUB_OUTPUT
 
       - name: Publish documentation
         run: mike deploy --push --update-aliases ${{ steps.get_version.outputs.VERSION }} latest
