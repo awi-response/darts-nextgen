@@ -1,5 +1,6 @@
 from pathlib import Path
 
+import xarray as xr
 from utils.data_pre_processing import calculate_ndvi, load_auxiliary, load_planet_scene
 
 """
@@ -26,16 +27,17 @@ slope_path = Path(
 # load planet scene
 ds_planet = load_planet_scene(planet_scene_path)
 
-# calculate ndvi
+# calculate xr.dataset ndvi
 ds_ndvi = calculate_ndvi(ds_planet)
 
-# get dataarray for elevation
+# get xr.dataset for elevation
 ds_elevation = load_auxiliary(planet_scene_path, elevation_path, xr_dataset_name="relative_elevation")
 
-# # get dataarray for slope
-da_slope = load_auxiliary(planet_scene_path, slope_path, xr_dataset_name="slope")
+# get xr.dataset for slope
+ds_slope = load_auxiliary(planet_scene_path, slope_path, xr_dataset_name="slope")
 
-# # get dataarray for tcvis
-# da_elevation = load_auxiliary(planet_scene_path, elevation_path)
+# # get xr.dataset for tcvis
+# ds_tcvis = load_auxiliary(planet_scene_path, tcvis_path)
 
-# merge all datasets
+# merge to final dataset
+ds_merged = xr.merge([ds_planet, ds_ndvi, ds_elevation, ds_slope])

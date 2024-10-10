@@ -29,6 +29,7 @@ def load_planet_scene(planet_scene_path: str | Path) -> xr.Dataset:
         planet_scene_path = Path(planet_scene_path)
 
     # Find the appropriate TIFF file
+    # TODO use get_planet_image_from_planet_scene_path function
     ps_image = list(planet_scene_path.glob(f"{planet_scene_path.name}_*_SR.tif"))
 
     if not ps_image:
@@ -38,25 +39,30 @@ def load_planet_scene(planet_scene_path: str | Path) -> xr.Dataset:
     return rxr.open_rasterio(ps_image[0]).to_dataset(name="planet")
 
 
-def calculate_ndvi(planet_scene_dataarray: xr.DataArray, nir_band: int = 4, red_band: int = 3) -> xr.Dataset:
+def calculate_ndvi(planet_scene_dataarray: xr.DataArray, nir_band: int = 4, red_band: int = 3) -> xr.DataArray:
     """Calculate NDVI from an xarray DataArray containing spectral bands.
 
     Parameters
     ----------
     planet_scene_dataarray : xr.DataArray
         The xarray DataArray containing the spectral bands, where the bands are
-        indexed along a dimension (e.g., 'band').
+        indexed along a dimension (e.g., 'band'). The DataArray should have
+        dimensions including 'band', 'y', and 'x'.
 
     nir_band : int, optional
-        The index of the NIR band in the DataArray (default is 4).
+        The index of the NIR band in the DataArray (default is 4). This index
+        should correspond to the position of the NIR band in the 'band' dimension.
 
     red_band : int, optional
-        The index of the Red band in the DataArray (default is 3).
+        The index of the Red band in the DataArray (default is 3). This index
+        should correspond to the position of the Red band in the 'band' dimension.
 
     Returns
     -------
     xr.DataArray
-        A new DataArray containing the calculated NDVI values.
+        A new DataArray containing the calculated NDVI values. The resulting
+        DataArray will have dimensions (band: 1, y: ..., x: ...) and will be
+        named "ndvi".
 
     Raises
     ------
@@ -65,8 +71,15 @@ def calculate_ndvi(planet_scene_dataarray: xr.DataArray, nir_band: int = 4, red_
 
     Notes
     -----
-    NDVI is calculated using the formula:
+    NDVI (Normalized Difference Vegetation Index) is calculated using the formula:
         NDVI = (NIR - Red) / (NIR + Red)
+
+    This index is commonly used in remote sensing to assess vegetation health
+    and density.
+
+    Example
+    -------
+    >>> ndvi_data = calculate_ndvi(planet_scene_dataarray)
 
     """
     # Calculate NDVI using the formula
@@ -74,7 +87,7 @@ def calculate_ndvi(planet_scene_dataarray: xr.DataArray, nir_band: int = 4, red_
     r = planet_scene_dataarray.sel(band=red_band).astype("float32")
     ndvi = (nir - r) / (nir + r)
 
-    return ndvi.to_dataarray().to_dataset(name="ndvi")
+    return ndvi.expand_dims(dim={"band": [1]}, axis=0).rename_vars({"planet": "ndvi"})
 
 
 def geom_from_image_bounds(image_path):
