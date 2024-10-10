@@ -4,14 +4,15 @@ import rioxarray
 import xarray as xr
 from affine import Affine
 
+from .hardcoded_stuff import BAND_MAPPING
+
 
 def mock_source(name, n_bands, dtype, meta) -> xr.DataArray:
     """Mock a single source band."""
-    bands = np.arange(n_bands)
     da = xr.DataArray(
-        np.zeros([n_bands, 1000, 1000], dtype=dtype),
+        np.ones([n_bands, 1000, 1000], dtype=dtype),
         coords={
-            f"{name}_band": bands,
+            f"{name}_band": BAND_MAPPING[name],
             "y": meta["y"],
             "x": meta["x"],
         },

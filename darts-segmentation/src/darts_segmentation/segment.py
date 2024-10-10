@@ -6,7 +6,8 @@ import segmentation_models_pytorch as smp
 import torch
 import torch.nn as nn
 import xarray as xr
-import yaml
+
+from .hardcoded_stuff import NORMALIZATION_FACTORS
 
 
 class Segmenter:
@@ -15,26 +16,37 @@ class Segmenter:
     config: dict
     model: nn.Module
 
-    def __init__(self, model_dir: Path):
+    def __init__(self, model_checkpoint: Path):
         """Initialize the segmenter."""
-        self.config = yaml.safe_load((model_dir / "config.yaml").open())
-        self.model = smp.create_model(**self.config)
         self.dev = torch.device("cpu") if not torch.cuda.is_available() else torch.device("cuda")
+        ckpt = torch.load(model_checkpoint, map_location=self.dev)
+        self.config = ckpt["config"]
+        self.model = smp.create_model(**self.config["model"], encoder_weights=None)
+        self.model.load_state_dict(ckpt["statedict"])
 
-        ckpt = "latest"
-        if ckpt == "latest":
-            ckpt_nums = [int(ckpt.stem) for ckpt in model_dir.glob("checkpoints/*.pt")]
-            last_ckpt = max(ckpt_nums)
-        else:
-            last_ckpt = int(ckpt)
-        ckpt = model_dir / "checkpoints" / f"{last_ckpt:02d}.pt"
+    def tile2tensor(self, tile: xr.Dataset) -> torch.Tensor:
+        """Take a tile and convert it to a pytorch tensor, according to the input combination from the config.
 
-        # Parallelized Model needs to be declared before loading
-        try:
-            self.model.load_state_dict(torch.load(ckpt, map_location=self.dev))
-        except Exception:
-            self.model = nn.DataParallel(self.model)
-            self.model.load_state_dict(torch.load(ckpt, map_location=self.dev))
+        Returns:
+          A torch tensor for the full tile consisting of the bands specified in `self.band_combination`.
+
+        Raises:
+          ValueError: in case a specified band is not found in the input tile.
+
+        """
+        bands = []
+        for band_name in self.config["input_combination"]:
+            for var in tile.data_vars:
+                assert isinstance(var, str)
+                dim_name = f"{var}_band"
+                if band_name in tile[dim_name]:
+                    band_data = tile[var].loc[{dim_name: band_name}]
+                    band_data = band_data / NORMALIZATION_FACTORS[var]
+                    bands.append(torch.from_numpy(band_data.values))
+                    break
+            else:
+                raise ValueError(f"Band {band_name} not found in the input!")
+        return torch.stack(bands, dim=0)
 
     def segment_tile(self, tile: xr.Dataset) -> xr.Dataset:
         """Run inference on a tile.
@@ -43,9 +55,10 @@ class Segmenter:
           tile: The input tile, containing preprocessed, harmonized data.
 
         Returns:
-          Input tile augmented by a predicted `probabilities` layer.
+          Input tile augmented by a predicted `probabilities` layer of type uint8 and a `binarized` layer of type bool.
 
         """
         # TODO: Missing implementation
         tile["probabilities"] = tile["ndvi"]  # Highly sophisticated DL-based predictor
+        tile["binarized"] = tile["ndvi"] > 0  # Highly sophisticated DL-based predictor
         return tile
