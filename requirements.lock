@@ -3,7 +3,7 @@
 #
 # last locked with the following flags:
 #   pre: false
-#   features: ["darts-preprocessing/gdal384,darts-ensemble/cpu"]
+#   features: ["darts-preprocessing/gdal39,darts-ensemble/cpu"]
 #   all-features: false
 #   with-sources: false
 #   generate-hashes: false
@@ -40,16 +40,20 @@ click-plugins==1.1.1
     # via rasterio
 cligj==0.7.2
     # via rasterio
+efficientnet-pytorch==0.7.1
+    # via segmentation-models-pytorch
 filelock==3.16.1
+    # via huggingface-hub
     # via ray
     # via torch
 frozenlist==1.4.1
     # via aiosignal
     # via ray
 fsspec==2024.9.0
+    # via huggingface-hub
     # via ray
     # via torch
-gdal==3.8.4
+gdal==3.9.2
     # via darts-preprocessing
 geopandas==1.0.1
     # via darts-export
@@ -62,6 +66,9 @@ h5netcdf==1.3.0
     # via darts-superresolution
 h5py==3.12.1
     # via h5netcdf
+huggingface-hub==0.25.2
+    # via segmentation-models-pytorch
+    # via timm
 idna==3.10
     # via requests
 jinja2==3.1.4
@@ -80,6 +87,8 @@ mpmath==1.3.0
     # via sympy
 msgpack==1.1.0
     # via ray
+munch==4.0.0
+    # via pretrainedmodels
 networkx==3.3
     # via torch
 numpy==1.26.4
@@ -103,6 +112,7 @@ numpy==1.26.4
 packaging==24.1
     # via geopandas
     # via h5netcdf
+    # via huggingface-hub
     # via pyogrio
     # via ray
     # via rioxarray
@@ -112,7 +122,10 @@ pandas==2.2.3
     # via ray
     # via xarray
 pillow==10.4.0
+    # via segmentation-models-pytorch
     # via torchvision
+pretrainedmodels==0.7.4
+    # via segmentation-models-pytorch
 protobuf==5.28.2
     # via ray
 pyarrow==17.0.0
@@ -131,7 +144,9 @@ python-dateutil==2.9.0.post0
 pytz==2024.2
     # via pandas
 pyyaml==6.0.2
+    # via huggingface-hub
     # via ray
+    # via timm
 rasterio==1.4.0
     # via darts-acquisition
     # via darts-export
@@ -141,6 +156,7 @@ referencing==0.35.1
     # via jsonschema
     # via jsonschema-specifications
 requests==2.32.3
+    # via huggingface-hub
     # via ray
     # via torchvision
 rich==13.8.1
@@ -151,21 +167,39 @@ rioxarray==0.17.0
 rpds-py==0.20.0
     # via jsonschema
     # via referencing
+safetensors==0.4.5
+    # via timm
+segmentation-models-pytorch==0.3.4
+    # via darts-segmentation
 shapely==2.0.6
     # via geopandas
 shellingham==1.5.4
     # via typer
 six==1.16.0
     # via python-dateutil
+    # via segmentation-models-pytorch
 sympy==1.13.3
     # via torch
+timm==0.9.7
+    # via segmentation-models-pytorch
 torch==2.2.0+cpu
     # via darts-ensemble
+    # via efficientnet-pytorch
+    # via pretrainedmodels
+    # via timm
     # via torchvision
 torchvision==0.17.0+cpu
     # via darts-ensemble
+    # via pretrainedmodels
+    # via segmentation-models-pytorch
+    # via timm
+tqdm==4.66.5
+    # via huggingface-hub
+    # via pretrainedmodels
+    # via segmentation-models-pytorch
 typer==0.12.5
 typing-extensions==4.12.2
+    # via huggingface-hub
     # via torch
     # via typer
 tzdata==2024.2
