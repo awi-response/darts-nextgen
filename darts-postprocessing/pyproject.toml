@@ -1,17 +1,7 @@
 [project]
-name = "darts-export"
+name = "darts-postprocessing"
 version = "0.1.0"
-description = "Dataset export for the DARTS dataset."
-dependencies = [
-    "numpy>=1.26.3, <2",
-    "xarray>=2024.9.0",
-    "rasterio>=1.4.0",
-    "rioxarray>=0.17.0",
-    "h5netcdf>=1.3.0",
-    "geopandas>=1.0.1",
-]
-readme = "README.md"
-requires-python = ">= 3.11"
+description = "Postprocessing steps for the DARTS dataset."
 authors = [
     { name = "Ingmar Nitze", email = "ingmar.nitze@awi.de" },
     { name = "Konrad Heidler", email = "k.heidler@tum.de" },
@@ -19,9 +9,12 @@ authors = [
     { name = "Tobias Hölzer", email = "tobias.hoelzer@awi.de" },
     { name = "Lucas von Chamier", email = "lucas.chamier@awi.de" }
 ]
-
-[project.optional-dependencies]
-test = ["pytest"]
+dependencies = [
+    "numpy>=1.26.3, <2",
+    "xarray>=2024.9.0",
+]
+readme = "README.md"
+requires-python = ">= 3.11"
 
 [build-system]
 requires = ["hatchling"]
@@ -35,7 +28,7 @@ dev-dependencies = []
 allow-direct-references = true
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/darts_export"]
+packages = ["src/darts_postprocessing"]
 
 [tool.ruff]
 # Extend the `pyproject.toml` file in the parent directory...

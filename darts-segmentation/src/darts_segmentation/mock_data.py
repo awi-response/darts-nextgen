@@ -4,13 +4,15 @@ import rioxarray
 import xarray as xr
 from affine import Affine
 
-from .hardcoded_stuff import BAND_MAPPING
+from darts_segmentation.hardcoded_stuff import BAND_MAPPING
+
+H, W = 2_000, 2_000
 
 
 def mock_source(name, n_bands, dtype, meta) -> xr.DataArray:
     """Mock a single source band."""
     da = xr.DataArray(
-        np.ones([n_bands, 1000, 1000], dtype=dtype),
+        np.ones([n_bands, H, W], dtype=dtype),
         coords={
             f"{name}_band": BAND_MAPPING[name],
             "y": meta["y"],
@@ -27,8 +29,8 @@ def mock_source(name, n_bands, dtype, meta) -> xr.DataArray:
 def mock_tile(primary_source):
     # mock coordinates
     meta = {
-        "y": np.arange(1000),
-        "x": np.arange(1000),
+        "y": np.arange(H),
+        "x": np.arange(W),
         "transform": Affine(0.5, 0.0, 0.0, 0.0, -0.5, 100.0),  # mock transform
         "crs": "EPSG:4326",  # mock CRS
     }

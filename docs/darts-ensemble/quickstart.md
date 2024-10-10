@@ -2,12 +2,6 @@
 
 Inference and model ensembling for the DARTS dataset.
 
-## Installation
-
-```sh
-pip install darts-ensemble
-```
-
 ## Usage
 
 ```py

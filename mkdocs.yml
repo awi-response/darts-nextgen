@@ -29,8 +29,11 @@ nav:
       - Superresolution:
           - Quickstart: darts-superresolution/quickstart.md
           - Reference: darts-superresolution/ref.md
+      - Postprocessing:
+          - Quickstart: darts-postprocessing/quickstart.md
+          - Reference: darts-postprocessing/ref.md
       - Reference: ref.md
-  - Contribute:
+  - Dev:
       - Contribute: contribute.md
       - Logging: dev/logging.md
 
@@ -98,6 +101,7 @@ plugins:
             - 'darts-ensemble/src'
             - 'darts-export/src'
             - 'darts-preprocessing/src'
+            - 'darts-postprocessing/src'
             - 'darts-segmentation/src'
             - 'darts-superresolution/src'
           options:

@@ -1,8 +1,3 @@
----
-hide:
-  - navigation
----
-
 # Contribute
 
 This page is also meant for internal documentation.
@@ -252,7 +247,7 @@ rye init darts-packagename
 
 Rye creates a minimal project structure for us.
 
-The following things needs to be updates:
+The following things needs to be updated:
 
 1. The `pyproject.toml` file inside the new package.
 
@@ -268,7 +263,7 @@ The following things needs to be updates:
 
 2. The `.github/workflows/update_version.yml` file, to include the package in the workflow.
 
-    Under `package` and under step `Update version in pyproject.toml`.
+    Under step `Update version in pyproject.toml`.
 
 3. The docs by creating a new directory with a `quickstart.md` and a `ref.md` (and optionally more) and add them to the nav inside the `mkdocs.yml`.
 

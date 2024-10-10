@@ -20,8 +20,6 @@ managed = true
 virtual = true
 dev-dependencies = [
     "ipykernel>=6.29.5",
-    "noise>=1.2.2",
-    # Used for generating random data, may delete in future
     "matplotlib>=3.9.2",
     "ruff>=0.6.8",
     "mkdocs>=1.6.1",

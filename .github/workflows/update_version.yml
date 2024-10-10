@@ -8,26 +8,14 @@ on:
         required: true
         type: choice
         options:
-          - major
-          - minor
           - patch
-      package:
-        description: 'The package to update [possible values: all, darts-acquisition, darts-ensemble, darts-pipeline, darts-preprocessing, darts-segmentation, darts-superresolution]'
-        required: true
-        type: choice
-        options:
-          - all
-          - darts-acquisition
-          - darts-ensemble
-          - darts-pipeline
-          - darts-preprocessing
-          - darts-segmentation
-          - darts-superresolution
+          - minor
+          - major
       publish:
         description: 'Publish the package to GitHub releases'
         required: false
         type: boolean
-        default: false
+        default: true
 
 jobs:
   update-version:
@@ -49,18 +37,16 @@ jobs:
       # Do a version bump to the package
       - name: Update version in pyproject.toml
         run: |
-          if [ ${{ github.event.inputs.package }} == 'all' ]; then
-            rye version --bump ${{ github.event.inputs.bump }}
-            cd darts-acquisition && rye version --bump ${{ github.event.inputs.bump }}
-            cd ../darts-ensemble && rye version --bump ${{ github.event.inputs.bump }}
-            cd ../darts-pipeline && rye version --bump ${{ github.event.inputs.bump }}
-            cd ../darts-preprocessing && rye version --bump ${{ github.event.inputs.bump }}
-            cd ../darts-segmentation && rye version --bump ${{ github.event.inputs.bump }}
-            cd ../darts-superresolution && rye version --bump ${{ github.event.inputs.bump }}
-          else
-            rye version --bump ${{ github.event.inputs.bump }}
-            cd ${{ github.event.inputs.package }} && rye version --bump ${{ github.event.inputs.bump }}
-          fi
+          rye version --bump ${{ github.event.inputs.bump }}
+          cd darts-acquisition && rye version --bump ${{ github.event.inputs.bump }}
+          cd ../darts-ensemble && rye version --bump ${{ github.event.inputs.bump }}
+          cd ../darts-export && rye version --bump ${{ github.event.inputs.bump }}
+          cd ../darts-pipeline && rye version --bump ${{ github.event.inputs.bump }}
+          cd ../darts-preprocessing && rye version --bump ${{ github.event.inputs.bump }}
+          cd ../darts-postprocessing && rye version --bump ${{ github.event.inputs.bump }}
+          cd ../darts-segmentation && rye version --bump ${{ github.event.inputs.bump }}
+          cd ../darts-superresolution && rye version --bump ${{ github.event.inputs.bump }}
+
 
       # Get the new version with rye version and save it as an variable
       - name: Get new version
@@ -72,7 +58,7 @@ jobs:
           git config --global user.name 'github-actions'
           git config --global user.email 'github-actions@github.com'
           git add pyproject.toml
-          git commit -m "${{ github.event.inputs.bump }} version bump to ${{ steps.get_version.outputs.VERSION }} of ${{ github.event.inputs.package }}"
+          git commit -m "${{ github.event.inputs.bump }} version bump to ${{ steps.get_version.outputs.VERSION }}"
           git push
 
   build-and-publish:
@@ -96,12 +82,7 @@ jobs:
           version: '0.39.0'
 
       - name: Build package
-        run: |
-          if [ ${{ github.event.inputs.package }} == 'all' ]; then
-            rye build --all
-          else
-            rye build --package ${{ github.event.inputs.package }}
-          fi
+        run: rye build --all
 
       # TODO: Run tests
 
