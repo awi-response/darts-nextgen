@@ -23,3 +23,7 @@ logs
 
 # Tobis playgrounds
 notebooks/playground.ipynb
+
+# Rye requirement.lock files since they are different anyway
+requirements.lock
+requirements-dev.lock
