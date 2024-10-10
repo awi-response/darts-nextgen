@@ -63,6 +63,6 @@ class Segmenter:
 
         predictions = tile["ndvi"].copy(data=tensor_tile[:1].numpy())
         # TODO: Missing implementation
-        tile["probabilities"] = (predictions / 255).astype(np.uint8)  # Highly sophisticated DL-based predictor
-        tile["binarized"] = tile["ndvi"] > 0.5  # Highly sophisticated DL-based predictor
+        tile["probabilities"] = predictions  # Highly sophisticated DL-based predictor
+        tile["binarized"] = predictions  # Highly sophisticated DL-based predictor
         return tile
