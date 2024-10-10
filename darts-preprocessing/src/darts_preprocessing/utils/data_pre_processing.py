@@ -35,7 +35,7 @@ def load_planet_scene(planet_scene_path: str | Path) -> xr.Dataset:
         raise FileNotFoundError(f"No matching TIFF files found in {planet_scene_path}")
 
     # Open the TIFF file using rioxarray
-    return rxr.open_rasterio(ps_image[0])
+    return rxr.open_rasterio(ps_image[0]).to_dataset(name="planet")
 
 
 def calculate_ndvi(planet_scene_dataarray: xr.DataArray, nir_band: int = 4, red_band: int = 3) -> xr.Dataset:
@@ -74,7 +74,7 @@ def calculate_ndvi(planet_scene_dataarray: xr.DataArray, nir_band: int = 4, red_
     r = planet_scene_dataarray.sel(band=red_band).astype("float32")
     ndvi = (nir - r) / (nir + r)
 
-    return ndvi
+    return ndvi.to_dataarray().to_dataset(name="ndvi")
 
 
 def geom_from_image_bounds(image_path):
@@ -92,7 +92,17 @@ def resolution_from_image(image_path):
         return src.res
 
 
-def load_auxiliary(planet_scene_path, auxiliary_file_path, tmp_data_dir=Path(".")):
+def get_planet_image_from_planet_scene_path(planet_scene_path):
+    image_path = list(planet_scene_path.glob("*_SR.tif"))[0]
+    return image_path
+
+
+def load_auxiliary(
+    planet_scene_path,
+    auxiliary_file_path,
+    xr_dataset_name,
+    tmp_data_dir=Path("."),
+):
     """Load auxiliary raster data by warping it to match the bounds and resolution of a specified Planet scene.
 
     This function identifies the appropriate Planet scene image file, extracts its bounding box,
@@ -130,7 +140,7 @@ def load_auxiliary(planet_scene_path, auxiliary_file_path, tmp_data_dir=Path("."
     >>> data = load_auxiliary(Path('/path/to/planet_scene'), Path('/path/to/auxiliary_file.tif'))
 
     """
-    with rio.open(planet_scene_path) as ds_planet:
+    with rio.open(get_planet_image_from_planet_scene_path(planet_scene_path)) as ds_planet:
         bbox = ds_planet.bounds
         crs = ds_planet.crs
         res_x, res_y = ds_planet.res
@@ -145,7 +155,6 @@ def load_auxiliary(planet_scene_path, auxiliary_file_path, tmp_data_dir=Path("."
     # load elevation layer
     data_array = rxr.open_rasterio(outfile)
     # delete temporarary file
-    # outfile.unlink()
     os.remove(outfile)
 
-    return data_array
+    return data_array.to_dataset(name=xr_dataset_name)
