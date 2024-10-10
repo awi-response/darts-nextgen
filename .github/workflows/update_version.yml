@@ -24,7 +24,7 @@ on:
           - darts-segmentation
           - darts-superresolution
       publish:
-        description: 'Publish the package to PyPI and GitHub releases'
+        description: 'Publish the package to GitHub releases'
         required: false
         type: boolean
         default: false
@@ -98,30 +98,16 @@ jobs:
       - name: Build package
         run: |
           if [ ${{ github.event.inputs.package }} == 'all' ]; then
-            cd darts-acquisition && rye build && cd ..
-            cd darts-ensemble && rye build && cd ..
-            cd darts-pipeline && rye build && cd ..
-            cd darts-preprocessing && rye build && cd ..
-            cd darts-segmentation && rye build && cd ..
-            cd darts-superresolution && rye build && cd ..
+            rye build --all
           else
-            cd ${{ github.event.inputs.package }} && rye build && cd ..
+            rye build --package ${{ github.event.inputs.package }}
           fi
 
       # TODO: Run tests
 
       # - name: Publish to PyPI
       #   run: |
-      #     if [ ${{ github.event.inputs.package }} == 'all' ]; then
-      #       cd darts-acquisition && rye publish --token ${{ secrets.PYPI_TOKEN }} --yes  && cd ..
-      #       cd darts-ensemble && rye publish --token ${{ secrets.PYPI_TOKEN }} --yes && cd ..
-      #       cd darts-pipeline && rye publish --token ${{ secrets.PYPI_TOKEN }} --yes && cd ..
-      #       cd darts-preprocessing && rye publish --token ${{ secrets.PYPI_TOKEN }} --yes && cd ..
-      #       cd darts-segmentation && rye publish --token ${{ secrets.PYPI_TOKEN }} --yes && cd ..
-      #       cd darts-superresolution && rye publish --token ${{ secrets.PYPI_TOKEN }} --yes && cd ..
-      #     else
-      #       cd ${{ github.event.inputs.package }} && rye publish --token ${{ secrets.PYPI_TOKEN }} --yes && cd ..
-      #     fi
+      #     rye publish --token ${{ secrets.PYPI_TOKEN }} --yes
 
       - name: Create GitHub Release
         id: create_release

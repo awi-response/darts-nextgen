@@ -1,6 +1,8 @@
 site_name: DARTS nextgen
 site_url: https://awi-response.github.io/darts-nextgen
 site_author: Tobias Hölzer
+site_description: >
+  Panarctic Database of Active Layer Detatchment Slides and Retrogressive Thaw Slumps from Deep Learning on High Resolution Satellite Imagery.
 
 repo_name: darts-nextgen
 repo_url: https://github.com/awi-response/darts-nextgen
@@ -28,7 +30,9 @@ nav:
           - Quickstart: darts-superresolution/quickstart.md
           - Reference: darts-superresolution/ref.md
       - Reference: ref.md
-  - Contribute: contribute.md
+  - Contribute:
+      - Contribute: contribute.md
+      - Logging: dev/logging.md
 
 theme:
   name: material
