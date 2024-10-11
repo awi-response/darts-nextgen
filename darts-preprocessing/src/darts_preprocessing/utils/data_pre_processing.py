@@ -196,7 +196,7 @@ def load_auxiliary(
     # delete temporarary file
     os.remove(outfile)
 
-    return data_array.assign_attrs(ds_annotation).drop_vars("band").to_dataset(name=xr_dataset_name)
+    return data_array.assign_attrs(ds_annotation).drop_vars("band").to_dataset(name=xr_dataset_name).drop_dims("band")
 
 
 def load_data_masks(planet_scene_path):
