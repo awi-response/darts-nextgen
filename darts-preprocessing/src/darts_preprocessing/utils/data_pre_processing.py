@@ -28,15 +28,13 @@ def load_planet_scene(planet_scene_path: str | Path) -> xr.Dataset:
     if isinstance(planet_scene_path, str):
         planet_scene_path = Path(planet_scene_path)
 
-    # Find the appropriate TIFF file
-    # TODO use get_planet_image_from_planet_scene_path function
-    ps_image = list(planet_scene_path.glob(f"{planet_scene_path.name}_*_SR.tif"))
-
+    # Find the appropriate planet file
+    ps_image = get_planet_imagepath_from_planet_scene_path(planet_scene_path)
     if not ps_image:
         raise FileNotFoundError(f"No matching TIFF files found in {planet_scene_path}")
 
     # Open the TIFF file using rioxarray
-    return rxr.open_rasterio(ps_image[0]).to_dataset(name="planet")
+    return rxr.open_rasterio(ps_image).to_dataset(name="planet")
 
 
 def calculate_ndvi(planet_scene_dataarray: xr.DataArray, nir_band: int = 4, red_band: int = 3) -> xr.DataArray:
@@ -105,9 +103,14 @@ def resolution_from_image(image_path):
         return src.res
 
 
-def get_planet_image_from_planet_scene_path(planet_scene_path):
+def get_planet_imagepath_from_planet_scene_path(planet_scene_path):
     image_path = list(planet_scene_path.glob("*_SR.tif"))[0]
     return image_path
+
+
+def get_planet_udm2path_from_planet_scene_path(planet_scene_path):
+    udm2_path = list(planet_scene_path.glob("*_udm2.tif"))[0]
+    return udm2_path
 
 
 def load_auxiliary(
@@ -153,7 +156,7 @@ def load_auxiliary(
     >>> data = load_auxiliary(Path('/path/to/planet_scene'), Path('/path/to/auxiliary_file.tif'))
 
     """
-    with rio.open(get_planet_image_from_planet_scene_path(planet_scene_path)) as ds_planet:
+    with rio.open(get_planet_imagepath_from_planet_scene_path(planet_scene_path)) as ds_planet:
         bbox = ds_planet.bounds
         crs = ds_planet.crs
         res_x, res_y = ds_planet.res
@@ -171,3 +174,52 @@ def load_auxiliary(
     os.remove(outfile)
 
     return data_array.to_dataset(name=xr_dataset_name)
+
+
+def load_data_masks(planet_scene_path):
+    """Load valid and quality data masks from a Planet scene.
+
+    This function retrieves the valid and quality data masks from a
+    specified Planet scene file. The valid data mask indicates
+    areas of valid data (1) versus no data (0). The quality data mask
+    assesses the quality of the data, where high quality is marked as
+    1 and low quality as 0.
+
+    Parameters
+    ----------
+    planet_scene_path : str
+        The file path to the Planet scene from which to derive the
+        masks.
+
+    Returns
+    -------
+    xarray.Dataset
+        A merged xarray Dataset containing two data masks:
+        - 'valid_data_mask': A mask indicating valid (1) and no data (0).
+        - 'quality_data_mask': A mask indicating high quality (1)
+          and low quality (0).
+
+    Notes
+    -----
+    - The function utilizes the `get_planet_udm2path_from_planet_scene_path`
+      to obtain the path to the UDM (User Data Model) file.
+    - It uses `rasterio` to read the UDM file and `xarray` for handling
+      the datasets.
+
+    """
+    udm_path = get_planet_udm2path_from_planet_scene_path(planet_scene_path)
+    ds_udm = rxr.open_rasterio(udm_path)
+
+    # valid data mask: valid data = 1, no data = 0
+    valid_data_mask = (
+        (ds_udm.sel(band=8) == 0).expand_dims(dim={"band": ["valid_data_mask"]}, axis=0).to_dataset(name="data_mask")
+    )
+
+    # quality data mask: high quality = 1, low quality = 0
+    quality_data_mask = (
+        (ds_udm.sel(band=[2, 3, 4, 5, 6]).max(axis=0) != 1)
+        .expand_dims(dim={"band": ["quality_data_mask"]}, axis=0)
+        .to_dataset(name="data_mask")
+    )
+
+    return xr.merge([valid_data_mask, quality_data_mask])
