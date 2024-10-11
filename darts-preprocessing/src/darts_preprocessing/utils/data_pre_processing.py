@@ -34,10 +34,24 @@ def load_planet_scene(planet_scene_path: str | Path) -> xr.Dataset:
         raise FileNotFoundError(f"No matching TIFF files found in {planet_scene_path}")
 
     # Open the TIFF file using rioxarray
-    return rxr.open_rasterio(ps_image).to_dataset(name="planet")
+
+    # Define band names and corresponding indices
+    planet_da = rxr.open_rasterio(ps_image)
+
+    bands = {1: "blue", 2: "green", 3: "red", 4: "nir"}
+
+    # Create a list to hold datasets
+    datasets = [
+        planet_da.sel(band=index).assign_attrs({"data_source": "planet"}).to_dataset(name=name).drop_vars("band")
+        for index, name in bands.items()
+    ]
+
+    # Merge all datasets into one
+    ds_planet = xr.merge(datasets)
+    return ds_planet
 
 
-def calculate_ndvi(planet_scene_dataarray: xr.DataArray, nir_band: int = 4, red_band: int = 3) -> xr.DataArray:
+def calculate_ndvi(planet_scene_dataset: xr.Dataset, nir_band: str = "nir", red_band: str = "red") -> xr.Dataset:
     """Calculate NDVI from an xarray DataArray containing spectral bands.
 
     Parameters
@@ -81,11 +95,12 @@ def calculate_ndvi(planet_scene_dataarray: xr.DataArray, nir_band: int = 4, red_
 
     """
     # Calculate NDVI using the formula
-    nir = planet_scene_dataarray.sel(band=nir_band).astype("float32")
-    r = planet_scene_dataarray.sel(band=red_band).astype("float32")
+    nir = planet_scene_dataset[nir_band].astype("float32")
+    r = planet_scene_dataset[red_band].astype("float32")
     ndvi = (nir - r) / (nir + r)
 
-    return ndvi.expand_dims(dim={"band": [1]}, axis=0).rename_vars({"planet": "ndvi"})
+    return ndvi.assign_attrs({"data_source": "planet"}).to_dataset(name="ndvi")
+    # return ndvi.expand_dims(dim={"band": [1]}, axis=0).rename_vars({"planet": "ndvi"})
 
 
 def geom_from_image_bounds(image_path):
