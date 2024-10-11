@@ -52,34 +52,36 @@ def load_planet_scene(planet_scene_path: str | Path) -> xr.Dataset:
 
 
 def calculate_ndvi(planet_scene_dataset: xr.Dataset, nir_band: str = "nir", red_band: str = "red") -> xr.Dataset:
-    """Calculate NDVI from an xarray DataArray containing spectral bands.
+    """Calculate NDVI from an xarray Dataset containing spectral bands.
 
     Parameters
     ----------
-    planet_scene_dataarray : xr.DataArray
-        The xarray DataArray containing the spectral bands, where the bands are
-        indexed along a dimension (e.g., 'band'). The DataArray should have
+    planet_scene_dataset : xr.Dataset
+        The xarray Dataset containing the spectral bands, where the bands are
+        indexed along a dimension (e.g., 'band'). The Dataset should have
         dimensions including 'band', 'y', and 'x'.
 
-    nir_band : int, optional
-        The index of the NIR band in the DataArray (default is 4). This index
-        should correspond to the position of the NIR band in the 'band' dimension.
+    nir_band : str, optional
+        The name of the NIR band in the Dataset (default is "nir"). This name
+        should correspond to the variable name for the NIR band in the 'band'
+        dimension.
 
-    red_band : int, optional
-        The index of the Red band in the DataArray (default is 3). This index
-        should correspond to the position of the Red band in the 'band' dimension.
+    red_band : str, optional
+        The name of the Red band in the Dataset (default is "red"). This name
+        should correspond to the variable name for the Red band in the 'band'
+        dimension.
 
     Returns
     -------
-    xr.DataArray
-        A new DataArray containing the calculated NDVI values. The resulting
-        DataArray will have dimensions (band: 1, y: ..., x: ...) and will be
+    xr.Dataset
+        A new Dataset containing the calculated NDVI values. The resulting
+        Dataset will have dimensions (band: 1, y: ..., x: ...) and will be
         named "ndvi".
 
     Raises
     ------
     ValueError
-        If the specified band indices are out of bounds for the provided DataArray.
+        If the specified band names do not exist in the provided Dataset.
 
     Notes
     -----
@@ -91,7 +93,7 @@ def calculate_ndvi(planet_scene_dataset: xr.Dataset, nir_band: str = "nir", red_
 
     Example
     -------
-    >>> ndvi_data = calculate_ndvi(planet_scene_dataarray)
+    >>> ndvi_data = calculate_ndvi(planet_scene_dataset)
 
     """
     # Calculate NDVI using the formula
@@ -100,7 +102,6 @@ def calculate_ndvi(planet_scene_dataset: xr.Dataset, nir_band: str = "nir", red_
     ndvi = (nir - r) / (nir + r)
 
     return ndvi.assign_attrs({"data_source": "planet"}).to_dataset(name="ndvi")
-    # return ndvi.expand_dims(dim={"band": [1]}, axis=0).rename_vars({"planet": "ndvi"})
 
 
 def geom_from_image_bounds(image_path):
@@ -133,13 +134,14 @@ def load_auxiliary(
     auxiliary_file_path,
     xr_dataset_name,
     tmp_data_dir=Path("."),
+    ds_annotation={"data_source": "ArcticDEM"},
 ):
     """Load auxiliary raster data by warping it to match the bounds and resolution of a specified Planet scene.
 
     This function identifies the appropriate Planet scene image file, extracts its bounding box,
     coordinate reference system (CRS), and resolution. It then uses the GDAL `gdalwarp` command to
     warp the auxiliary raster file to match these parameters and returns the resulting raster data as a
-    NumPy array.
+    xarray Dataset.
 
     Parameters
     ----------
@@ -150,14 +152,20 @@ def load_auxiliary(
     auxiliary_file_path : Path
         The file path to the auxiliary raster file that needs to be warped.
 
+    xr_dataset_name : str
+        The name to assign to the resulting xarray Dataset containing the warped data.
+
     tmp_data_dir : Path, optional
         The directory where the warped output file will be temporarily saved. Defaults to the current
         directory (".").
 
+    ds_annotation : dict, optional
+        A dictionary of attributes to assign to the resulting Dataset. Defaults to {"data_source": "ArcticDEM"}.
+
     Returns
     -------
-    data_array : xarray.DataArray
-        A DataArray containing the warped auxiliary raster data, aligned with the specified Planet scene's
+    xarray.Dataset
+        A Dataset containing the warped auxiliary raster data, aligned with the specified Planet scene's
         bounds and resolution.
 
     Notes
@@ -166,9 +174,9 @@ def load_auxiliary(
 
     The temporary output file is deleted after loading its data into memory.
 
-    Example:
-    --------
-    >>> data = load_auxiliary(Path('/path/to/planet_scene'), Path('/path/to/auxiliary_file.tif'))
+    Example
+    -------
+    >>> data = load_auxiliary(Path('/path/to/planet_scene'), Path('/path/to/auxiliary_file.tif'), 'aux_data')
 
     """
     with rio.open(get_planet_imagepath_from_planet_scene_path(planet_scene_path)) as ds_planet:
@@ -188,7 +196,7 @@ def load_auxiliary(
     # delete temporarary file
     os.remove(outfile)
 
-    return data_array.to_dataset(name=xr_dataset_name)
+    return data_array.assign_attrs(ds_annotation).drop_vars("band").to_dataset(name=xr_dataset_name)
 
 
 def load_data_masks(planet_scene_path):
@@ -227,14 +235,17 @@ def load_data_masks(planet_scene_path):
 
     # valid data mask: valid data = 1, no data = 0
     valid_data_mask = (
-        (ds_udm.sel(band=8) == 0).expand_dims(dim={"band": ["valid_data_mask"]}, axis=0).to_dataset(name="data_mask")
+        (ds_udm.sel(band=8) == 0)
+        .assign_attrs({"data_source": "planet"})
+        .to_dataset(name="valid_data_mask")
+        .drop_vars("band")
     )
 
     # quality data mask: high quality = 1, low quality = 0
     quality_data_mask = (
         (ds_udm.sel(band=[2, 3, 4, 5, 6]).max(axis=0) != 1)
-        .expand_dims(dim={"band": ["quality_data_mask"]}, axis=0)
-        .to_dataset(name="data_mask")
+        .assign_attrs({"data_source": "planet"})
+        .to_dataset(name="quality_data_mask")
     )
 
     return xr.merge([valid_data_mask, quality_data_mask])
