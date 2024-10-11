@@ -1,19 +1,24 @@
 """Functionality for segmenting tiles."""
 
-from collections.abc import Generator
+from collections.abc import Callable, Generator
 from pathlib import Path
+from typing import Any, TypedDict
 
 import segmentation_models_pytorch as smp
 import torch
 import torch.nn as nn
 import xarray as xr
 
-from darts_segmentation.hardcoded_stuff import NORMALIZATION_FACTORS
+
+class SMPSegmenterConfig(TypedDict):
+    """Configuration for the segmentor."""
+
+    input_combination: list[str]
+    model: dict[str, Any]
+    # patch_size: int
 
 
-def patch_generator(
-    h: int, w: int, patch_size: int, margin_size: int
-) -> Generator[tuple[int, int, int, int], None, None]:
+def patch_coords(h: int, w: int, patch_size: int, margin_size: int) -> Generator[tuple[int, int, int, int], None, None]:
     """Yield patch coordinates based on height, width, patch size and margin size.
 
     Args:
@@ -38,29 +43,37 @@ def patch_generator(
             yield y, x, patch_idx_h, patch_idx_w
 
 
-def create_patches(tensor_tiles: torch.Tensor, patch_size: int, margin_size: int) -> tuple[torch.Tensor, torch.Tensor]:
-    """Create patches from an input tensor, as well as a trapazoidal soft margin.
+@torch.no_grad()
+def predict_in_patches(
+    model: Callable, tensor_tiles: torch.Tensor, patch_size: int = 1024, margin_size: int = 16
+) -> torch.Tensor:
+    """Predict on a tensor.
 
     Args:
-        tensor_tiles (torch.Tensor): The input tensor. Shape: (BS, C, H, W).
-        patch_size (int): The size of the patches.
-        margin_size (int): The size of the margin.
+        model: The model to use for prediction.
+        tensor_tiles: The input tensor. Shape: (BS, C, H, W).
+        patch_size (int): The size of the patches. Defaults to 1024.
+        margin_size (int): The size of the margin. Defaults to 16.
 
     Returns:
-        tuple[torch.Tensor, torch.Tensor]: The patches tensor and the soft margin tensor.
-            The patches tensor has shape (N_h, N_w, BS, C, patch_size, patch_size),
-            the soft margin tensor has shape (patch_size, patch_size).
+        The predicted tensor.
 
     """
     assert tensor_tiles.dim() == 4, f"Expects tensor_tiles to has shape (BS, C, H, W), got {tensor_tiles.shape}"
     bs, c, h, w = tensor_tiles.shape
-
     step_size = patch_size - margin_size
-    patches = torch.zeros((bs, h // step_size, w // step_size, c, patch_size, patch_size), device=tensor_tiles.device)
+    nh, nw = h // step_size, w // step_size
 
-    for y, x, patch_idx_h, patch_idx_w in patch_generator(h, w, patch_size, margin_size):
+    # Create Patches of size (BS, N_h, N_w, C, patch_size, patch_size)
+    patches = torch.zeros((bs, nh, nw, c, patch_size, patch_size), device=tensor_tiles.device)
+    for y, x, patch_idx_h, patch_idx_w in patch_coords(h, w, patch_size, margin_size):
         patches[:, patch_idx_h, patch_idx_w, :] = tensor_tiles[:, :, y : y + patch_size, x : x + patch_size]
 
+    # Flatten the patches so they fit to the model
+    # (BS, N_h, N_w, C, patch_size, patch_size) -> (BS * N_h * N_w, C, patch_size, patch_size)
+    patches = patches.view(bs * nh * nw, c, patch_size, patch_size)
+
+    # Create a soft margin for the patches
     margin_ramp = torch.cat(
         [
             torch.linspace(0, 1, margin_size),
@@ -68,15 +81,30 @@ def create_patches(tensor_tiles: torch.Tensor, patch_size: int, margin_size: int
             torch.linspace(1, 0, margin_size),
         ]
     )
-
     soft_margin = margin_ramp.reshape(1, 1, patch_size) * margin_ramp.reshape(1, patch_size, 1)
-    return patches, soft_margin
+
+    # Infer logits with model and turn into probabilities with sigmoid
+    patched_logits = model(patches)
+    patched_probabilities = torch.sigmoid(patched_logits)  # TODO: check if this is the correct function
+
+    # Reconstruct the image from the patches
+    prediction = torch.zeros(bs, h, w, device=tensor_tiles.device)
+    weights = torch.zeros(bs, h, w, device=tensor_tiles.device)
+
+    for y, x, patch_idx_h, patch_idx_w in patch_coords(h, w, patch_size, margin_size):
+        patch = patched_probabilities[patch_idx_h, patch_idx_w]
+        prediction[:, y : y + patch_size, x : x + patch_size] += patch * soft_margin
+        weights[:, y : y + patch_size, x : x + patch_size] += soft_margin
+
+    # Avoid division by zero
+    weights = torch.where(weights == 0, torch.ones_like(weights), weights)
+    return prediction / weights
 
 
-class Segmenter:
+class SMPSegmenter:
     """An actor that keeps a model as its state and segments tiles."""
 
-    config: dict
+    config: SMPSegmenterConfig
     model: nn.Module
 
     def __init__(self, model_checkpoint: Path | str):
@@ -89,6 +117,9 @@ class Segmenter:
         """
         self.dev = torch.device("cpu") if not torch.cuda.is_available() else torch.device("cuda")
         ckpt = torch.load(model_checkpoint, map_location=self.dev)
+        assert "input_combination" in ckpt["config"], "input_combination not found in the checkpoint!"
+        assert "model" in ckpt["config"], "model not found in the checkpoint!"
+        assert "norm_factors" in ckpt["config"], "norm_factors not found in the checkpoint!"
         self.config = ckpt["config"]
         self.model = smp.create_model(**self.config["model"], encoder_weights=None)
         self.model.load_state_dict(ckpt["statedict"])
@@ -100,63 +131,20 @@ class Segmenter:
         Returns:
           A torch tensor for the full tile consisting of the bands specified in `self.band_combination`.
 
-        Raises:
-          ValueError: in case a specified band is not found in the input tile.
 
         """
         bands = []
-        for band_name in self.config["input_combination"]:
-            for var in tile.data_vars:
-                assert isinstance(var, str)
-                dim_name = f"{var}_band"
-                if band_name in tile[dim_name]:
-                    band_data = tile[var].loc[{dim_name: band_name}]
-                    band_data = band_data / NORMALIZATION_FACTORS[var]
-                    bands.append(torch.from_numpy(band_data.values))
-                    break
-            else:
-                raise ValueError(f"Band {band_name} not found in the input!")
+        # e.g. input_combination: ["red", "green", "blue", "relative_elevation", ...]
+        # tile.data_vars: ["red", "green", "blue", "relative_elevation", ...]
+
+        for feature_name in self.config["input_combination"]:
+            norm = self.config["norm_factors"][feature_name]
+            band_data = tile[feature_name]
+            # Normalize the band data
+            band_data = band_data * norm
+            bands.append(torch.from_numpy(band_data.values))
+
         return torch.stack(bands, dim=0)
-
-    @torch.no_grad()
-    def predict(self, tensor_tile: torch.Tensor, patch_size: int = 1024, margin_size: int = 16) -> torch.Tensor:
-        """Predict on a tensor.
-
-        Args:
-            tensor_tile: The input tensor. Shape: (BS, C, H, W).
-            patch_size (int): The size of the patches. Defaults to 1024.
-            margin_size (int): The size of the margin. Defaults to 16.
-
-        Returns:
-          The predicted tensor.
-
-        """
-        # TODO: Maybe move patch_size to the model config?
-        bs, c, h, w = tensor_tile.shape
-
-        patches, soft_margin = create_patches(tensor_tile, patch_size, margin_size)
-
-        _, nh, nw, _, _, _ = patches.shape
-
-        # Flatten the patches so they fit to the model
-        # (BS, N_h, N_w, C, patch_size, patch_size) -> (BS * N_h * N_w, C, patch_size, patch_size)
-        patches = patches.view(bs * nh * nw, c, patch_size, patch_size)
-
-        # Infer logits with model and turn into probabilities with sigmoid
-        patched_logits = self.model(patches)
-        patched_probabilities = torch.sigmoid(patched_logits)  # TODO: check if this is the correct function
-
-        prediction = torch.zeros(bs, h, w, device=tensor_tile.device)
-        weights = torch.zeros(bs, h, w, device=tensor_tile.device)
-
-        for y, x, patch_idx_h, patch_idx_w in patch_generator(h, w, patch_size, margin_size):
-            patch = patched_probabilities[patch_idx_h, patch_idx_w]
-            prediction[:, y : y + patch_size, x : x + patch_size] += patch * soft_margin
-            weights[:, y : y + patch_size, x : x + patch_size] += soft_margin
-
-        # Avoid division by zero
-        weights = torch.where(weights == 0, torch.ones_like(weights), weights)
-        return prediction / weights
 
     def segment_tile(self, tile: xr.Dataset) -> xr.Dataset:
         """Run inference on a tile.
@@ -174,10 +162,12 @@ class Segmenter:
         # Create a batch dimension, because predict expects it
         tensor_tile = tensor_tile.unsqueeze(0)
 
-        probabilities = self.predict(tensor_tile)
+        probabilities = predict_in_patches(self.model, tensor_tile).squeeze(0)
 
         # Highly sophisticated DL-based predictor
-        tile["probabilities"] = tile["ndvi"].copy(data=probabilities.cpu().numpy())
+        # TODO: is there a better way to pass metadata?
+        tile["probabilities"] = tile["red"].copy(data=probabilities.cpu().numpy())
+        tile["probabilities"].attrs = {}
         return tile
 
     def segment_tile_batched(self, tiles: list[xr.Dataset]) -> list[xr.Dataset]:
@@ -197,11 +187,13 @@ class Segmenter:
         # Create a batch dimension, because predict expects it
         tensor_tiles = torch.stack(tensor_tiles, dim=0)
 
-        probabilities = self.predict(tensor_tiles)
+        probabilities = predict_in_patches(self.model, tensor_tiles)
 
         # Highly sophisticated DL-based predictor
         for tile, probs in zip(tiles, probabilities):
-            tile["probabilities"] = tile["ndvi"].copy(data=probs.cpu().numpy())
+            # TODO: is there a better way to pass metadata?
+            tile["probabilities"] = tile["red"].copy(data=probs.cpu().numpy())
+            tile["probabilities"].attrs = {}
         return tiles
 
     def __call__(self, input: xr.Dataset | list[xr.Dataset]) -> xr.Dataset | list[xr.Dataset]:

@@ -3,7 +3,7 @@
 from pathlib import Path
 
 import xarray as xr
-from darts_segmentation.segment import Segmenter
+from darts_segmentation.segment import SMPSegmenter
 
 
 class EnsembleV1:
@@ -23,8 +23,8 @@ class EnsembleV1:
             binarize_threshold (float, optional): Threshold to binarize the ensemble output. Defaults to 0.5.
 
         """
-        self.rts_v6_tcvis_model = Segmenter(rts_v6_tcvis_model_path)
-        self.rts_v6_notcvis_model = Segmenter(rts_v6_notcvis_model_path)
+        self.rts_v6_tcvis_model = SMPSegmenter(rts_v6_tcvis_model_path)
+        self.rts_v6_notcvis_model = SMPSegmenter(rts_v6_notcvis_model_path)
         self.threshold = binarize_threshold
 
     def __call__(self, tile: xr.Dataset, keep_inputs: bool = False) -> xr.Dataset:
