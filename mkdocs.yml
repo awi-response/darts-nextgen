@@ -10,31 +10,18 @@ edit_uri: edit/main/docs/
 
 nav:
   - Home: index.md
-  - Packages:
-      - Acquisition:
-          - Quickstart: darts-acquisition/quickstart.md
-          - Reference: darts-acquisition/ref.md
-      - Preprocessing:
-          - Quickstart: darts-preprocessing/quickstart.md
-          - Reference: darts-preprocessing/ref.md
-      - Ensemble:
-          - Quickstart: darts-ensemble/quickstart.md
-          - Reference: darts-ensemble/ref.md
-      - Export:
-          - Quickstart: darts-export/quickstart.md
-          - Reference: darts-export/ref.md
-      - Segmentation:
-          - Quickstart: darts-segmentation/quickstart.md
-          - Reference: darts-segmentation/ref.md
-      - Superresolution:
-          - Quickstart: darts-superresolution/quickstart.md
-          - Reference: darts-superresolution/ref.md
-      - Postprocessing:
-          - Quickstart: darts-postprocessing/quickstart.md
-          - Reference: darts-postprocessing/ref.md
+  - Modules:
+      - Acquisition: ref/acquisition.md
+      - Preprocessing: ref/preprocessing.md
+      - Ensemble: ref/ensemble.md
+      - Export: ref/export.md
+      - Segmentation: ref/segmentation.md
+      - Superresolution: ref/superresolution.md
+      - Postprocessing: ref/postprocessing.md
       - Reference: ref.md
   - Dev:
       - Contribute: contribute.md
+      - Pipeline steps APIs: dev/arch.md
       - Logging: dev/logging.md
 
 theme:
