@@ -1,7 +1,7 @@
 from pathlib import Path
 
 import xarray as xr
-from utils.data_pre_processing import calculate_ndvi, load_auxiliary, load_planet_scene
+from utils.data_pre_processing import calculate_ndvi, load_auxiliary, load_data_masks, load_planet_scene
 
 """
 darts-nextgen preprocessing
@@ -39,5 +39,8 @@ ds_slope = load_auxiliary(planet_scene_path, slope_path, xr_dataset_name="slope"
 # # get xr.dataset for tcvis
 # ds_tcvis = load_auxiliary(planet_scene_path, tcvis_path)
 
+# load udm2
+ds_data_masks = load_data_masks(planet_scene_path)
+
 # merge to final dataset
-ds_merged = xr.merge([ds_planet, ds_ndvi, ds_elevation, ds_slope])
+ds_merged = xr.merge([ds_planet, ds_ndvi, ds_elevation, ds_slope, ds_data_masks])
