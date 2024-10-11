@@ -85,7 +85,7 @@ def predict_in_patches(
 
     # Infer logits with model and turn into probabilities with sigmoid
     patched_logits = model(patches)
-    patched_probabilities = torch.sigmoid(patched_logits)  # TODO: check if this is the correct function
+    patched_probabilities = torch.sigmoid(patched_logits)
 
     # Reconstruct the image from the patches
     prediction = torch.zeros(bs, h, w, device=tensor_tiles.device)
