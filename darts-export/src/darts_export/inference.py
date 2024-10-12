@@ -40,5 +40,5 @@ class InferenceResultWriter:
         """
         self.ds.binarized_segmentation.rio.to_raster(path / filename, driver="GTiff", tags=tags, compress="LZW")
 
-    def export_vectors(self, path: Path, filename_prefix="pred_segments"):
-        pass
+    # def export_vectors(self, path: Path, filename_prefix="pred_segments"):
+    #    pass

@@ -40,3 +40,6 @@ packages = ["src/darts_export"]
 [tool.ruff]
 # Extend the `pyproject.toml` file in the parent directory...
 extend = "../pyproject.toml"
+
+[tool.ruff.lint.per-file-ignores]
+"test/*" = ["D1"]
