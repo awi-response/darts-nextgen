@@ -4,6 +4,8 @@ import rioxarray  # noqa: F401
 import xarray
 from scipy import ndimage
 
+BINARIZATION_THRESHOLD = 50
+
 
 @pytest.fixture
 def probabilities():
@@ -16,8 +18,15 @@ def probabilities():
     # and normalize the values back to 100
     nd_probabilites = (nd_prob_blurred * (100 / nd_prob_blurred.max())).astype("int8")
 
+    # create the binarized data:
+    binarized_segs = np.zeros(nd_probabilites.shape, dtype="uint8")
+    binarized_segs[nd_probabilites > BINARIZATION_THRESHOLD] = 1
+
     xds = xarray.Dataset(
-        {"probabilities": (["y", "x"], nd_probabilites)},
+        {
+            "probabilities": (["y", "x"], nd_probabilites),
+            "binarized_segmentation": (["y", "x"], binarized_segs),
+        },
         coords={"x": range(500000, 500016), "y": range(4500000, 4500016)},
     )
     xds.rio.write_crs("EPSG:32601", inplace=True)
