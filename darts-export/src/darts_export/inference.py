@@ -33,12 +33,17 @@ class InferenceResultWriter:
         """Export the binarized segmentation result of the inference Result.
 
         Args:
-            path (Path): _description_
-            filename (str, optional): _description_. Defaults to "pred_binarized.tif".
-            tags (dict, optional): _description_. Defaults to {}.
+            path (Path): The path where to export to.
+            filename (str, optional): the filename. Defaults to "pred_binarized.tif".
+            tags (dict, optional): optional GeoTIFF metadate to be written. Defaults to no additional metadata.
+
+        Returns:
+            the Path of the written file
 
         """
-        self.ds.binarized_segmentation.rio.to_raster(path / filename, driver="GTiff", tags=tags, compress="LZW")
+        file_path = path / filename
+        self.ds.binarized_segmentation.rio.to_raster(file_path, driver="GTiff", tags=tags, compress="LZW")
+        return file_path
 
     # def export_vectors(self, path: Path, filename_prefix="pred_segments"):
     #    pass
