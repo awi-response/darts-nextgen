@@ -82,7 +82,7 @@ class InferenceResultWriter:
         # create the vector output datasets
         gpkg_drv = ogr.GetDriverByName("GPKG")
         gpkg_ds = gpkg_drv.CreateDataSource(path / f"{filename_prefix}.gpkg")
-        output_layer = gpkg_ds.CreateLayer("filename_prefix", geom_type=ogr.wkbPolygon, srs=dta.GetSpatialRef())
+        output_layer = gpkg_ds.CreateLayer(filename_prefix, geom_type=ogr.wkbPolygon, srs=dta.GetSpatialRef())
 
         # add the field where to store the polygonization threshold
         field = ogr.FieldDefn("DN", ogr.OFTInteger)

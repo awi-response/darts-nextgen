@@ -42,6 +42,10 @@ def test_writeVectors(probabilities: Dataset, tmp_path: Path):
     if gdal_has_parquet:
         assert (tmp_path / "pred_segments.parquet").is_file()
 
+    gpkg_layers = gpd.list_layers(tmp_path / "pred_segments.gpkg")
+    assert len(gpkg_layers) == 1
+    assert gpkg_layers.iloc[0]["name"] == "pred_segments"
+
     gdf = gpd.read_file(tmp_path / "pred_segments.gpkg")
     assert gdf.shape == (1, 2)  # one feature, two attributes (fid, DN)
     assert gdf.iloc[0].geometry.wkt == (
