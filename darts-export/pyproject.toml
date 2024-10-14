@@ -22,6 +22,11 @@ authors = [
 
 [project.optional-dependencies]
 test = ["pytest"]
+gdal39 = ["gdal==3.9.2"]
+gdal38 = ["gdal==3.8.5"]
+gdal384 = ["gdal==3.8.4"]
+gdal37 = ["gdal==3.7.3"]
+gdal36 = ["gdal==3.6.4"]
 
 [build-system]
 requires = ["hatchling"]
