@@ -78,7 +78,7 @@ def create_patches(
 
 @torch.no_grad()
 def predict_in_patches(
-    model: Callable, tensor_tiles: torch.Tensor, patch_size: int = 1024, overlap: int = 16
+    model: Callable, tensor_tiles: torch.Tensor, patch_size: int = 1024, overlap: int = 16, batch_size: int = 8
 ) -> torch.Tensor:
     """Predict on a tensor.
 
@@ -87,6 +87,8 @@ def predict_in_patches(
         tensor_tiles: The input tensor. Shape: (BS, C, H, W).
         patch_size (int): The size of the patches. Defaults to 1024.
         overlap (int): The size of the overlap. Defaults to 16.
+        batch_size (int): The batch size for the prediction, NOT the batch_size of input tiles.
+            Tensor will be sliced into patches and these again will be infered in batches. Defaults to 8.
 
     Returns:
         The predicted tensor.
@@ -117,8 +119,12 @@ def predict_in_patches(
     )
     soft_margin = margin_ramp.reshape(1, 1, patch_size) * margin_ramp.reshape(1, patch_size, 1)
 
-    # Infer logits with model and turn into probabilities with sigmoid
-    patched_probabilities = torch.sigmoid(model(patches)).squeeze(1)
+    # Infer logits with model and turn into probabilities with sigmoid in a batched manner
+    patched_probabilities = torch.zeros_like(patches[:, 0, :, :])
+    # Create batches of patches
+    patches = patches.split(batch_size)
+    for i, batch in enumerate(patches):
+        patched_probabilities[i * batch_size : (i + 1) * batch_size] = torch.sigmoid(model(batch)).squeeze(1)
 
     patched_probabilities = patched_probabilities.view(bs, nh, nw, patch_size, patch_size)
 
