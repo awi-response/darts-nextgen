@@ -20,8 +20,9 @@ def patch_coords(h: int, w: int, patch_size: int, overlap: int) -> Generator[tup
 
     """
     step_size = patch_size - overlap
-    for patch_idx_y, y in enumerate(range(0, h, step_size)):
-        for patch_idx_x, x in enumerate(range(0, w, step_size)):
+    # Substract the overlap from h and w so that an exact match of the last patch won't create a duplicate
+    for patch_idx_y, y in enumerate(range(0, h - overlap, step_size)):
+        for patch_idx_x, x in enumerate(range(0, w - overlap, step_size)):
             if y + patch_size > h:
                 y = h - patch_size
             if x + patch_size > w:
@@ -52,7 +53,17 @@ def create_patches(
     assert w > patch_size > overlap
 
     step_size = patch_size - overlap
-    nh, nw = math.ceil(h / step_size), math.ceil(w / step_size)
+
+    # The problem with unfold is that is cuts off the last patch if it doesn't fit exactly
+    # Padding could help, but then the next problem is that the view needs to get reshaped (copied in memory)
+    # to fit the model input shape. Such a complex view can't be inserted into the model.
+    # Since we need, doing it manually is currently our best choice, since be can avoid the padding.
+    # patches = (
+    #     tensor_tiles.unfold(2, patch_size, step_size).unfold(3, patch_size, step_size).transpose(1, 2).transpose(2, 3)
+    # )
+    # return patches
+
+    nh, nw = math.ceil((h - overlap) / step_size), math.ceil((w - overlap) / step_size)
     # Create Patches of size (BS, N_h, N_w, C, patch_size, patch_size)
     patches = torch.zeros((bs, nh, nw, c, patch_size, patch_size), device=tensor_tiles.device)
     coords = torch.zeros((nh, nw, 5))
@@ -86,7 +97,7 @@ def predict_in_patches(
     tensor_tiles = torch.nn.functional.pad(tensor_tiles, (1, 1, 1, 1), mode="reflect")
     bs, c, h, w = tensor_tiles.shape
     step_size = patch_size - overlap
-    nh, nw = math.ceil(h / step_size), math.ceil(w / step_size)
+    nh, nw = math.ceil((h - overlap) / step_size), math.ceil((w - overlap) / step_size)
 
     # Create Patches of size (BS, N_h, N_w, C, patch_size, patch_size)
     patches = create_patches(tensor_tiles, patch_size=patch_size, overlap=overlap)
@@ -124,6 +135,6 @@ def predict_in_patches(
     weights = torch.where(weights == 0, torch.ones_like(weights), weights)
     prediction = prediction / weights
 
-    # Remove the 1px border
+    # Remove the 1px border and the padding
     prediction = prediction[:, 1:-1, 1:-1]
     return prediction

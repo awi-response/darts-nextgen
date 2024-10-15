@@ -7,15 +7,19 @@ import torch
 
 from darts_segmentation.utils import create_patches, patch_coords, predict_in_patches
 
+test_sizes = [10, 23, 60, 2000]
+test_patch_sizes = [8, 64, 1024]
+test_overlaps = [0, 1, 3, 16, 64]
 
-@pytest.mark.parametrize("size", [10, 60, 500, 2000])
-@pytest.mark.parametrize("patch_size", [8, 64, 1024])
-@pytest.mark.parametrize("overlap", [0, 1, 3, 8, 16, 64])
+
+@pytest.mark.parametrize("size", test_sizes)
+@pytest.mark.parametrize("patch_size", test_patch_sizes)
+@pytest.mark.parametrize("overlap", test_overlaps)
 def test_patch_prediction(size: int, patch_size: int, overlap: int):
     """Tests the prediction function with a mock model (*2) and a random tensor."""
     # Skip tests for invalid parameter to be able to to larger sweeps
     if not size > patch_size > overlap:
-        return
+        pytest.skip("unsupported configuration")
 
     def model(x):
         return 2 * x
@@ -28,20 +32,20 @@ def test_patch_prediction(size: int, patch_size: int, overlap: int):
     torch.testing.assert_allclose(prediction, prediction_true)
 
 
-@pytest.mark.parametrize("size", [10, 60, 500, 2000])
-@pytest.mark.parametrize("patch_size", [8, 64, 1024])
-@pytest.mark.parametrize("overlap", [0, 1, 3, 8, 16, 64])
+@pytest.mark.parametrize("size", test_sizes)
+@pytest.mark.parametrize("patch_size", test_patch_sizes)
+@pytest.mark.parametrize("overlap", test_overlaps)
 def test_create_patches(size: int, patch_size: int, overlap: int):
     """Tests the creation of patches."""
     # Skip tests for invalid parameter to be able to to larger sweeps
     if not size > patch_size > overlap:
-        return
+        pytest.skip("unsupported configuration")
 
     h, w = size, size
     tensor_tiles = torch.rand((3, 1, h, w))
     patches = create_patches(tensor_tiles, patch_size=patch_size, overlap=overlap)
-    n_patches_h = math.ceil(h / (patch_size - overlap))
-    n_patches_w = math.ceil(h / (patch_size - overlap))
+    n_patches_h = math.ceil((h - overlap) / (patch_size - overlap))
+    n_patches_w = math.ceil((w - overlap) / (patch_size - overlap))
     assert patches.shape == (3, n_patches_h, n_patches_w, 1, patch_size, patch_size)
 
     step_size = patch_size - overlap
@@ -98,9 +102,9 @@ def test_patch_coords_example_generator():
         assert patch_idx_x_exp == patch_idx_x_act
 
 
-@pytest.mark.parametrize("size", [10, 60, 500, 2000])
-@pytest.mark.parametrize("patch_size", [8, 64, 1024])
-@pytest.mark.parametrize("overlap", [0, 1, 3, 8, 16, 64])
+@pytest.mark.parametrize("size", test_sizes)
+@pytest.mark.parametrize("patch_size", test_patch_sizes)
+@pytest.mark.parametrize("overlap", test_overlaps)
 def test_patch_coords_generator_logical(size: int, patch_size: int, overlap: int):
     """Tests the generation of the generation of patch-coordinates.
 
@@ -108,10 +112,10 @@ def test_patch_coords_generator_logical(size: int, patch_size: int, overlap: int
     """
     # Skip tests for invalid parameter to be able to to larger sweeps
     if not size > patch_size > overlap:
-        return
+        pytest.skip("unsupported configuration")
 
     coords = list(enumerate(patch_coords(size, size, patch_size, overlap)))
-    n_patches_h = math.ceil(size / (patch_size - overlap))
+    n_patches_h = math.ceil((size - overlap) / (patch_size - overlap))
     for n, (y, x, patch_idx_y, patch_idx_x) in coords:
         assert y >= 0
         assert x >= 0
