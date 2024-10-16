@@ -104,7 +104,6 @@ def predict_in_patches(
     # Create Patches of size (BS, N_h, N_w, C, patch_size, patch_size)
     patches = create_patches(tensor_tiles, patch_size=patch_size, overlap=overlap)
 
-    print(patches.shape)
     # Flatten the patches so they fit to the model
     # (BS, N_h, N_w, C, patch_size, patch_size) -> (BS * N_h * N_w, C, patch_size, patch_size)
     patches = patches.view(bs * nh * nw, c, patch_size, patch_size)

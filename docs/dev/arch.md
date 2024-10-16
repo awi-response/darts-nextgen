@@ -33,7 +33,7 @@ The following modules are planned or potential ideas for future expansion of the
 | `darts-train-utils` | Train | Shared utilities for training                                           | PyTorch                                |
 
 The packages should follow this architecture:
-![DARTS nextgen architecture](./docs/assets/darts_nextgen_architecture.png)
+![DARTS nextgen architecture](../assets/darts_nextgen_architecture.png)
 
 The `darts-pipeline` utilizes [Ray](https://docs.ray.io/en/latest/index.html) to automaticly parallize the different computations.
 However, each package should be designed so that one could build their own pipeline without Ray.
@@ -319,4 +319,4 @@ Ray expects batched data to be in either numpy or pandas format and can't work w
 Hence, a wrapper with custom stacking functions is needed.
 This tradeoff is not small, however, the benefits in terms of maintainability and readability are worth it.
 
-![Xarray overhead with Ray](./docs/assets/xarray_ray_overhead.png)
+![Xarray overhead with Ray](../assets/xarray_ray_overhead.png)

@@ -92,6 +92,8 @@ plugins:
             - 'darts-segmentation/src'
             - 'darts-superresolution/src'
           options:
+            members: true
+            inherited_members: true
             show_root_heading: true
             allow_inspection: false
             heading_level: 2

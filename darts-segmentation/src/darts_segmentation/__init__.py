@@ -1,11 +1,7 @@
 """Image segmentation of thaw-slumps for the DARTS dataset."""
 
-
-def hello() -> str:
-    """Say hello to the user.
-
-    Returns:
-        str: Greating message.
-
-    """
-    return "Hello from darts-segmentation!"
+from darts_segmentation.segment import SMPSegmenter as SMPSegmenter
+from darts_segmentation.segment import SMPSegmenterConfig as SMPSegmenterConfig
+from darts_segmentation.utils import create_patches as create_patches
+from darts_segmentation.utils import patch_coords as patch_coords
+from darts_segmentation.utils import predict_in_patches as predict_in_patches

@@ -16,7 +16,30 @@ class SMPSegmenterConfig(TypedDict):
 
     input_combination: list[str]
     model: dict[str, Any]
+    norm_factors: dict[str, float]
     # patch_size: int
+
+
+def validate_config(config: dict[str, Any]) -> SMPSegmenterConfig:
+    """Validate the config for the segmentor.
+
+    Args:
+        config: The configuration to validate.
+
+    Returns:
+        The validated configuration.
+
+    Raises:
+        KeyError: in case the config is missing required keys.
+
+    """
+    if "input_combination" not in config:
+        raise KeyError("input_combination not found in the config!")
+    if "model" not in config:
+        raise KeyError("model not found in the config!")
+    if "norm_factors" not in config:
+        raise KeyError("norm_factors not found in the config!")
+    return config
 
 
 class SMPSegmenter:
@@ -35,20 +58,18 @@ class SMPSegmenter:
         """
         self.dev = torch.device("cpu") if not torch.cuda.is_available() else torch.device("cuda")
         ckpt = torch.load(model_checkpoint, map_location=self.dev)
-        assert "input_combination" in ckpt["config"], "input_combination not found in the checkpoint!"
-        assert "model" in ckpt["config"], "model not found in the checkpoint!"
-        assert "norm_factors" in ckpt["config"], "norm_factors not found in the checkpoint!"
-        self.config = ckpt["config"]
+        self.config = validate_config(ckpt["config"])
         self.model = smp.create_model(**self.config["model"], encoder_weights=None)
         self.model.load_state_dict(ckpt["statedict"])
         self.model.eval()
 
     def tile2tensor(self, tile: xr.Dataset) -> torch.Tensor:
-        """Take a tile and convert it to a pytorch tensor, according to the input combination from the config.
+        """Take a tile and convert it to a pytorch tensor.
+
+        Respects the input combination from the config.
 
         Returns:
           A torch tensor for the full tile consisting of the bands specified in `self.band_combination`.
-
 
         """
         bands = []
@@ -63,6 +84,26 @@ class SMPSegmenter:
             bands.append(torch.from_numpy(band_data.values))
 
         return torch.stack(bands, dim=0)
+
+    def tile2tensor_batched(self, tiles: list[xr.Dataset]) -> torch.Tensor:
+        """Take a list of tiles and convert them to a pytorch tensor.
+
+        Respects the the input combination from the config.
+
+        Returns:
+          A torch tensor for the full tile consisting of the bands specified in `self.band_combination`.
+
+        """
+        bands = []
+        for feature_name in self.config["input_combination"]:
+            norm = self.config["norm_factors"][feature_name]
+            for tile in tiles:
+                band_data = tile[feature_name]
+                # Normalize the band data
+                band_data = band_data * norm
+                bands.append(torch.from_numpy(band_data.values))
+        # TODO: Test this
+        return torch.stack(bands, dim=0).reshape(len(tiles), len(self.config["input_combination"]), *bands[0].shape)
 
     def segment_tile(self, tile: xr.Dataset) -> xr.Dataset:
         """Run inference on a tile.
@@ -100,7 +141,8 @@ class SMPSegmenter:
         """
         # Convert the tiles to tensors
         # TODO: maybe create a batched tile2tensor function?
-        tensor_tiles = [self.tile2tensor(tile).to(self.dev) for tile in tiles]
+        # tensor_tiles = [self.tile2tensor(tile).to(self.dev) for tile in tiles]
+        tensor_tiles = self.tile2tensor_batched(tiles).to(self.dev)
 
         # Create a batch dimension, because predict expects it
         tensor_tiles = torch.stack(tensor_tiles, dim=0)
