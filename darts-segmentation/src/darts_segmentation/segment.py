@@ -47,6 +47,7 @@ class SMPSegmenter:
 
     config: SMPSegmenterConfig
     model: nn.Module
+    device: torch.device
 
     def __init__(self, model_checkpoint: Path | str):
         """Initialize the segmenter.
@@ -56,10 +57,11 @@ class SMPSegmenter:
             device (str, optional): PyTorch device. Defaults to "cpu".
 
         """
-        self.dev = torch.device("cpu") if not torch.cuda.is_available() else torch.device("cuda")
-        ckpt = torch.load(model_checkpoint, map_location=self.dev)
+        self.device = torch.device("cpu") if not torch.cuda.is_available() else torch.device("cuda")
+        ckpt = torch.load(model_checkpoint, map_location=self.device)
         self.config = validate_config(ckpt["config"])
         self.model = smp.create_model(**self.config["model"], encoder_weights=None)
+        self.model.to(self.device)
         self.model.load_state_dict(ckpt["statedict"])
         self.model.eval()
 
@@ -105,23 +107,31 @@ class SMPSegmenter:
         # TODO: Test this
         return torch.stack(bands, dim=0).reshape(len(tiles), len(self.config["input_combination"]), *bands[0].shape)
 
-    def segment_tile(self, tile: xr.Dataset) -> xr.Dataset:
+    def segment_tile(
+        self, tile: xr.Dataset, patch_size: int = 1024, overlap: int = 16, batch_size: int = 8
+    ) -> xr.Dataset:
         """Run inference on a tile.
 
         Args:
           tile: The input tile, containing preprocessed, harmonized data.
+          patch_size (int): The size of the patches. Defaults to 1024.
+          overlap (int): The size of the overlap. Defaults to 16.
+          batch_size (int): The batch size for the prediction, NOT the batch_size of input tiles.
+            Tensor will be sliced into patches and these again will be infered in batches. Defaults to 8.
 
         Returns:
           Input tile augmented by a predicted `probabilities` layer with type float32 and range [0, 1].
 
         """
         # Convert the tile to a tensor
-        tensor_tile = self.tile2tensor(tile).to(self.dev)
+        tensor_tile = self.tile2tensor(tile)
 
         # Create a batch dimension, because predict expects it
         tensor_tile = tensor_tile.unsqueeze(0)
 
-        probabilities = predict_in_patches(self.model, tensor_tile).squeeze(0)
+        probabilities = predict_in_patches(
+            self.model, tensor_tile, patch_size, overlap, batch_size, self.device
+        ).squeeze(0)
 
         # Highly sophisticated DL-based predictor
         # TODO: is there a better way to pass metadata?
@@ -129,11 +139,17 @@ class SMPSegmenter:
         tile["probabilities"].attrs = {}
         return tile
 
-    def segment_tile_batched(self, tiles: list[xr.Dataset]) -> list[xr.Dataset]:
+    def segment_tile_batched(
+        self, tiles: list[xr.Dataset], patch_size: int = 1024, overlap: int = 16, batch_size: int = 8
+    ) -> list[xr.Dataset]:
         """Run inference on a list of tiles.
 
         Args:
           tiles: The input tiles, containing preprocessed, harmonized data.
+          patch_size (int): The size of the patches. Defaults to 1024.
+          overlap (int): The size of the overlap. Defaults to 16.
+          batch_size (int): The batch size for the prediction, NOT the batch_size of input tiles.
+            Tensor will be sliced into patches and these again will be infered in batches. Defaults to 8.
 
         Returns:
           A list of input tiles augmented by a predicted `probabilities` layer with type float32 and range [0, 1].
@@ -142,12 +158,12 @@ class SMPSegmenter:
         # Convert the tiles to tensors
         # TODO: maybe create a batched tile2tensor function?
         # tensor_tiles = [self.tile2tensor(tile).to(self.dev) for tile in tiles]
-        tensor_tiles = self.tile2tensor_batched(tiles).to(self.dev)
+        tensor_tiles = self.tile2tensor_batched(tiles)
 
         # Create a batch dimension, because predict expects it
         tensor_tiles = torch.stack(tensor_tiles, dim=0)
 
-        probabilities = predict_in_patches(self.model, tensor_tiles)
+        probabilities = predict_in_patches(self.model, tensor_tiles, patch_size, overlap, batch_size, self.device)
 
         # Highly sophisticated DL-based predictor
         for tile, probs in zip(tiles, probabilities):

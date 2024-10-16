@@ -1,9 +1,14 @@
 """Shared utilities for the inference modules."""
 
+import logging
 import math
-from collections.abc import Callable, Generator
+import time
+from collections.abc import Generator
 
 import torch
+import torch.nn as nn
+
+logger = logging.getLogger(__name__)
 
 
 def patch_coords(h: int, w: int, patch_size: int, overlap: int) -> Generator[tuple[int, int, int, int], None, None]:
@@ -47,6 +52,11 @@ def create_patches(
         torch.Tensor: The patches. Shape: (BS, N_h, N_w, C, patch_size, patch_size).
 
     """
+    start_time = time.time()
+    logger.debug(
+        f"Creating patches from a tensor with shape {tensor_tiles.shape} "
+        f"with patch_size {patch_size} and overlap {overlap}"
+    )
     assert tensor_tiles.dim() == 4, f"Expects tensor_tiles to has shape (BS, C, H, W), got {tensor_tiles.shape}"
     bs, c, h, w = tensor_tiles.shape
     assert h > patch_size > overlap
@@ -70,6 +80,8 @@ def create_patches(
     for i, (y, x, patch_idx_h, patch_idx_w) in enumerate(patch_coords(h, w, patch_size, overlap)):
         patches[:, patch_idx_h, patch_idx_w, :] = tensor_tiles[:, :, y : y + patch_size, x : x + patch_size]
         coords[patch_idx_h, patch_idx_w, :] = torch.tensor([i, y, x, patch_idx_h, patch_idx_w])
+
+    logger.debug(f"Creating {nh * nw} patches took {time.time() - start_time:.2f}s")
     if return_coords:
         return patches, coords
     else:
@@ -78,22 +90,33 @@ def create_patches(
 
 @torch.no_grad()
 def predict_in_patches(
-    model: Callable, tensor_tiles: torch.Tensor, patch_size: int = 1024, overlap: int = 16, batch_size: int = 8
+    model: nn.Module,
+    tensor_tiles: torch.Tensor,
+    patch_size: int,
+    overlap: int,
+    batch_size: int,
+    device=torch.device,
 ) -> torch.Tensor:
     """Predict on a tensor.
 
     Args:
         model: The model to use for prediction.
         tensor_tiles: The input tensor. Shape: (BS, C, H, W).
-        patch_size (int): The size of the patches. Defaults to 1024.
-        overlap (int): The size of the overlap. Defaults to 16.
+        patch_size (int): The size of the patches.
+        overlap (int): The size of the overlap.
         batch_size (int): The batch size for the prediction, NOT the batch_size of input tiles.
-            Tensor will be sliced into patches and these again will be infered in batches. Defaults to 8.
+            Tensor will be sliced into patches and these again will be infered in batches.
+        device (torch.device): The device to use for the prediction.
 
     Returns:
         The predicted tensor.
 
     """
+    start_time = time.time()
+    logger.debug(
+        f"Predicting on a tensor with shape {tensor_tiles.shape} "
+        f"with patch_size {patch_size}, overlap {overlap} and batch_size {batch_size} on device {device}"
+    )
     assert tensor_tiles.dim() == 4, f"Expects tensor_tiles to has shape (BS, C, H, W), got {tensor_tiles.shape}"
     # Add a 1px border to avoid pixel loss when applying the soft margin
     tensor_tiles = torch.nn.functional.pad(tensor_tiles, (1, 1, 1, 1), mode="reflect")
@@ -117,13 +140,19 @@ def predict_in_patches(
         ]
     )
     soft_margin = margin_ramp.reshape(1, 1, patch_size) * margin_ramp.reshape(1, patch_size, 1)
+    soft_margin = soft_margin.to(patches.device)
 
     # Infer logits with model and turn into probabilities with sigmoid in a batched manner
+    # TODO: check with ingmar and jonas if moving all patches to the device at the same time is a good idea
     patched_probabilities = torch.zeros_like(patches[:, 0, :, :])
-    # Create batches of patches
     patches = patches.split(batch_size)
     for i, batch in enumerate(patches):
-        patched_probabilities[i * batch_size : (i + 1) * batch_size] = torch.sigmoid(model(batch)).squeeze(1)
+        batch = batch.to(device)
+        logger.debug(f"Predicting on batch {i + 1}/{len(patches)}")
+        patched_probabilities[i * batch_size : (i + 1) * batch_size] = (
+            torch.sigmoid(model(batch)).squeeze(1).to(patched_probabilities.device)
+        )
+        batch = batch.to(patched_probabilities.device)  # Transfer back to the original device to avoid memory leaks
 
     patched_probabilities = patched_probabilities.view(bs, nh, nw, patch_size, patch_size)
 
@@ -142,4 +171,5 @@ def predict_in_patches(
 
     # Remove the 1px border and the padding
     prediction = prediction[:, 1:-1, 1:-1]
+    logger.debug(f"Predicting took {time.time() - start_time:.2f}s")
     return prediction
