@@ -54,6 +54,9 @@ gdal384 = ["gdal==3.8.4"]
 gdal37 = ["gdal==3.7.3"]
 gdal36 = ["gdal==3.6.4"]
 
+[project.scripts]
+darts = "darts_nextgen.main:cli"
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
@@ -128,7 +131,7 @@ select = ["F", "E", "W", "C", "I", "N", "D", "UP", "PD", "FLY", "NPY", "FURB", "
 # Ignore `E402` (import violations) in all `__init__.py` files, and in selected subdirectories.
 [tool.ruff.lint.per-file-ignores]
 "__init__.py" = ["E402"]
-"**/{tests,docs,tools}/*" = ["E402", "D1"]
+"**/{test,tests,docs,tools}/*" = ["E402", "D1"]
 
 [tool.ruff.lint.pep8-naming]
 extend-ignore-names = ["test_*"]
