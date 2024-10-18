@@ -12,6 +12,8 @@ from skimage import measure
 
 from darts_export import conversion
 
+gdal.UseExceptions()
+
 
 def gdal_polygonization(
     labels: np.ndarray, rio_georef: xarray.Dataset, as_gdf=True, gpkg_path: Path | None = None
