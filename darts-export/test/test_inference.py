@@ -7,8 +7,8 @@ from osgeo import ogr
 from xarray import Dataset
 
 
-def test_writeProbabilities(probabilities: Dataset, tmp_path: Path):
-    ds = inference.InferenceResultWriter(probabilities)
+def test_writeProbabilities(probabilities_1: Dataset, tmp_path: Path):
+    ds = inference.InferenceResultWriter(probabilities_1)
 
     ds.export_probabilities(tmp_path)
 
@@ -21,8 +21,8 @@ def test_writeProbabilities(probabilities: Dataset, tmp_path: Path):
     assert rio_ds.dtypes[0] == "int8"
 
 
-def test_writeBinarization(probabilities: Dataset, tmp_path: Path):
-    ds = inference.InferenceResultWriter(probabilities)
+def test_writeBinarization(probabilities_1: Dataset, tmp_path: Path):
+    ds = inference.InferenceResultWriter(probabilities_1)
     ds.export_binarized(tmp_path)
 
     rio_ds = rasterio.open(tmp_path / "pred_binarized.tif")
@@ -32,10 +32,10 @@ def test_writeBinarization(probabilities: Dataset, tmp_path: Path):
     assert rio_ds.dtypes[0] == "uint8"
 
 
-def test_writeVectors(probabilities: Dataset, tmp_path: Path):
+def test_writeVectors(probabilities_1: Dataset, tmp_path: Path):
     gdal_has_parquet = ogr.GetDriverByName("Parquet") is not None
 
-    ds = inference.InferenceResultWriter(probabilities)
+    ds = inference.InferenceResultWriter(probabilities_1)
     ds.export_polygonized(tmp_path)
 
     assert (tmp_path / "pred_segments.gpkg").is_file()
