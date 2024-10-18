@@ -3,7 +3,26 @@ name = "darts-nextgen"
 version = "0.2.1"
 description = "Panarctic Database of Active Layer Detachment Slides and Retrogressive Thaw Slumps from Deep Learning on High Resolution Satellite Imagery."
 dependencies = [
+    # General
+    "numpy>=1.26.3, <2",
+    "xarray>=2024.9.0",
+    "ray[data]>=2.37.0",
+    "rich>=13.9.2",
+    "typer>=0.12.5",
+    # Utils
+    "lovely-tensors>=0.1.17",
+    # IO
+    "h5netcdf>=1.3.0",
+    "rasterio>=1.4.0",
+    "rioxarray>=0.17.0",
+    "geopandas>=1.0.1",
+    "shapely>=2.0.0",
+    # Training and Inference
     "segmentation-models-pytorch>=0.3.4",
+    # Processing
+    "scikit-image>=0.20",
+    "scipy>=1.14.1",
+    "lovely-numpy>=0.2.13",
 ]
 readme = "README.md"
 requires-python = ">= 3.11"
@@ -15,9 +34,38 @@ authors = [
     { name = "Lucas von Chamier", email = "lucas.chamier@awi.de" }
 ]
 
+[project.optional-dependencies]
+cpu = ["torch==2.2.0+cpu", "torchvision==0.17.0+cpu"]
+cuda11 = [
+    "torch==2.2.0+cu118",
+    "torchvision==0.17.0+cu118",
+    "cupy-cuda11x>=13.3.0",
+    "cucim-cu11>=24.8.0",
+]
+cuda12 = [
+    "torch==2.2.0+cu121",
+    "torchvision==0.17.0+cu121",
+    "cupy-cuda12x>=13.3.0",
+    "cucim-cu12==24.8.*",
+]
+gdal39 = ["gdal==3.9.2"]
+gdal38 = ["gdal==3.8.5"]
+gdal384 = ["gdal==3.8.4"]
+gdal37 = ["gdal==3.7.3"]
+gdal36 = ["gdal==3.6.4"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.metadata]
+allow-direct-references = true
+
+[tool.hatch.build.targets.wheel]
+packages = ["darts-nextgen/src/darts_nextgen"]
+
 [tool.rye]
 managed = true
-virtual = true
 dev-dependencies = [
     "ipykernel>=6.29.5",
     "matplotlib>=3.9.2",
@@ -30,6 +78,7 @@ dev-dependencies = [
     "mkdocs-git-committers-plugin-2>=2.3.0",
     "pyright>=1.1.384",
     "pytest>=8",
+    "ipywidgets>=8.1.5",
 ]
 
 [tool.rye.workspace]
@@ -79,4 +128,7 @@ select = ["F", "E", "W", "C", "I", "N", "D", "UP", "PD", "FLY", "NPY", "FURB", "
 # Ignore `E402` (import violations) in all `__init__.py` files, and in selected subdirectories.
 [tool.ruff.lint.per-file-ignores]
 "__init__.py" = ["E402"]
-"**/{tests,docs,tools}/*" = ["E402"]
+"**/{tests,docs,tools}/*" = ["E402", "D1"]
+
+[tool.ruff.lint.pep8-naming]
+extend-ignore-names = ["test_*"]

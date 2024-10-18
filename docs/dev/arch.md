@@ -3,10 +3,9 @@
 
 This repository is a workspace repository, managed by [Rye](https://rye.astral.sh/).
 Read more about workspaces at the [Rye docs](https://rye.astral.sh/guide/workspaces/).
-Each workspace-member starts with `darts-*` and can be seen as an own package or module, exexpt the `darts-pipeline` member.
+Each workspace-member starts with `darts-*` and can be seen as an own package or module, except the `darts-nextgen` directory which is the top-level package.
 Each package has it's own internal functions and it's public facing API.
 The public facing API of each package MUST follow the following section [API paradigms](#api-paradigms).
-The `darts-pipeline` is a [`virtual` project](https://rye.astral.sh/guide/virtual/), hence it can't be installed as a package and has no public facing API.
 
 [TOC]
 
@@ -35,9 +34,9 @@ The following modules are planned or potential ideas for future expansion of the
 The packages should follow this architecture:
 ![DARTS nextgen architecture](../assets/darts_nextgen_architecture.png)
 
-The `darts-pipeline` utilizes [Ray](https://docs.ray.io/en/latest/index.html) to automaticly parallize the different computations.
+The `darts-nextgen` utilizes [Ray](https://docs.ray.io/en/latest/index.html) to automaticly parallize the different computations.
 However, each package should be designed so that one could build their own pipeline without Ray.
-Hence, all Ray-related functions / transformations etc. should be defined in the `darts-pipeline` project.
+Hence, all Ray-related functions / transformations etc. should be defined in the `darts-nextgen` sub-directory.
 
 The packages can decide to wrap their public functions into a CLI with typer.
 

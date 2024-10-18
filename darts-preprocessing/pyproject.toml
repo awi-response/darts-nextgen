@@ -2,12 +2,7 @@
 name = "darts-preprocessing"
 version = "0.1.0"
 description = "Data preprocessing and feature engineering for the DARTS dataset."
-dependencies = [
-    "numpy>=1.26.3, <2",
-    "xarray>=2024.9.0",
-    "h5netcdf>=1.3.0",
-    "scipy>=1.14.1",
-]
+dependencies = []
 readme = "README.md"
 requires-python = ">= 3.11"
 authors = [
@@ -17,13 +12,6 @@ authors = [
     { name = "Tobias Hölzer", email = "tobias.hoelzer@awi.de" },
     { name = "Lucas von Chamier", email = "lucas.chamier@awi.de" }
 ]
-
-[project.optional-dependencies]
-gdal39 = ["gdal==3.9.2"]
-gdal38 = ["gdal==3.8.5"]
-gdal384 = ["gdal==3.8.4"]
-gdal37 = ["gdal==3.7.3"]
-gdal36 = ["gdal==3.6.4"]
 
 [build-system]
 requires = ["hatchling"]

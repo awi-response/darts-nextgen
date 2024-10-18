@@ -36,12 +36,12 @@ $ nvidia-smi
 
 > The GDAL version is relevant, since the version of the python bindings needs to match the installed GDAL version
 
-Now, to sync with a specific `gdal` version, add `darts-preprocessing/gdalXX` to the `--features` flag.
-To sync with a specific `cuda` version, add `darts-ensemble/cuda1X` or without cuda `darts-ensemble/cpu`.
+Now, to sync with a specific `gdal` version, add `gdalXX` to the `--features` flag.
+To sync with a specific `cuda` version, add `cuda1X` or without cuda `cpu`.
 E.g.:
 
 ```sh
-rye sync -f --features darts-preprocessing/gdal39,darts-ensemble/cuda12 # For CUDA 12 and GDAL 3.9.2
+rye sync -f --features gdal39,cuda12 # For CUDA 12 and GDAL 3.9.2
 ```
 
 As of right now, the supported `gdal` versions are: 3.9.2 (`gdal39`), 3.8.5 (`gdal38`), 3.8.4 (`gdal384`), 3.7.3 (`gdal37`) and 3.6.4 (`gdal36`).
