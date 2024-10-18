@@ -7,6 +7,7 @@ from collections.abc import Generator
 
 import torch
 import torch.nn as nn
+from rich.progress import track
 
 logger = logging.getLogger(__name__)
 
@@ -146,9 +147,9 @@ def predict_in_patches(
     # TODO: check with ingmar and jonas if moving all patches to the device at the same time is a good idea
     patched_probabilities = torch.zeros_like(patches[:, 0, :, :])
     patches = patches.split(batch_size)
-    for i, batch in enumerate(patches):
+    for i, batch in track(enumerate(patches), total=len(patches), description="Predicting on patches"):
         batch = batch.to(device)
-        logger.debug(f"Predicting on batch {i + 1}/{len(patches)}")
+        # logger.debug(f"Predicting on batch {i + 1}/{len(patches)}")
         patched_probabilities[i * batch_size : (i + 1) * batch_size] = (
             torch.sigmoid(model(batch)).squeeze(1).to(patched_probabilities.device)
         )

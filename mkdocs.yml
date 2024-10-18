@@ -11,6 +11,7 @@ edit_uri: edit/main/docs/
 nav:
   - Home: index.md
   - Modules:
+      - DARTS: ref/darts.md
       - Acquisition: ref/acquisition.md
       - Preprocessing: ref/preprocessing.md
       - Ensemble: ref/ensemble.md
@@ -18,7 +19,7 @@ nav:
       - Segmentation: ref/segmentation.md
       - Superresolution: ref/superresolution.md
       - Postprocessing: ref/postprocessing.md
-      - Reference: ref.md
+      - All: ref.md
   - Dev:
       - Contribute: contribute.md
       - Pipeline steps APIs: dev/arch.md
@@ -87,6 +88,7 @@ plugins:
             - 'darts-acquisition/src'
             - 'darts-ensemble/src'
             - 'darts-export/src'
+            - 'darts/src'
             - 'darts-preprocessing/src'
             - 'darts-postprocessing/src'
             - 'darts-segmentation/src'
@@ -100,7 +102,7 @@ plugins:
             show_symbol_type_heading: true
             show_symbol_type_toc: true
             group_by_category: true
-            show_category_heading: true
+            show_category_heading: false
             show_if_no_docstring: true
   - privacy:
       enabled: !ENV [CI, false]

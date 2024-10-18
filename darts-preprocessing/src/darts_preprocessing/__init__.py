@@ -1,11 +1,3 @@
 """Data preprocessing and feature engineering for the DARTS dataset."""
 
-
-def hello() -> str:
-    """Say hello to the user.
-
-    Returns:
-        str: Greating message.
-
-    """
-    return "Hello from darts-preprocessing!"
+from darts_preprocessing.preprocess import load_and_preprocess_planet_scene as load_and_preprocess_planet_scene

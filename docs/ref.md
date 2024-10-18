@@ -4,6 +4,7 @@ All references on one page
 
 [TOC]
 
+::: darts
 ::: darts_acquisition
 ::: darts_ensemble
 ::: darts_export

@@ -54,7 +54,6 @@ class SMPSegmenter:
 
         Args:
             model_checkpoint (Path): The path to the model checkpoint.
-            device (str, optional): PyTorch device. Defaults to "cpu".
 
         """
         self.device = torch.device("cpu") if not torch.cuda.is_available() else torch.device("cuda")

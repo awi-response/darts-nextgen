@@ -8,9 +8,10 @@ dependencies = [
     "xarray>=2024.9.0",
     "ray[data]>=2.37.0",
     "rich>=13.9.2",
-    "typer>=0.12.5",
+    "cyclopts>=2.9.9",
     # Utils
     "lovely-tensors>=0.1.17",
+    "lovely-numpy>=0.2.13",
     # IO
     "h5netcdf>=1.3.0",
     "rasterio>=1.4.0",
@@ -22,7 +23,6 @@ dependencies = [
     # Processing
     "scikit-image>=0.20",
     "scipy>=1.14.1",
-    "lovely-numpy>=0.2.13",
 ]
 readme = "README.md"
 requires-python = ">= 3.11"
@@ -55,7 +55,7 @@ gdal37 = ["gdal==3.7.3"]
 gdal36 = ["gdal==3.6.4"]
 
 [project.scripts]
-darts = "darts_nextgen.main:cli"
+darts = "darts.cli:start_app"
 
 [build-system]
 requires = ["hatchling"]
@@ -65,7 +65,7 @@ build-backend = "hatchling.build"
 allow-direct-references = true
 
 [tool.hatch.build.targets.wheel]
-packages = ["darts-nextgen/src/darts_nextgen"]
+packages = ["darts/src/darts"]
 
 [tool.rye]
 managed = true
