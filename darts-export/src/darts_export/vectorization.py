@@ -124,8 +124,11 @@ def vectorize(xdat: xarray.Dataset, polygonization_func: str = "rasterio", minim
     layer = xdat.binarized_segmentation
 
     # MIN POLYGON for sieving
-    sieved = sieve(layer.to_numpy(), minimum_mapping_unit)
-    bin_labelled = measure.label(sieved)
+    if minimum_mapping_unit > 0:
+        sieved = sieve(layer.to_numpy(), minimum_mapping_unit)
+        bin_labelled = measure.label(sieved)
+    else:
+        bin_labelled = measure.label(layer)
 
     if polygonization_func.lower() == "gdal":
         gdf_polygons = gdal_polygonization(bin_labelled, layer)
@@ -146,8 +149,8 @@ def vectorize(xdat: xarray.Dataset, polygonization_func: str = "rasterio", minim
     stats_dict = {}
     for region in region_stats:
         stats_dict[region.label] = {
-            "min": region.min_intensity,
-            "max": region.max_intensity,
+            "min": int(region.min_intensity),
+            "max": int(region.max_intensity),
             "mean": region.mean_intensity,
             "median": region.median_intensity,
             "std": region.intensity_std,
