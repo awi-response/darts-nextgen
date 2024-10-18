@@ -1,6 +1,6 @@
 [project]
 name = "darts-nextgen"
-version = "0.2.1"
+version = "0.3.0"
 description = "Panarctic Database of Active Layer Detachment Slides and Retrogressive Thaw Slumps from Deep Learning on High Resolution Satellite Imagery."
 dependencies = [
     # General
