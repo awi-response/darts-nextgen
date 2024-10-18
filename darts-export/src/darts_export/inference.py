@@ -4,9 +4,9 @@ import logging
 from pathlib import Path
 
 import xarray
-from osgeo import gdal, gdal_array, ogr
 
-gdal.UseExceptions()
+from darts_export import vectorization
+
 L = logging.getLogger("darts.export")
 
 
@@ -50,69 +50,19 @@ class InferenceResultWriter:
         self.ds.binarized_segmentation.rio.to_raster(file_path, driver="GTiff", tags=tags, compress="LZW")
         return file_path
 
-    def export_polygonized(self, path: Path, filename_prefix="pred_segments"):
-        """Export the binarized probabilities as a vector dataset in GeoPackage format.
-
-        If the gdal installation supports GeoParquet files, an additional file will be written in this format.
+    def export_polygonized(self, path: Path, filename_prefix="pred_segments", minimum_mapping_unit=32):
+        """Export the binarized probabilities as a vector dataset in GeoPackage and GeoParquet format.
 
         Args:
             path (Path): The path where to export the files
             filename_prefix (str, optional): the file prefix of the exported files. Defaults to "pred_segments".
+            minimum_mapping_unit (int, optional): segments covering less pixel are removed. Defaults to 32.
 
         """
-        # extract the layer with the binarized probabilities and create an in-memory
-        # gdal dataset from it:
-        layer = self.ds.binarized_segmentation
-        dta = gdal_array.OpenArray(layer.values)
+        polygon_gdf = vectorization.vectorize(self.ds, minimum_mapping_unit=minimum_mapping_unit)
 
-        # copy over the geodata
-        # the transform object of rasterio has to be converted into a tuple
-        affine_transform = layer.rio.transform()
-        geotransform = (
-            affine_transform.c,
-            affine_transform.a,
-            affine_transform.b,
-            affine_transform.f,
-            affine_transform.d,
-            affine_transform.e,
-        )
-        dta.SetGeoTransform(geotransform)
-        dta.SetProjection(layer.rio.crs.to_wkt())
+        path_gpkg = path / f"{filename_prefix}.gpkg"
+        path_parquet = path / f"{filename_prefix}.parquet"
 
-        # create the vector output datasets
-        gpkg_drv = ogr.GetDriverByName("GPKG")
-        gpkg_ds = gpkg_drv.CreateDataSource(path / f"{filename_prefix}.gpkg")
-        output_layer = gpkg_ds.CreateLayer(filename_prefix, geom_type=ogr.wkbPolygon, srs=dta.GetSpatialRef())
-
-        # add the field where to store the polygonization threshold
-        field = ogr.FieldDefn("DN", ogr.OFTInteger)
-        output_layer.CreateField(field)
-
-        # do the polygonization
-        gdal.Polygonize(
-            dta.GetRasterBand(1),
-            None,  # no masking, polygonize everything
-            output_layer,  # where to write the vector data to
-            0,  # write the polygonization threshold in the first attribute ("DN")
-        )
-
-        # remove all features where DN is not 1
-        output_layer.SetAttributeFilter("DN != 1")
-        for feature in output_layer:
-            feature_id = feature.GetFID()
-            output_layer.DeleteFeature(feature_id)
-
-        output_layer.SetAttributeFilter(None)
-
-        parquet_drv = ogr.GetDriverByName("Parquet")
-        if parquet_drv is not None:
-            parquet_ds = parquet_drv.CreateDataSource(path / f"{filename_prefix}.parquet")
-            parquet_ds.CopyLayer(output_layer, filename_prefix)
-        else:
-            L.warning(
-                "export of polygonized inference data in geoparquet failed,"
-                " because the GDAL installation does not support it."
-            )
-
-        gpkg_ds = None
-        output_layer = None
+        polygon_gdf.to_file(path_gpkg, layer=filename_prefix)
+        polygon_gdf.to_parquet(path_parquet)
