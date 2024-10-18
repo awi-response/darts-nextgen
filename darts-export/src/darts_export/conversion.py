@@ -5,6 +5,8 @@ import numpy as np
 import xarray
 from osgeo import gdal, gdal_array, ogr
 
+gdal.UseExceptions()
+
 
 def ogrlyr_to_geopandas(ogr_layer: ogr.Layer) -> gpd.GeoDataFrame:
     """Convert a GDAL/OGR layer object to a geopandas dataframe.

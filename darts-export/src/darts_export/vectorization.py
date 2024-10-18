@@ -1,23 +1,19 @@
 """Module for various tasks during export."""
 
 from pathlib import Path
+from typing import Union
 
 import geopandas as gpd
 import numpy as np
 import shapely
 import xarray
-from osgeo import gdal, ogr
 from rasterio.features import shapes, sieve
 from skimage import measure
-
-from darts_export import conversion
-
-gdal.UseExceptions()
 
 
 def gdal_polygonization(
     labels: np.ndarray, rio_georef: xarray.Dataset, as_gdf=True, gpkg_path: Path | None = None
-) -> ogr.Layer | gpd.GeoDataFrame:
+) -> Union["gdal.ogr.Layer", gpd.GeoDataFrame]:  # type: ignore # noqa: F821
     """Polygonize a numpy array using GDAL.
 
     Detects regions with the same value in the numpy array and converts those
@@ -35,6 +31,12 @@ def gdal_polygonization(
         ogr.Layer | gpd.GeoDataFrame: the polyginization result
 
     """
+    from osgeo import gdal, ogr
+
+    from darts_export import conversion
+
+    gdal.UseExceptions()
+
     # convert to a GDAL dataset
     dta = conversion.numpy_to_gdal(labels, rio_georef)
 
