@@ -29,8 +29,9 @@ def load_planet_scene(fpath: str | Path) -> xr.Dataset:
     fpath = fpath if isinstance(fpath, str) else Path(fpath)
 
     # Get imagepath
-    ps_image = next(fpath.glob("*_SR.tif"))
-    if not ps_image:
+    try:
+        ps_image = next(fpath.glob("*_SR.tif"))
+    except StopIteration:
         raise FileNotFoundError(f"No matching TIFF files found in {fpath} (.glob('*_SR.tif'))")
 
     # Define band names and corresponding indices
