@@ -1,0 +1,100 @@
+{
+    "name": "wave_60_192",
+    "phase": "train",
+    "gpu_ids": [
+        3
+    ],
+    "path": {
+        "log": "/home/pd/lucham001/Projects/Image-Super-Resolution-via-Iterative-Refinement/logs",
+        "tb_logger": "/home/pd/lucham001/Projects/Image-Super-Resolution-via-Iterative-Refinement/tb_logger",
+        "results": "/isipd/projects/p_lucas_chamier/192_60/192_60/Diffusion_Experiment/4_C_Test/Predictions",
+        "checkpoint": "/isipd/projects/p_lucas_chamier/192_60/192_60/Diffusion_Experiment/checkpoints",
+        "resume_state": "/isipd/projects/p_lucas_chamier/192_60/192_60/Diffusion_Experiment/checkpoints/I766000_E650_best"
+    },
+    "datasets": {
+        "train": {
+            "name": "Sentinel2PlanetScope",
+            "dataroot": "/isipd/projects/p_lucas_chamier/192_60/192_60/Diffusion_Experiment/4_C_Test",
+            "mode": "HR",
+            "datatype": "img",
+            "l_resolution": 60,
+            "r_resolution": 192,
+            "batch_size": 64,
+            "num_workers": 32,
+            "use_shuffle": true,
+            "data_len": -1 
+        },
+        "val": {
+            "name": "Sentinel2PlanetScope",
+            "dataroot": "/isipd/projects/p_lucas_chamier/192_60/192_60/Diffusion_Experiment/4_C_Test/Test",
+            "mode": "HR",
+            "datatype": "img",
+            "l_resolution": 60,
+            "r_resolution": 192,
+            "batch_size": 8,
+            "num_workers": 16,
+            "use_shuffle": false,
+            "data_len": -1
+        }
+    },
+    "model": {
+        "which_model_G": "wave",
+        "finetune_norm": false,
+        "unet": {
+            "in_channel": 8,
+            "out_channel": 4,
+            "inner_channel": 128,
+            "norm_groups": 16,
+            "channel_multiplier": [
+                1,
+                2,
+                4,
+                8,
+                16
+            ],
+            "attn_res": [
+                16
+            ],
+            "res_blocks": 1,
+            "dropout": 0
+        },
+        "beta_schedule": {
+            "train": {
+                "schedule": "linear",
+                "n_timestep": 2000,
+                "linear_start": 1e-6,
+                "linear_end": 1e-2
+            },
+            "val": {
+                "schedule": "linear",
+                "n_timestep": 2000,
+                "linear_start": 1e-6,
+                "linear_end": 1e-2
+            }
+        },
+        "diffusion": {
+            "image_size": 192,
+            "channels": 4,
+            "conditional": true
+        }
+    },
+    "train": {
+        "n_iter": 1000000,
+        "val_freq": 2e3,
+        "save_checkpoint_freq": 1e5,
+        "print_freq": 100,
+        "optimizer": {
+            "type": "adamw",
+            "lr": 3e-5,
+            "weight_decay": 0.0001
+        },
+        "ema_scheduler": {
+            "step_start_ema": 5000,
+            "update_ema_every": 1,
+            "ema_decay": 0.9999
+        }
+    },
+    "wandb": {
+        "project": "sr_ffhq"
+    }
+}
