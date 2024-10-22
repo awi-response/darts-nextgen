@@ -53,6 +53,7 @@ gdal38 = ["gdal==3.8.5"]
 gdal384 = ["gdal==3.8.4"]
 gdal37 = ["gdal==3.7.3"]
 gdal36 = ["gdal==3.6.4"]
+gdal384_win64 = ["gdal @ https://github.com/cgohlke/geospatial-wheels/releases/download/v2024.2.18/GDAL-3.8.4-cp311-cp311-win_amd64.whl"]
 
 [project.scripts]
 darts = "darts.cli:start_app"
