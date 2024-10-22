@@ -85,6 +85,13 @@ I recommend adding the following to your `.zshrc` or `.bashrc`:
 export UV_INDEX_STRATEGY="unsafe-best-match"
 ```
 
+For windows this behavior is enabled for the current shell with
+
+```cmd
+set UV_INDEX_STRATEGY=unsafe-best-match
+rye sync ...
+```
+
 Please see these issues:
 
 - [Rye: Can't specify per-dependency package index / can't specify uv behavior in config file](https://github.com/astral-sh/rye/issues/1210#issuecomment-2263761535)
