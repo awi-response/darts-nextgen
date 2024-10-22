@@ -9,6 +9,7 @@ from typing import Literal
 
 import geopandas as gpd
 import numpy as np
+import pyproj
 import shapely
 
 R = 6378.137  # Earth radius at equator in km
@@ -123,6 +124,22 @@ class Cell:
 
         """
         return shapely.geometry.Point(self.lon, self.lat)
+
+    def get_bounds(self, size: int, resolution: float) -> shapely.Polygon:
+        """Get the bounds of the cell as a shapely Polygon in the respective local utm_zone coordinates.
+
+        Args:
+            size (int): The size of the tile in px.
+            resolution(float): The resolution of the tile in m/px.
+
+        Returns:
+            shapely.Polygon: The bounds of the cell as a shapely Polygon.
+
+        """
+        transformer = pyproj.Transformer.from_crs("EPSG:4326", f"EPSG:{self.utm_zone}", always_xy=True)
+        x_start, y_start = transformer.transform(self.x, self.y)
+        x_end, y_end = x_start + size * resolution, y_start + size * resolution
+        return shapely.geometry.box(x_start, y_start, x_end, y_end)
 
 
 class MajorTomGrid:

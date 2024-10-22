@@ -48,3 +48,4 @@ def run_native_orthotile_pipeline(
         writer = InferenceResultWriter(tile)
         writer.export_probabilities(outpath)
         writer.export_binarized(outpath)
+        writer.export_polygonized(outpath)
