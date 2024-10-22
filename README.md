@@ -61,6 +61,14 @@ rye add --optional=gdal384 "gdal==3.8.4"
 
 > IMPORTANT! If you installed any of clang or gdal with conda, please ensure that while installing dependencies and working on the project to have the conda environment activated in which you installed clang and or gdal.
 
+Another option is to install the windows GDAL binary wheels compiled by cgoehlke from https://github.com/cgohlke/geospatial-wheels:
+
+```cmd
+rye sync -f --features gdal384_win64
+```
+
+These contain the GDAL binaries as well as the python bindings.
+
 ### Troubleshoot: Rye can't find the right versions
 
 Because the `pyproject.toml` specifies additional sources, e.g. `https://download.pytorch.org/whl/cpu`, it can happen that the a package with an older version is found in these package-indexes.
