@@ -8,3 +8,4 @@ model-dir = "models"
 patch-size = 1024
 overlap = 128
 batch-size = 2
+reflection = 32

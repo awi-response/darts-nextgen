@@ -70,7 +70,7 @@ class SMPSegmenter:
         Respects the input combination from the config.
 
         Returns:
-          A torch tensor for the full tile consisting of the bands specified in `self.band_combination`.
+            A torch tensor for the full tile consisting of the bands specified in `self.band_combination`.
 
         """
         bands = []
@@ -92,7 +92,7 @@ class SMPSegmenter:
         Respects the the input combination from the config.
 
         Returns:
-          A torch tensor for the full tile consisting of the bands specified in `self.band_combination`.
+            A torch tensor for the full tile consisting of the bands specified in `self.band_combination`.
 
         """
         bands = []
@@ -107,19 +107,20 @@ class SMPSegmenter:
         return torch.stack(bands, dim=0).reshape(len(tiles), len(self.config["input_combination"]), *bands[0].shape)
 
     def segment_tile(
-        self, tile: xr.Dataset, patch_size: int = 1024, overlap: int = 16, batch_size: int = 8
+        self, tile: xr.Dataset, patch_size: int = 1024, overlap: int = 16, batch_size: int = 8, reflection: int = 0
     ) -> xr.Dataset:
         """Run inference on a tile.
 
         Args:
-          tile: The input tile, containing preprocessed, harmonized data.
-          patch_size (int): The size of the patches. Defaults to 1024.
-          overlap (int): The size of the overlap. Defaults to 16.
-          batch_size (int): The batch size for the prediction, NOT the batch_size of input tiles.
+            tile: The input tile, containing preprocessed, harmonized data.
+            patch_size (int): The size of the patches. Defaults to 1024.
+            overlap (int): The size of the overlap. Defaults to 16.
+            batch_size (int): The batch size for the prediction, NOT the batch_size of input tiles.
             Tensor will be sliced into patches and these again will be infered in batches. Defaults to 8.
+            reflection (int): Reflection-Padding which will be applied to the edges of the tensor. Defaults to 0.
 
         Returns:
-          Input tile augmented by a predicted `probabilities` layer with type float32 and range [0, 1].
+            Input tile augmented by a predicted `probabilities` layer with type float32 and range [0, 1].
 
         """
         # Convert the tile to a tensor
@@ -129,7 +130,7 @@ class SMPSegmenter:
         tensor_tile = tensor_tile.unsqueeze(0)
 
         probabilities = predict_in_patches(
-            self.model, tensor_tile, patch_size, overlap, batch_size, self.device
+            self.model, tensor_tile, patch_size, overlap, batch_size, reflection, self.device
         ).squeeze(0)
 
         # Highly sophisticated DL-based predictor
@@ -139,19 +140,25 @@ class SMPSegmenter:
         return tile
 
     def segment_tile_batched(
-        self, tiles: list[xr.Dataset], patch_size: int = 1024, overlap: int = 16, batch_size: int = 8
+        self,
+        tiles: list[xr.Dataset],
+        patch_size: int = 1024,
+        overlap: int = 16,
+        batch_size: int = 8,
+        reflection: int = 0,
     ) -> list[xr.Dataset]:
         """Run inference on a list of tiles.
 
         Args:
-          tiles: The input tiles, containing preprocessed, harmonized data.
-          patch_size (int): The size of the patches. Defaults to 1024.
-          overlap (int): The size of the overlap. Defaults to 16.
-          batch_size (int): The batch size for the prediction, NOT the batch_size of input tiles.
+            tiles: The input tiles, containing preprocessed, harmonized data.
+            patch_size (int): The size of the patches. Defaults to 1024.
+            overlap (int): The size of the overlap. Defaults to 16.
+            batch_size (int): The batch size for the prediction, NOT the batch_size of input tiles.
             Tensor will be sliced into patches and these again will be infered in batches. Defaults to 8.
+            reflection (int): Reflection-Padding which will be applied to the edges of the tensor. Defaults to 0.
 
         Returns:
-          A list of input tiles augmented by a predicted `probabilities` layer with type float32 and range [0, 1].
+            A list of input tiles augmented by a predicted `probabilities` layer with type float32 and range [0, 1].
 
         """
         # Convert the tiles to tensors
@@ -162,7 +169,9 @@ class SMPSegmenter:
         # Create a batch dimension, because predict expects it
         tensor_tiles = torch.stack(tensor_tiles, dim=0)
 
-        probabilities = predict_in_patches(self.model, tensor_tiles, patch_size, overlap, batch_size, self.device)
+        probabilities = predict_in_patches(
+            self.model, tensor_tiles, patch_size, overlap, batch_size, reflection, self.device
+        )
 
         # Highly sophisticated DL-based predictor
         for tile, probs in zip(tiles, probabilities):
@@ -175,11 +184,11 @@ class SMPSegmenter:
         """Run inference on a single tile or a list of tiles.
 
         Args:
-          input: A single tile or a list of tiles.
+            input: A single tile or a list of tiles.
 
         Returns:
-          A single tile or a list of tiles augmented by a predicted `probabilities` layer, depending on the input.
-          Each `probability` has type float32 and range [0, 1].
+            A single tile or a list of tiles augmented by a predicted `probabilities` layer, depending on the input.
+            Each `probability` has type float32 and range [0, 1].
 
         Raises:
             ValueError: in case the input is not an xr.Dataset or a list of xr.Dataset

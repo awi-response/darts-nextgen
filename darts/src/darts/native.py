@@ -10,6 +10,7 @@ def run_native_orthotile_pipeline(
     patch_size: int = 1024,
     overlap: int = 16,
     batch_size: int = 8,
+    reflection: int = 0,
 ):
     """Search for all PlanetScope scenes in the given directory and runs the segmentation pipeline on them.
 
@@ -20,6 +21,7 @@ def run_native_orthotile_pipeline(
         patch_size (int, optional): The patch size to use for inference. Defaults to 1024.
         overlap (int, optional): The overlap to use for inference. Defaults to 16.
         batch_size (int, optional): The batch size to use for inference. Defaults to 8.
+        reflection (int, optional): The reflection padding to use for inference. Defaults to 0.
 
     Todo:
         Document the structure of the input data dir.
@@ -41,7 +43,9 @@ def run_native_orthotile_pipeline(
         tile = load_and_preprocess_planet_scene(fpath, elevation_path, slope_path)
 
         model = SMPSegmenter(model_dir / "RTS_v6_notcvis.pt")
-        tile = model.segment_tile(tile, patch_size=patch_size, overlap=overlap, batch_size=batch_size)
+        tile = model.segment_tile(
+            tile, patch_size=patch_size, overlap=overlap, batch_size=batch_size, reflection=reflection
+        )
         tile = prepare_export(tile)
 
         outpath.mkdir(parents=True, exist_ok=True)

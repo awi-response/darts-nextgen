@@ -96,6 +96,7 @@ def predict_in_patches(
     patch_size: int,
     overlap: int,
     batch_size: int,
+    reflection: int,
     device=torch.device,
     return_weights: bool = False,
 ) -> torch.Tensor:
@@ -108,6 +109,7 @@ def predict_in_patches(
         overlap (int): The size of the overlap.
         batch_size (int): The batch size for the prediction, NOT the batch_size of input tiles.
             Tensor will be sliced into patches and these again will be infered in batches.
+        reflection (int): Reflection-Padding which will be applied to the edges of the tensor.
         device (torch.device): The device to use for the prediction.
         return_weights (bool, optional): Whether to return the weights. Can be used for debugging. Defaults to False.
 
@@ -121,8 +123,9 @@ def predict_in_patches(
         f"with patch_size {patch_size}, overlap {overlap} and batch_size {batch_size} on device {device}"
     )
     assert tensor_tiles.dim() == 4, f"Expects tensor_tiles to has shape (BS, C, H, W), got {tensor_tiles.shape}"
-    # Add a 1px border to avoid pixel loss when applying the soft margin
-    tensor_tiles = torch.nn.functional.pad(tensor_tiles, (1, 1, 1, 1), mode="reflect")
+    # Add a 1px + reflection border to avoid pixel loss when applying the soft margin and to reduce edge-artefacts
+    p = 1 + reflection
+    tensor_tiles = torch.nn.functional.pad(tensor_tiles, (p, p, p, p), mode="reflect")
     bs, c, h, w = tensor_tiles.shape
     step_size = patch_size - overlap
     nh, nw = math.ceil((h - overlap) / step_size), math.ceil((w - overlap) / step_size)
@@ -173,7 +176,7 @@ def predict_in_patches(
     prediction = prediction / weights
 
     # Remove the 1px border and the padding
-    prediction = prediction[:, 1:-1, 1:-1]
+    prediction = prediction[:, p:-p, p:-p]
     logger.debug(f"Predicting took {time.time() - start_time:.2f}s")
 
     if return_weights:
