@@ -97,6 +97,7 @@ def predict_in_patches(
     overlap: int,
     batch_size: int,
     device=torch.device,
+    return_weights: bool = False,
 ) -> torch.Tensor:
     """Predict on a tensor.
 
@@ -108,6 +109,7 @@ def predict_in_patches(
         batch_size (int): The batch size for the prediction, NOT the batch_size of input tiles.
             Tensor will be sliced into patches and these again will be infered in batches.
         device (torch.device): The device to use for the prediction.
+        return_weights (bool, optional): Whether to return the weights. Can be used for debugging. Defaults to False.
 
     Returns:
         The predicted tensor.
@@ -173,4 +175,8 @@ def predict_in_patches(
     # Remove the 1px border and the padding
     prediction = prediction[:, 1:-1, 1:-1]
     logger.debug(f"Predicting took {time.time() - start_time:.2f}s")
-    return prediction
+
+    if return_weights:
+        return prediction, weights
+    else:
+        return prediction
