@@ -9,13 +9,12 @@ from darts_preprocessing.data_sources.planet import load_planet_masks, load_plan
 from darts_preprocessing.engineering.indices import calculate_ndvi
 
 
-def load_and_preprocess_planet_scene(planet_scene_path: Path, elevation_path: Path, slope_path: Path) -> xr.Dataset:
+def load_and_preprocess_planet_scene(planet_scene_path: Path, arcticdem_dir: Path) -> xr.Dataset:
     """Load and preprocess a Planet Scene (PSOrthoTile or PSScene) into an xr.Dataset.
 
     Args:
         planet_scene_path (Path): path to the Planet Scene
-        elevation_path (Path): path to the elevation data
-        slope_path (Path): path to the slope data
+        arcticdem_dir (Path): path to the ArcticDEM directory
 
     Returns:
         xr.Dataset: preprocessed Planet Scene
@@ -48,10 +47,8 @@ def load_and_preprocess_planet_scene(planet_scene_path: Path, elevation_path: Pa
             from darts_preprocessing.preprocess import load_and_preprocess_planet_scene
 
             fpath = Path("data/input/planet/planet/PSOrthoTile/4372514/5790392_4372514_2022-07-16_2459")
-            scene_id = fpath.parent.name
-            elevation_path = input_data_dir / "ArcticDEM" / "relative_elevation" / f"{scene_id}_relative_elevation_100.tif"
-            slope_path = input_data_dir / "ArcticDEM" / "slope" / f"{scene_id}_slope.tif"
-            tile = load_and_preprocess_planet_scene(fpath, elevation_path, slope_path)
+            arcticdem_dir = input_data_dir / "ArcticDEM" / "relative_elevation" / f"{scene_id}_relative_elevation_100.tif"
+            tile = load_and_preprocess_planet_scene(fpath, arcticdem_dir)
         ```
 
     """  # noqa: E501
@@ -61,7 +58,7 @@ def load_and_preprocess_planet_scene(planet_scene_path: Path, elevation_path: Pa
     # calculate xr.dataset ndvi
     ds_ndvi = calculate_ndvi(ds_planet)
 
-    ds_articdem = load_arcticdem(elevation_path, slope_path, ds_planet)
+    ds_articdem = load_arcticdem(arcticdem_dir, ds_planet)
 
     # # get xr.dataset for tcvis
     # ds_tcvis = load_auxiliary(planet_scene_path, tcvis_path)

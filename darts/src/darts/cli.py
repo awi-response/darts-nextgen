@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Annotated
 
 import cyclopts
+from darts_acquisition.arcticdem import create_arcticdem_vrt
 from rich.console import Console
 
 from darts import __version__
@@ -22,8 +23,11 @@ app = cyclopts.App(
     config=config_parser,  # config=cyclopts.config.Toml("config.toml", root_keys=["darts"], search_parents=True)
 )
 
+pipeline_group = cyclopts.Group.create_ordered("Pipeline Commands")
+data_group = cyclopts.Group.create_ordered("Data Commands")
 
-@app.command
+
+# @app.command
 def hello(name: str, n: int = 1):
     """Say hello to someone.
 
@@ -42,7 +46,8 @@ def hello(name: str, n: int = 1):
         logger.info(f"Hello {name}")
 
 
-app.command()(run_native_orthotile_pipeline)
+app.command(group=pipeline_group)(run_native_orthotile_pipeline)
+app.command(group=data_group)(create_arcticdem_vrt)
 
 
 # Intercept the logging behavior to add a file handler

@@ -33,14 +33,14 @@ def run_native_orthotile_pipeline(
     from darts_preprocessing import load_and_preprocess_planet_scene
     from darts_segmentation import SMPSegmenter
 
+    arcticdem_dir = input_data_dir / "ArcticDEM"
+
     # Find all PlanetScope scenes
     for fpath in (input_data_dir / "planet" / "PSOrthoTile").glob("*/*/"):
         scene_id = fpath.parent.name
-        elevation_path = input_data_dir / "ArcticDEM" / "relative_elevation" / f"{scene_id}_relative_elevation_100.tif"
-        slope_path = input_data_dir / "ArcticDEM" / "slope" / f"{scene_id}_slope.tif"
         outpath = output_data_dir / scene_id
 
-        tile = load_and_preprocess_planet_scene(fpath, elevation_path, slope_path)
+        tile = load_and_preprocess_planet_scene(fpath, arcticdem_dir)
 
         model = SMPSegmenter(model_dir / "RTS_v6_notcvis.pt")
         tile = model.segment_tile(
