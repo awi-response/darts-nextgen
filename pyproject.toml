@@ -23,6 +23,8 @@ dependencies = [
     # Processing
     "scikit-image>=0.20",
     "scipy>=1.14.1",
+    "earthengine-api>=1.1.5",
+    "xee>=0.0.19",
 ]
 readme = "README.md"
 requires-python = ">= 3.11"
