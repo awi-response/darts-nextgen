@@ -2,26 +2,19 @@
 
 import logging
 import time
+import warnings
 from pathlib import Path
 
 import ee
+import numpy as np
 import pyproj
-import rioxarray  # noqa: F401
+import rasterio
 import xarray as xr
+import xee  # noqa: F401
 
 logger = logging.getLogger(__name__)
 
-
-def init_ee():
-    """Initialize Earth Engine. Authenticate if necessary."""
-    logger.debug("Initializing Earth Engine")
-    try:
-        ee.Initialize()
-    except Exception:
-        logger.debug("Initializing Earth Engine failed, trying to authenticate before")
-        ee.Authenticate()
-        ee.Initialize()
-    logger.debug("Earth Engine initialized")
+EE_WARN_MSG = "Unable to retrieve 'system:time_start' values from an ImageCollection due to: No 'system:time_start' values found in the 'ImageCollection'."  # noqa: E501
 
 
 def ee_geom_from_image_bounds(reference_dataset: xr.Dataset, buffer=1000) -> ee.Geometry.Rectangle:
@@ -36,21 +29,21 @@ def ee_geom_from_image_bounds(reference_dataset: xr.Dataset, buffer=1000) -> ee.
 
     """
     # get bounds
-    xmin, ymin, xmax, ymax = reference_dataset.rio.bounds()
+    xmin, ymin, xmax, ymax = reference_dataset.rio.bounds()  # left, bottom, right, top
     region_rect = [[xmin - buffer, ymin - buffer], [xmax + buffer, ymax + buffer]]
 
     # make polygon
-    transformer = pyproj.Transformer.from_crs(reference_dataset.rio.crs(), "epsg:4326")
+    transformer = pyproj.Transformer.from_crs(reference_dataset.rio.crs, "epsg:4326")
     region_transformed = [transformer.transform(*vertex)[::-1] for vertex in region_rect]
     return ee.Geometry.Rectangle(coords=region_transformed)
 
 
-def load_tcvis_xee(cache_dir: Path, scene_id: str, reference_dataset: xr.Dataset) -> xr.Dataset:
+def load_tcvis(reference_dataset: xr.Dataset, cache_dir: Path | None = None) -> xr.Dataset:
     """Load the Landsat Trends (TCVIS) from Google Earth Engine.
 
     Args:
-        cache_dir (Path): Path for the cache file. The file get's created if not exists.
         reference_dataset (xr.Dataset): The reference dataset.
+        cache_dir (Path | None): The cache directory. If None, no caching will be used. Defaults to None.
 
     Returns:
         xr.Dataset: The TCVIS dataset.
@@ -58,14 +51,52 @@ def load_tcvis_xee(cache_dir: Path, scene_id: str, reference_dataset: xr.Dataset
     """
     start_time = time.time()
 
-    cache_file = cache_dir / f"tcvis_{scene_id}.nc"
-    if cache_file.exists():
-        return xr.open_dataset(cache_file)
+    # Try to load from cache - else from Google Earth Engine
+    cache_fname = f"tcvis_{reference_dataset.attrs['scene_id']}.nc"
+    if cache_dir is not None and (cache_dir / cache_fname).exists():
+        logger.debug(f"Loading cached TCVis from {cache_dir / cache_fname}")
+        return xr.open_dataset(cache_dir / cache_fname, engine="h5netcdf")
 
-    ee_image_tcvis = ee.ImageCollection("users/ingmarnitze/TCTrend_SR_2000-2019_TCVIS").mosaic()
+    logger.debug("Loading TCVis from Google Earth Engine, since no cache was found")
     geom = ee_geom_from_image_bounds(reference_dataset)
-    ds = xr.open_dataset(ee_image_tcvis, engine="ee", projection=ee_image_tcvis.projection(), geometry=geom)
-    ds = ds.rio.reproject_match(reference_dataset)
+    ee_image_tcvis = ee.ImageCollection("users/ingmarnitze/TCTrend_SR_2000-2019_TCVIS").mosaic().clip(geom)
+    # Wrap into image collection again to be able to use the engine
+    ee_image_tcvis = ee.ImageCollection(ee_image_tcvis)
+    with warnings.catch_warnings():
+        warnings.filterwarnings("ignore", category=UserWarning, message=EE_WARN_MSG)
+        ds = xr.open_dataset(ee_image_tcvis, engine="ee", geometry=geom, crs=str(reference_dataset.rio.crs), scale=30)
+    # Update dataset properties to fit our pipeline-api
+    ds = ds.isel(time=0).rename({"X": "x", "Y": "y"}).transpose("y", "x")
+    ds = ds.rename_vars(
+        {
+            "TCB_slope": "tc_brightness",
+            "TCG_slope": "tc_greenness",
+            "TCW_slope": "tc_wetness",
+        }
+    )
+    for band in ds.data_vars:
+        ds[band].attrs = {
+            "data_source": "landsat-trends",
+            "long_name": f"TC {band.split('_')[1].capitalize()}",
+        }
+
+    ds.rio.write_crs(ds.attrs["crs"], inplace=True)
+    ds.rio.set_spatial_dims(x_dim="x", y_dim="y", inplace=True)
+    search_time = time.time()
+    logger.debug(f"Found a dataset with shape {ds.sizes} in {search_time - start_time} seconds")
+
+    logger.debug(f"Reproject dataset to match reference dataset {reference_dataset.sizes}")
+    ds = ds.rio.reproject_match(reference_dataset, resampling=rasterio.enums.Resampling.cubic)
+    logger.debug(f"Reshaped dataset in {time.time() - search_time} seconds")
+
+    for band in ds.data_vars:
+        ds[band] = ds[band].astype(np.uint8)
+
+    # Save to cache
+    if cache_dir is not None:
+        logger.debug(f"Saving TCVis to cache to {cache_dir / cache_fname}")
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        ds.to_netcdf(cache_dir / cache_fname, engine="h5netcdf")
 
     logger.debug(f"Loading TCVis took {time.time() - start_time} seconds")
     return ds
