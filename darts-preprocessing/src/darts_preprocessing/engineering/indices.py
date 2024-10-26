@@ -8,7 +8,9 @@ import xarray as xr
 logger = logging.getLogger(__name__)
 
 
-def calculate_ndvi(planet_scene_dataset: xr.Dataset, nir_band: str = "nir", red_band: str = "red") -> xr.Dataset:
+def calculate_ndvi(
+    planet_scene_dataset: xr.Dataset, nir_band: str = "nir", red_band: str = "red", scale_to_uint16: bool = True
+) -> xr.Dataset:
     """Calculate NDVI from an xarray Dataset containing spectral bands.
 
     Example:
@@ -23,6 +25,9 @@ def calculate_ndvi(planet_scene_dataset: xr.Dataset, nir_band: str = "nir", red_
             correspond to the variable name for the NIR band in the 'band' dimension. Defaults to "nir".
         red_band (str, optional): The name of the Red band in the Dataset (default is "red"). This name should
             correspond to the variable name for the Red band in the 'band' dimension. Defaults to "red".
+        scale_to_uint16 (bool, optional): If True, scales the NDVI values to a range of 0 to 65535 (Uint16).
+            This is useful for storing NDVI values in a more compact format while preserving detail.
+            Defaults to False.
 
     Returns:
         xr.Dataset: A new Dataset containing the calculated NDVI values. The resulting Dataset will have
@@ -42,6 +47,11 @@ def calculate_ndvi(planet_scene_dataset: xr.Dataset, nir_band: str = "nir", red_
     nir = planet_scene_dataset[nir_band].astype("float32")
     r = planet_scene_dataset[red_band].astype("float32")
     ndvi = (nir - r) / (nir + r)
+
+    # scale to Uint16 if required
+    if scale_to_uint16:
+        ndvi = ((ndvi + 1) * 1e4).astype("uint16")
+
     ndvi = ndvi.assign_attrs({"data_source": "planet", "long_name": "NDVI"}).to_dataset(name="ndvi")
     logger.debug(f"NDVI calculated in {time.time() - start} seconds.")
     return ndvi
