@@ -136,7 +136,9 @@ class SMPSegmenter:
         # Highly sophisticated DL-based predictor
         # TODO: is there a better way to pass metadata?
         tile["probabilities"] = tile["red"].copy(data=probabilities.cpu().numpy())
-        tile["probabilities"].attrs = {}
+        tile["probabilities"].attrs = {
+            "long_name": "Probabilities",
+        }
         return tile
 
     def segment_tile_batched(
@@ -177,7 +179,9 @@ class SMPSegmenter:
         for tile, probs in zip(tiles, probabilities):
             # TODO: is there a better way to pass metadata?
             tile["probabilities"] = tile["red"].copy(data=probs.cpu().numpy())
-            tile["probabilities"].attrs = {}
+            tile["probabilities"].attrs = {
+                "long_name": "Probabilities",
+            }
         return tiles
 
     def __call__(self, input: xr.Dataset | list[xr.Dataset]) -> xr.Dataset | list[xr.Dataset]:

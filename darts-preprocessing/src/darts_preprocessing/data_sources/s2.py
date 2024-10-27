@@ -42,7 +42,8 @@ def load_s2_scene(fpath: str | Path) -> xr.Dataset:
     # Create a list to hold datasets
     datasets = [
         s2_da.sel(band=index)
-        .assign_attrs({"data_source": "s2", "long_name": f"Sentinel 2 {name.capitalize()}"})
+        .assign_attrs({"data_source": "s2", "long_name": f"Sentinel 2 {name.capitalize()}", "units": "Reflectance"})
+        .astype("uint16")
         .to_dataset(name=name)
         .drop_vars("band")
         for index, name in bands.items()

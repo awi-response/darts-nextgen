@@ -66,12 +66,18 @@ def load_arcticdem(fpath: Path, reference_dataset: xr.Dataset) -> xr.Dataset:
     elevation_vrt = fpath / "elevation.vrt"
 
     slope = load_vrt(slope_vrt, reference_dataset)
-    slope: xr.Dataset = slope.assign_attrs({"data_source": "arcticdem", "long_name": "Slope"}).to_dataset(name="slope")
+    slope: xr.Dataset = (
+        slope.assign_attrs({"data_source": "arcticdem", "long_name": "Slope"})
+        .astype("float32")
+        .to_dataset(name="slope")
+    )
 
     relative_elevation = load_vrt(elevation_vrt, reference_dataset)
-    relative_elevation: xr.Dataset = relative_elevation.assign_attrs(
-        {"data_source": "arcticdem", "long_name": "Relative Elevation"}
-    ).to_dataset(name="relative_elevation")
+    relative_elevation: xr.Dataset = (
+        relative_elevation.assign_attrs({"data_source": "arcticdem", "long_name": "Relative Elevation", "units": "m"})
+        .astype("int16")
+        .to_dataset(name="relative_elevation")
+    )
 
     articdem_ds = xr.merge([relative_elevation, slope])
     logger.debug(f"Loaded ArcticDEM data in {time.time() - start_time} seconds.")

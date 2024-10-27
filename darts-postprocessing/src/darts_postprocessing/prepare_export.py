@@ -14,10 +14,15 @@ def prepare_export(tile: xr.Dataset) -> xr.Dataset:
 
     """
     # Binarize the segmentation
-    tile["binarized_segmentation"] = (tile["probabilities"] > 0.5).astype("uint8")
+    # Where the output from the ensemble / segmentation is nan turn it into 0, else threshold it
+    # Also, where there was no valid input data, turn it into 0
+    binarized = xr.where(~tile["probabilities"].isnull(), (tile["probabilities"] > 0.5), 0).astype("uint8")  # noqa: PD003
+    tile["binarized_segmentation"] = xr.where(tile["valid_data_mask"], binarized, 0)
 
     # Convert the probabilities to uint8
+    # Same but this time with 255 as no-data
     intprobs = (tile["probabilities"] * 100).astype("uint8")
-    tile["probabilities"] = xr.where(~tile["probabilities"].isnull(), intprobs, 255)  # noqa: PD003
+    intprobs = xr.where(~tile["probabilities"].isnull(), intprobs, 255)  # noqa: PD003
+    tile["probabilities"] = xr.where(tile["valid_data_mask"], intprobs, 255)
 
     return tile

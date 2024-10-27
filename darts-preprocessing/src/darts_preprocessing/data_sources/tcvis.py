@@ -6,7 +6,6 @@ import warnings
 from pathlib import Path
 
 import ee
-import numpy as np
 import pyproj
 import rasterio
 import xarray as xr
@@ -76,8 +75,8 @@ def load_tcvis(reference_dataset: xr.Dataset, cache_dir: Path | None = None) -> 
     )
     for band in ds.data_vars:
         ds[band].attrs = {
-            "data_source": "landsat-trends",
-            "long_name": f"TC {band.split('_')[1].capitalize()}",
+            "data_source": "ee:ingmarnitze/TCTrend_SR_2000-2019_TCVIS",
+            "long_name": f"Tasseled Cap {band.split('_')[1].capitalize()}",
         }
 
     ds.rio.write_crs(ds.attrs["crs"], inplace=True)
@@ -90,7 +89,7 @@ def load_tcvis(reference_dataset: xr.Dataset, cache_dir: Path | None = None) -> 
     logger.debug(f"Reshaped dataset in {time.time() - search_time} seconds")
 
     for band in ds.data_vars:
-        ds[band] = ds[band].astype(np.uint8)
+        ds[band] = ds[band].astype("uint8")
 
     # Save to cache
     if cache_dir is not None:
