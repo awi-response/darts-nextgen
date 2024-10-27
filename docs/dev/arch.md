@@ -95,6 +95,7 @@ The following diagram visualizes the steps of the major `packages` of the pipeli
 
 Each Tile should be represented as a single `xr.Dataset` with each feature / band as `DataVariable`.
 Each DataVariable should have their `data_source` documented in the `attrs`, aswell as `long_name` and `units` if any for plotting.
+A `_FillValue` should also be set for no-data with `.rio.write_nodata("no-data-value")`
 
 ### Preprocessing Output
 
@@ -135,7 +136,7 @@ Coordinates: `x`, `y` and `spatial_ref` (from rioxarray)
 | --------------------------- | ------ | ----- | ------- | ---------------- | -------------------- |
 | [Output from Preprocessing] |        |       |         |                  |                      |
 | `probabilities_percent`     | (x, y) | uint8 | 255     | long_name, units | Values between 0-100 |
-| `binarized_segmentation`    | (x, y) | uint8 | -       | long_name, units |                      |
+| `binarized_segmentation`    | (x, y) | uint8 | -       | long_name        |                      |
 
 ### PyTorch Model checkpoints
 

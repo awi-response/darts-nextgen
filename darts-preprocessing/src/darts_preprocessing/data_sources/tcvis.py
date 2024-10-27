@@ -6,6 +6,7 @@ import warnings
 from pathlib import Path
 
 import ee
+import numpy as np
 import pyproj
 import rasterio
 import xarray as xr
@@ -82,14 +83,23 @@ def load_tcvis(reference_dataset: xr.Dataset, cache_dir: Path | None = None) -> 
     ds.rio.write_crs(ds.attrs["crs"], inplace=True)
     ds.rio.set_spatial_dims(x_dim="x", y_dim="y", inplace=True)
     search_time = time.time()
-    logger.debug(f"Found a dataset with shape {ds.sizes} in {search_time - start_time} seconds")
+    logger.debug(f"Found a dataset with shape {ds.sizes} in {search_time - start_time} seconds.")
+
+    # Save original min-max values for each band for clipping later
+    clip_values = {band: (ds[band].min().values.item(), ds[band].max().values.item()) for band in ds.data_vars}  # noqa: PD011
+
+    # Interpolate missing values (there are very few, so we actually can interpolate them)
+    for band in ds.data_vars:
+        ds[band] = ds[band].rio.write_nodata(np.nan).rio.interpolate_na()
 
     logger.debug(f"Reproject dataset to match reference dataset {reference_dataset.sizes}")
     ds = ds.rio.reproject_match(reference_dataset, resampling=rasterio.enums.Resampling.cubic)
     logger.debug(f"Reshaped dataset in {time.time() - search_time} seconds")
 
+    # Convert to uint8
     for band in ds.data_vars:
-        ds[band] = ds[band].astype("uint8")
+        band_min, band_max = clip_values[band]
+        ds[band] = ds[band].clip(band_min, band_max, keep_attrs=True).astype("uint8").rio.write_nodata(None)
 
     # Save to cache
     if cache_dir is not None:

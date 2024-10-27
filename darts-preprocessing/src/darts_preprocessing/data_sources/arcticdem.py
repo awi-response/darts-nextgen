@@ -68,6 +68,7 @@ def load_arcticdem(fpath: Path, reference_dataset: xr.Dataset) -> xr.Dataset:
     slope = load_vrt(slope_vrt, reference_dataset)
     slope: xr.Dataset = (
         slope.assign_attrs({"data_source": "arcticdem", "long_name": "Slope"})
+        .rio.write_nodata(float("nan"))
         .astype("float32")
         .to_dataset(name="slope")
     )
@@ -75,6 +76,8 @@ def load_arcticdem(fpath: Path, reference_dataset: xr.Dataset) -> xr.Dataset:
     relative_elevation = load_vrt(elevation_vrt, reference_dataset)
     relative_elevation: xr.Dataset = (
         relative_elevation.assign_attrs({"data_source": "arcticdem", "long_name": "Relative Elevation", "units": "m"})
+        .fillna(0)
+        .rio.write_nodata(0)
         .astype("int16")
         .to_dataset(name="relative_elevation")
     )

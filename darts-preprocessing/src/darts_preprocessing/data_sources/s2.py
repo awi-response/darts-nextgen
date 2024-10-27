@@ -43,6 +43,8 @@ def load_s2_scene(fpath: str | Path) -> xr.Dataset:
     datasets = [
         s2_da.sel(band=index)
         .assign_attrs({"data_source": "s2", "long_name": f"Sentinel 2 {name.capitalize()}", "units": "Reflectance"})
+        .fillna(0)
+        .rio.write_nodata(0)
         .astype("uint16")
         .to_dataset(name=name)
         .drop_vars("band")
