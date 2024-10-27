@@ -28,10 +28,10 @@ def run_native_orthotile_pipeline(
 
     """
     # Import here to avoid long loading times when running other commands
+    from darts_ensemble.ensemble_v1 import EnsembleV1
     from darts_export.inference import InferenceResultWriter
     from darts_postprocessing import prepare_export
     from darts_preprocessing import load_and_preprocess_planet_scene
-    from darts_segmentation import SMPSegmenter
 
     arcticdem_dir = input_data_dir / "ArcticDEM"
 
@@ -42,8 +42,8 @@ def run_native_orthotile_pipeline(
 
         tile = load_and_preprocess_planet_scene(fpath, arcticdem_dir)
 
-        model = SMPSegmenter(model_dir / "RTS_v6_notcvis.pt")
-        tile = model.segment_tile(
+        ensemble = EnsembleV1(model_dir / "RTS_v6_tcvis.pt", model_dir / "RTS_v6_notcvis.pt")
+        tile = ensemble.segment_tile(
             tile, patch_size=patch_size, overlap=overlap, batch_size=batch_size, reflection=reflection
         )
         tile = prepare_export(tile)
