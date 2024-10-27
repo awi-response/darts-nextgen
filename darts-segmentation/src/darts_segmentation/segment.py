@@ -1,5 +1,6 @@
 """Functionality for segmenting tiles."""
 
+import logging
 from pathlib import Path
 from typing import Any, TypedDict
 
@@ -7,8 +8,11 @@ import segmentation_models_pytorch as smp
 import torch
 import torch.nn as nn
 import xarray as xr
+from lovely_numpy import lovely
 
 from darts_segmentation.utils import predict_in_patches
+
+logger = logging.getLogger(__name__)
 
 
 class SMPSegmenterConfig(TypedDict):
@@ -80,8 +84,13 @@ class SMPSegmenter:
         for feature_name in self.config["input_combination"]:
             norm = self.config["norm_factors"][feature_name]
             band_data = tile[feature_name]
+            band_info_before = lovely(band_data.values)
             # Normalize the band data
             band_data = band_data * norm
+            band_info_after = lovely(band_data.values)
+            logger.debug(
+                f"Normalised '{feature_name}' with {norm=}.\nBefore: {band_info_before}.\nAfter:  {band_info_after}"
+            )
             bands.append(torch.from_numpy(band_data.values))
 
         return torch.stack(bands, dim=0)
@@ -100,8 +109,13 @@ class SMPSegmenter:
             norm = self.config["norm_factors"][feature_name]
             for tile in tiles:
                 band_data = tile[feature_name]
+                band_info_before = lovely(band_data.values)
                 # Normalize the band data
                 band_data = band_data * norm
+                band_info_after = lovely(band_data.values)
+                logger.debug(
+                    f"Normalised '{feature_name}' with {norm=}.\nBefore: {band_info_before}.\nAfter:  {band_info_after}"
+                )
                 bands.append(torch.from_numpy(band_data.values))
         # TODO: Test this
         return torch.stack(bands, dim=0).reshape(len(tiles), len(self.config["input_combination"]), *bands[0].shape)
@@ -136,7 +150,10 @@ class SMPSegmenter:
         # Highly sophisticated DL-based predictor
         # TODO: is there a better way to pass metadata?
         tile["probabilities"] = tile["red"].copy(data=probabilities.cpu().numpy())
-        tile["probabilities"].attrs = {}
+        tile["probabilities"].attrs = {
+            "long_name": "Probabilities",
+        }
+        tile["probabilities"] = tile["probabilities"].fillna(float("nan")).rio.write_nodata(float("nan"))
         return tile
 
     def segment_tile_batched(
@@ -177,14 +194,29 @@ class SMPSegmenter:
         for tile, probs in zip(tiles, probabilities):
             # TODO: is there a better way to pass metadata?
             tile["probabilities"] = tile["red"].copy(data=probs.cpu().numpy())
-            tile["probabilities"].attrs = {}
+            tile["probabilities"].attrs = {
+                "long_name": "Probabilities",
+            }
+            tile["probabilities"] = tile["probabilities"].fillna(float("nan")).rio.write_nodata(float("nan"))
         return tiles
 
-    def __call__(self, input: xr.Dataset | list[xr.Dataset]) -> xr.Dataset | list[xr.Dataset]:
+    def __call__(
+        self,
+        input: xr.Dataset | list[xr.Dataset],
+        patch_size: int = 1024,
+        overlap: int = 16,
+        batch_size: int = 8,
+        reflection: int = 0,
+    ) -> xr.Dataset | list[xr.Dataset]:
         """Run inference on a single tile or a list of tiles.
 
         Args:
             input: A single tile or a list of tiles.
+            patch_size (int): The size of the patches. Defaults to 1024.
+            overlap (int): The size of the overlap. Defaults to 16.
+            batch_size (int): The batch size for the prediction, NOT the batch_size of input tiles.
+            Tensor will be sliced into patches and these again will be infered in batches. Defaults to 8.
+            reflection (int): Reflection-Padding which will be applied to the edges of the tensor. Defaults to 0.
 
         Returns:
             A single tile or a list of tiles augmented by a predicted `probabilities` layer, depending on the input.
@@ -195,8 +227,12 @@ class SMPSegmenter:
 
         """
         if isinstance(input, xr.Dataset):
-            return self.segment_tile(input)
+            return self.segment_tile(
+                input, patch_size=patch_size, overlap=overlap, batch_size=batch_size, reflection=reflection
+            )
         elif isinstance(input, list):
-            return self.segment_tile_batched(input)
+            return self.segment_tile_batched(
+                input, patch_size=patch_size, overlap=overlap, batch_size=batch_size, reflection=reflection
+            )
         else:
             raise ValueError(f"Expected xr.Dataset or list of xr.Dataset, got {type(input)}")

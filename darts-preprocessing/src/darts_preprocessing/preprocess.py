@@ -6,15 +6,19 @@ import xarray as xr
 
 from darts_preprocessing.data_sources.arcticdem import load_arcticdem
 from darts_preprocessing.data_sources.planet import load_planet_masks, load_planet_scene
+from darts_preprocessing.data_sources.tcvis import load_tcvis
 from darts_preprocessing.engineering.indices import calculate_ndvi
 
 
-def load_and_preprocess_planet_scene(planet_scene_path: Path, arcticdem_dir: Path) -> xr.Dataset:
+def load_and_preprocess_planet_scene(
+    planet_scene_path: Path, arcticdem_dir: Path, cache_dir: Path | None = None
+) -> xr.Dataset:
     """Load and preprocess a Planet Scene (PSOrthoTile or PSScene) into an xr.Dataset.
 
     Args:
         planet_scene_path (Path): path to the Planet Scene
         arcticdem_dir (Path): path to the ArcticDEM directory
+        cache_dir (Path | None): The cache directory. If None, no caching will be used. Defaults to None.
 
     Returns:
         xr.Dataset: preprocessed Planet Scene
@@ -60,13 +64,12 @@ def load_and_preprocess_planet_scene(planet_scene_path: Path, arcticdem_dir: Pat
 
     ds_articdem = load_arcticdem(arcticdem_dir, ds_planet)
 
-    # # get xr.dataset for tcvis
-    # ds_tcvis = load_auxiliary(planet_scene_path, tcvis_path)
+    ds_tcvis = load_tcvis(ds_planet, cache_dir)
 
     # load udm2
     ds_data_masks = load_planet_masks(planet_scene_path)
 
     # merge to final dataset
-    ds_merged = xr.merge([ds_planet, ds_ndvi, ds_articdem, ds_data_masks])
+    ds_merged = xr.merge([ds_planet, ds_ndvi, ds_articdem, ds_tcvis, ds_data_masks])
 
     return ds_merged

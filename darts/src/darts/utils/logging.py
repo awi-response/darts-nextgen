@@ -32,6 +32,8 @@ def setup_logging():
     logging.getLogger("darts_superresolution").setLevel(DARTS_LEVEL)
     logging.getLogger("darts").setLevel(DARTS_LEVEL)
 
+    logging.captureWarnings(True)
+
 
 def add_logging_handlers(command: str, console: Console, log_dir: Path):
     """Add logging handlers (rich-console and file) to the application.

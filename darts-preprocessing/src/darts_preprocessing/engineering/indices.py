@@ -42,6 +42,14 @@ def calculate_ndvi(planet_scene_dataset: xr.Dataset, nir_band: str = "nir", red_
     nir = planet_scene_dataset[nir_band].astype("float32")
     r = planet_scene_dataset[red_band].astype("float32")
     ndvi = (nir - r) / (nir + r)
+
+    # Scale to 0 - 20000 (for later conversion to uint16)
+    ndvi = (ndvi.clip(-1, 1) + 1) * 1e4
+    # Make nan to 0
+    ndvi = ndvi.fillna(0).rio.write_nodata(0)
+    # Convert to uint16
+    ndvi = ndvi.astype("uint16")
+
     ndvi = ndvi.assign_attrs({"data_source": "planet", "long_name": "NDVI"}).to_dataset(name="ndvi")
     logger.debug(f"NDVI calculated in {time.time() - start} seconds.")
     return ndvi

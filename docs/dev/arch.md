@@ -94,36 +94,37 @@ The following diagram visualizes the steps of the major `packages` of the pipeli
 ![DARTS nextgen pipeline steps](../assets/darts_nextgen_pipeline-steps.png)
 
 Each Tile should be represented as a single `xr.Dataset` with each feature / band as `DataVariable`.
-Each DataVariable should have their `source` documented in the `attrs`.
+Each DataVariable should have their `data_source` documented in the `attrs`, aswell as `long_name` and `units` if any for plotting.
+A `_FillValue` should also be set for no-data with `.rio.write_nodata("no-data-value")`
 
 ### Preprocessing Output
 
 Coordinates: `x`, `y` and `spatial_ref` (from rioxarray)
 
-| DataVariable         | shape  | dtype   | attrs    |
-| -------------------- | ------ | ------- | -------- |
-| `blue`               | (x, y) | uint16  | - source |
-| `green`              | (x, y) | uint16  | - source |
-| `red`                | (x, y) | uint16  | - source |
-| `nir`                | (x, y) | uint16  | - source |
-| `ndvi`               | (x, y) | float32 | - source |
-| `relative_elevation` | (x, y) | float32 | - source |
-| `slope`              | (x, y) | float32 | - source |
-| `tc_brightness`      | (x, y) | uint8   | - source |
-| `tc_greenness`       | (x, y) | uint8   | - source |
-| `tc_wetness`         | (x, y) | uint8   | - source |
-| `valid_data_mask`    | (x, y) | bool    | - source |
-| `quality_data_mask`  | (x, y) | bool    | - source |
+| DataVariable         | shape  | dtype   | no-data | attrs                         | note                               |
+| -------------------- | ------ | ------- | ------- | ----------------------------- | ---------------------------------- |
+| `blue`               | (x, y) | uint16  | 0       | data_source, long_name, units |                                    |
+| `green`              | (x, y) | uint16  | 0       | data_source, long_name, units |                                    |
+| `red`                | (x, y) | uint16  | 0       | data_source, long_name, units |                                    |
+| `nir`                | (x, y) | uint16  | 0       | data_source, long_name, units |                                    |
+| `ndvi`               | (x, y) | uint16  | 0       | data_source, long_name        | Values between 0-20.000 (+1, *1e4) |
+| `relative_elevation` | (x, y) | int16   | 0       | data_source, long_name, units |                                    |
+| `slope`              | (x, y) | float32 | nan     | data_source, long_name        |                                    |
+| `tc_brightness`      | (x, y) | uint8   | -       | data_source, long_name        |                                    |
+| `tc_greenness`       | (x, y) | uint8   | -       | data_source, long_name        |                                    |
+| `tc_wetness`         | (x, y) | uint8   | -       | data_source, long_name        |                                    |
+| `valid_data_mask`    | (x, y) | bool    | -       | data_source, long_name        |                                    |
+| `quality_data_mask`  | (x, y) | bool    | -       | data_source, long_name        |                                    |
 
 ### Segmentation / Ensemble Output
 
 Coordinates: `x`, `y` and `spatial_ref` (from rioxarray)
 
-| DataVariable                | shape  | dtype   | attrs |
-| --------------------------- | ------ | ------- | ----- |
-| [Output from Preprocessing] |        |         |       |
-| `probabilities`             | (x, y) | float32 |       |
-| `probabilities-model-X*`    | (x, y) | bool    |       |
+| DataVariable                | shape  | dtype   | no-data | attrs     |
+| --------------------------- | ------ | ------- | ------- | --------- |
+| [Output from Preprocessing] |        |         |         |           |
+| `probabilities`             | (x, y) | float32 | nan     | long_name |
+| `probabilities-model-X*`    | (x, y) | float32 | nan     | long_name |
 
 \*: optional intermedia probabilities in an ensemble
 
@@ -131,11 +132,11 @@ Coordinates: `x`, `y` and `spatial_ref` (from rioxarray)
 
 Coordinates: `x`, `y` and `spatial_ref` (from rioxarray)
 
-| DataVariable                | shape  | dtype | attrs | note                             |
-| --------------------------- | ------ | ----- | ----- | -------------------------------- |
-| [Output from Preprocessing] |        |       |       |                                  |
-| `probabilities_percent`     | (x, y) | uint8 |       | Values between 0-100, nodata:255 |
-| `binarized_segmentation`    | (x, y) | uint8 |       |                                  |
+| DataVariable                | shape  | dtype | no-data | attrs            | note                 |
+| --------------------------- | ------ | ----- | ------- | ---------------- | -------------------- |
+| [Output from Preprocessing] |        |       |         |                  |                      |
+| `probabilities_percent`     | (x, y) | uint8 | 255     | long_name, units | Values between 0-100 |
+| `binarized_segmentation`    | (x, y) | uint8 | -       | long_name        |                      |
 
 ### PyTorch Model checkpoints
 
