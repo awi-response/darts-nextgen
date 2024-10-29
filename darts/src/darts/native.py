@@ -7,6 +7,7 @@ def run_native_orthotile_pipeline(
     input_data_dir: Path,
     output_data_dir: Path,
     model_dir: Path,
+    ee_project: str,
     patch_size: int = 1024,
     overlap: int = 16,
     batch_size: int = 8,
@@ -18,6 +19,7 @@ def run_native_orthotile_pipeline(
         input_data_dir (Path): The "input" directory.
         output_data_dir (Path): The "output" directory.
         model_dir (Path): The path to the models to use for segmentation.
+        ee_project (str): The Earth Engine project to use.
         patch_size (int, optional): The patch size to use for inference. Defaults to 1024.
         overlap (int, optional): The overlap to use for inference. Defaults to 16.
         batch_size (int, optional): The batch size to use for inference. Defaults to 8.
@@ -32,6 +34,10 @@ def run_native_orthotile_pipeline(
     from darts_export.inference import InferenceResultWriter
     from darts_postprocessing import prepare_export
     from darts_preprocessing import load_and_preprocess_planet_scene
+
+    from darts.utils.earthengine import init_ee
+
+    init_ee(ee_project)
 
     arcticdem_dir = input_data_dir / "ArcticDEM"
 

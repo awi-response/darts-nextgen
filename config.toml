@@ -1,4 +1,7 @@
 # Note: The sub-headings / sections are optional and are removed from the config parser anyway. The only important thing is the [darts] heading
+[darts]
+ee-project = "your-project-here"
+
 [darts.paths]
 input-data-dir = "data/input"
 output-data-dir = "data/output"
