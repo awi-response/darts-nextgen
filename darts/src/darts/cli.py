@@ -10,17 +10,17 @@ from rich.console import Console
 
 from darts import __version__
 from darts.native import run_native_orthotile_pipeline
-from darts.utils.config import config_parser
+from darts.utils.config import ConfigParser
 from darts.utils.logging import add_logging_handlers, setup_logging
 
 logger = logging.getLogger(__name__)
 console = Console()
 
-
+config_parser = ConfigParser()
 app = cyclopts.App(
     version=__version__,
     console=console,
-    config=config_parser,  # config=cyclopts.config.Toml("config.toml", root_keys=["darts"], search_parents=True)
+    config=config_parser,
 )
 
 pipeline_group = cyclopts.Group.create_ordered("Pipeline Commands")
@@ -53,7 +53,9 @@ app.command(group=data_group)(create_arcticdem_vrt)
 # Intercept the logging behavior to add a file handler
 @app.meta.default
 def launcher(  # noqa: D103
-    *tokens: Annotated[str, cyclopts.Parameter(show=False, allow_leading_hyphen=True)], log_dir: Path = Path("logs")
+    *tokens: Annotated[str, cyclopts.Parameter(show=False, allow_leading_hyphen=True)],
+    log_dir: Path = Path("logs"),
+    config_file: Path = Path("config.toml"),
 ):
     command, bound = app.parse_args(tokens)
     add_logging_handlers(command.__name__, console, log_dir)
