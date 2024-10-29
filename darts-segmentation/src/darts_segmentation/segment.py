@@ -85,7 +85,7 @@ class SMPSegmenter:
             band_data = tile[feature_name]
             # Normalize the band data
             band_data = band_data * norm
-            bands.append(torch.from_numpy(band_data.values))
+            bands.append(torch.from_numpy(band_data.to_numpy().astype("float32")))
 
         return torch.stack(bands, dim=0)
 
@@ -105,7 +105,7 @@ class SMPSegmenter:
                 band_data = tile[feature_name]
                 # Normalize the band data
                 band_data = band_data * norm
-                bands.append(torch.from_numpy(band_data.values))
+                bands.append(torch.from_numpy(band_data.to_numpy().astype("float32")))
         # TODO: Test this
         return torch.stack(bands, dim=0).reshape(len(tiles), len(self.config["input_combination"]), *bands[0].shape)
 
