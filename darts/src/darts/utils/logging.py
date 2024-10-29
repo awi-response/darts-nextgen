@@ -23,13 +23,6 @@ def setup_logging():
     monkey_patch()
 
     # Set up logging for our own modules
-    logging.getLogger("darts_acquisition").setLevel(DARTS_LEVEL)
-    logging.getLogger("darts_ensemble").setLevel(DARTS_LEVEL)
-    logging.getLogger("darts_export").setLevel(DARTS_LEVEL)
-    logging.getLogger("darts_postprocessing").setLevel(DARTS_LEVEL)
-    logging.getLogger("darts_preprocessing").setLevel(DARTS_LEVEL)
-    logging.getLogger("darts_segmentation").setLevel(DARTS_LEVEL)
-    logging.getLogger("darts_superresolution").setLevel(DARTS_LEVEL)
     logging.getLogger("darts").setLevel(DARTS_LEVEL)
 
     logging.captureWarnings(True)

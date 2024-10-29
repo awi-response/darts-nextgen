@@ -11,7 +11,7 @@ import xarray as xr
 
 from darts_segmentation.utils import predict_in_patches
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger(__name__.replace("darts_", "darts."))
 
 
 class SMPSegmenterConfig(TypedDict):

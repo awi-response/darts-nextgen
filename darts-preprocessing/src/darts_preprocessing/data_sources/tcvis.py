@@ -12,7 +12,7 @@ import rasterio
 import xarray as xr
 import xee  # noqa: F401
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger(__name__.replace("darts_", "darts."))
 
 EE_WARN_MSG = "Unable to retrieve 'system:time_start' values from an ImageCollection due to: No 'system:time_start' values found in the 'ImageCollection'."  # noqa: E501
 

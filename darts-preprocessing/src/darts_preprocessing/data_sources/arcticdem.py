@@ -9,7 +9,7 @@ import rasterio.mask
 import rioxarray  # noqa: F401
 import xarray as xr
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger(__name__.replace("darts_", "darts."))
 
 
 def load_vrt(vrt_path: Path, reference_dataset: xr.Dataset) -> xr.DataArray:

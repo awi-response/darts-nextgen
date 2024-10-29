@@ -7,7 +7,7 @@ from pathlib import Path
 import rioxarray  # noqa: F401
 import xarray as xr
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger(__name__.replace("darts_", "darts."))
 
 
 def load_planet_scene(fpath: str | Path) -> xr.Dataset:

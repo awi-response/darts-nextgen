@@ -5,7 +5,7 @@ import os
 import time
 from pathlib import Path
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger(__name__.replace("darts_", "darts."))
 
 
 def create_arcticdem_vrt(dem_data_dir: Path, vrt_target_dir: Path):
