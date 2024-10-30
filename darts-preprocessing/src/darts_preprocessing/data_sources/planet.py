@@ -66,11 +66,12 @@ def load_planet_scene(fpath: str | Path) -> xr.Dataset:
     """
     start_time = time.time()
 
+    # Convert to Path object if a string is provided
+    fpath = fpath if isinstance(fpath, str) else Path(fpath)
+
     # Check if the directory contains a PSOrthoTile or PSScene
     planet_type = parse_planet_type(fpath)
     logger.debug(f"Loading Planet PS {planet_type.capitalize()} from {fpath.resolve()}")
-    # Convert to Path object if a string is provided
-    fpath = fpath if isinstance(fpath, str) else Path(fpath)
 
     # Get imagepath
     try:
@@ -130,15 +131,18 @@ def load_planet_masks(fpath: str | Path) -> xr.Dataset:
 
     """
     start_time = time.time()
-    logger.debug(f"Loading data masks from {fpath.resolve()}")
+
     # Convert to Path object if a string is provided
     fpath = fpath if isinstance(fpath, str) else Path(fpath)
+
+    logger.debug(f"Loading data masks from {fpath.resolve()}")
 
     # Get imagepath
     udm_path = next(fpath.glob("*_udm2.tif"))
     if not udm_path:
         raise FileNotFoundError(f"No matching UDM-2 TIFF files found in {fpath.resolve()} (.glob('*_udm2.tif'))")
 
+    # See udm classes here: https://developers.planet.com/docs/data/udm-2/
     da_udm = xr.open_dataarray(udm_path)
 
     # valid data mask: valid data = 1, no data = 0

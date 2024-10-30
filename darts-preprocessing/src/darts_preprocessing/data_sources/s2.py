@@ -24,9 +24,11 @@ def load_s2_scene(fpath: str | Path) -> xr.Dataset:
 
     """
     start_time = time.time()
-    logger.debug(f"Loading Sentinel 2 scene from {fpath.resolve()}")
+
     # Convert to Path object if a string is provided
     fpath = fpath if isinstance(fpath, str) else Path(fpath)
+
+    logger.debug(f"Loading Sentinel 2 scene from {fpath.resolve()}")
 
     # Get imagepath
     try:
@@ -52,5 +54,43 @@ def load_s2_scene(fpath: str | Path) -> xr.Dataset:
     ]
 
     ds_s2 = xr.merge(datasets)
+    ds_s2.attrs["tile_id"] = fpath.stem
     logger.debug(f"Loaded Sentinel 2 scene in {time.time() - start_time} seconds.")
     return ds_s2
+
+
+def load_s2_masks(fpath: str | Path):
+    start_time = time.time()
+
+    # Convert to Path object if a string is provided
+    fpath = fpath if isinstance(fpath, str) else Path(fpath)
+
+    logger.debug(f"Loading data masks from {fpath.resolve()}")
+
+    scl_path = next(fpath.glob("*_SCL_clip.tif"))
+    if not scl_path:
+        raise FileNotFoundError(f"No matching TIFF files found in {fpath.resolve()} (.glob('*_SCL.tif'))")
+
+    # See scene classes here: https://custom-scripts.sentinel-hub.com/custom-scripts/sentinel-2/scene-classification/
+    da_scl = xr.open_dataarray(scl_path)
+
+    # valid data mask: valid data = 1, no data = 0
+    valid_data_mask = (
+        (1 - da_scl.sel(band=1).fillna(0).isin([0, 1]))
+        .assign_attrs({"data_source": "s2", "long_name": "Valid Data Mask"})
+        .to_dataset(name="valid_data_mask")
+        .drop_vars("band")
+    )
+
+    # quality data mask: high quality = 1, low quality = 0
+    quality_data_mask = (
+        da_scl.sel(band=1)
+        .isin([4, 5, 6])
+        .assign_attrs({"data_source": "s2", "long_name": "Quality Data Mask"})
+        .to_dataset(name="quality_data_mask")
+        .drop_vars("band")
+    )
+
+    qa_ds = xr.merge([valid_data_mask, quality_data_mask])
+    logger.debug(f"Loaded data masks in {time.time() - start_time} seconds.")
+    return qa_ds

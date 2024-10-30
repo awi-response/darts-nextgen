@@ -9,7 +9,7 @@ from darts_acquisition.arcticdem import create_arcticdem_vrt
 from rich.console import Console
 
 from darts import __version__
-from darts.native import run_native_planet_pipeline
+from darts.native import run_native_planet_pipeline, run_native_sentinel2_pipeline
 from darts.utils.config import ConfigParser
 from darts.utils.logging import add_logging_handlers, setup_logging
 
@@ -47,6 +47,7 @@ def hello(name: str, n: int = 1):
 
 
 app.command(group=pipeline_group)(run_native_planet_pipeline)
+app.command(group=pipeline_group)(run_native_sentinel2_pipeline)
 app.command(group=data_group)(create_arcticdem_vrt)
 
 
