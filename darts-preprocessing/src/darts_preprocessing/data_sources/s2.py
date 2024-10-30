@@ -59,7 +59,21 @@ def load_s2_scene(fpath: str | Path) -> xr.Dataset:
     return ds_s2
 
 
-def load_s2_masks(fpath: str | Path):
+def load_s2_masks(fpath: str | Path) -> xr.Dataset:
+    """Load the valid and quality data masks from a Sentinel 2 scene.
+
+    Args:
+        fpath (str | Path): The path to the directory containing the TIFF files.
+
+    Raises:
+        FileNotFoundError: If no matching TIFF file is found in the specified path.
+
+    Returns:
+        xr.Dataset: A merged xarray Dataset containing two data masks:
+            - 'valid_data_mask': A mask indicating valid (1) and no data (0).
+            - 'quality_data_mask': A mask indicating high quality (1) and low quality (0).
+
+    """
     start_time = time.time()
 
     # Convert to Path object if a string is provided

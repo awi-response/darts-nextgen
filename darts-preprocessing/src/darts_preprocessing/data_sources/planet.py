@@ -124,11 +124,6 @@ def load_planet_masks(fpath: str | Path) -> xr.Dataset:
             - 'valid_data_mask': A mask indicating valid (1) and no data (0).
             - 'quality_data_mask': A mask indicating high quality (1) and low quality (0).
 
-    Notes:
-        - The function utilizes the `get_planet_udm2path_from_planet_scene_path`
-          to obtain the path to the UDM (User Data Model) file.
-        - It uses `rasterio` to read the UDM file and `xarray` for handling
-
     """
     start_time = time.time()
 
