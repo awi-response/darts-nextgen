@@ -9,6 +9,6 @@ model-dir = "models"
 
 [darts.segmentation]
 patch-size = 1024
-overlap = 128
+overlap = 256
 batch-size = 2
 reflection = 32
