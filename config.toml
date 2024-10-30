@@ -3,9 +3,15 @@
 ee-project = "your-project-here"
 
 [darts.paths]
-input-data-dir = "data/input"
+orthotiles-dir = "data/input/planet/PSOrthoTile"
+scenes-dir = "data/input/planet/PSScene"
 output-data-dir = "data/output"
 model-dir = "models"
+tcvis-model-name = "RTS_v6_tcvis.pt"
+notcvis-model-name = "RTS_v6_notcvis.pt"
+arcticdem-slope-vrt = "data/input/ArcticDEM/slope.vrt"
+arcticdem-elevation-vrt = "data/input/ArcticDEM/elevation.vrt"
+cache-dir = "data/download"
 
 [darts.segmentation]
 patch-size = 1024

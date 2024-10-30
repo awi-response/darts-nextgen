@@ -27,7 +27,7 @@ def load_vrt(vrt_path: Path, reference_dataset: xr.Dataset) -> xr.DataArray:
 
     """
     if not vrt_path.exists():
-        raise FileNotFoundError(f"Could not find the VRT file at {vrt_path}")
+        raise FileNotFoundError(f"Could not find the VRT file at {vrt_path.resolve()}")
 
     start_time = time.time()
 
@@ -43,15 +43,16 @@ def load_vrt(vrt_path: Path, reference_dataset: xr.Dataset) -> xr.DataArray:
             da.rio.write_crs(reference_dataset.rio.crs, inplace=True)
             da.rio.write_transform(reference_dataset.rio.transform(), inplace=True)
 
-    logger.debug(f"Loaded VRT data from {vrt_path} in {time.time() - start_time} seconds.")
+    logger.debug(f"Loaded VRT data from {vrt_path.resolve()} in {time.time() - start_time} seconds.")
     return da
 
 
-def load_arcticdem(fpath: Path, reference_dataset: xr.Dataset) -> xr.Dataset:
+def load_arcticdem(slope_vrt: Path, elevation_vrt: Path, reference_dataset: xr.Dataset) -> xr.Dataset:
     """Load ArcticDEM data and reproject it to match the reference dataset.
 
     Args:
-        fpath (Path): The path to the ArcticDEM data.
+        slope_vrt (Path): Path to the ArcticDEM slope VRT file.
+        elevation_vrt (Path): Path to the ArcticDEM elevation VRT file.
         reference_dataset (xr.Dataset): The reference dataset to reproject, resampled and cropped the ArcticDEM data to.
 
     Returns:
@@ -60,10 +61,7 @@ def load_arcticdem(fpath: Path, reference_dataset: xr.Dataset) -> xr.Dataset:
 
     """
     start_time = time.time()
-    logger.debug(f"Loading ArcticDEM data from {fpath}")
-
-    slope_vrt = fpath / "slope.vrt"
-    elevation_vrt = fpath / "elevation.vrt"
+    logger.debug(f"Loading ArcticDEM slope from {slope_vrt.resolve()} and elevation from {elevation_vrt.resolve()}")
 
     slope = load_vrt(slope_vrt, reference_dataset)
     slope: xr.Dataset = (

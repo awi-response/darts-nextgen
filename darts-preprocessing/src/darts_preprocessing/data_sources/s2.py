@@ -24,7 +24,7 @@ def load_s2_scene(fpath: str | Path) -> xr.Dataset:
 
     """
     start_time = time.time()
-    logger.debug(f"Loading Sentinel 2 scene from {fpath}")
+    logger.debug(f"Loading Sentinel 2 scene from {fpath.resolve()}")
     # Convert to Path object if a string is provided
     fpath = fpath if isinstance(fpath, str) else Path(fpath)
 
@@ -32,7 +32,7 @@ def load_s2_scene(fpath: str | Path) -> xr.Dataset:
     try:
         s2_image = next(fpath.glob("*_SR_clip.tif"))
     except StopIteration:
-        raise FileNotFoundError(f"No matching TIFF files found in {fpath} (.glob('*_SR_clip.tif'))")
+        raise FileNotFoundError(f"No matching TIFF files found in {fpath.resolve()} (.glob('*_SR_clip.tif'))")
 
     # Define band names and corresponding indices
     s2_da = xr.open_dataarray(s2_image)

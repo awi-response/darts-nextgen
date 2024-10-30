@@ -37,7 +37,7 @@ def parse_planet_type(fpath: Path) -> Literal["orthotile", "scene"]:
     try:
         ps_image_name_parts = next(fpath.glob("*_SR.tif")).split("_")
     except StopIteration:
-        raise FileNotFoundError(f"No matching TIFF files found in {fpath} (.glob('*_SR.tif'))")
+        raise FileNotFoundError(f"No matching TIFF files found in {fpath.resolve()} (.glob('*_SR.tif'))")
 
     if len(ps_image_name_parts) == 6:  # PSOrthoTile
         _, tile_id, _, _, _, _ = ps_image_name_parts
@@ -68,7 +68,7 @@ def load_planet_scene(fpath: str | Path) -> xr.Dataset:
 
     # Check if the directory contains a PSOrthoTile or PSScene
     planet_type = parse_planet_type(fpath)
-    logger.debug(f"Loading Planet PS {planet_type.capitalize()} from {fpath}")
+    logger.debug(f"Loading Planet PS {planet_type.capitalize()} from {fpath.resolve()}")
     # Convert to Path object if a string is provided
     fpath = fpath if isinstance(fpath, str) else Path(fpath)
 
@@ -76,7 +76,7 @@ def load_planet_scene(fpath: str | Path) -> xr.Dataset:
     try:
         ps_image = next(fpath.glob("*_SR.tif"))
     except StopIteration:
-        raise FileNotFoundError(f"No matching TIFF files found in {fpath} (.glob('*_SR.tif'))")
+        raise FileNotFoundError(f"No matching TIFF files found in {fpath.resolve()} (.glob('*_SR.tif'))")
 
     # Define band names and corresponding indices
     planet_da = xr.open_dataarray(ps_image)
@@ -130,14 +130,14 @@ def load_planet_masks(fpath: str | Path) -> xr.Dataset:
 
     """
     start_time = time.time()
-    logger.debug(f"Loading data masks from {fpath}")
+    logger.debug(f"Loading data masks from {fpath.resolve()}")
     # Convert to Path object if a string is provided
     fpath = fpath if isinstance(fpath, str) else Path(fpath)
 
     # Get imagepath
     udm_path = next(fpath.glob("*_udm2.tif"))
     if not udm_path:
-        raise FileNotFoundError(f"No matching UDM-2 TIFF files found in {fpath} (.glob('*_udm2.tif'))")
+        raise FileNotFoundError(f"No matching UDM-2 TIFF files found in {fpath.resolve()} (.glob('*_udm2.tif'))")
 
     da_udm = xr.open_dataarray(udm_path)
 

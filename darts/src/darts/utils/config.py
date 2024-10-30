@@ -73,7 +73,7 @@ class ConfigParser:
             file_path = Path(file_path)
 
         if not file_path.exists():
-            raise FileNotFoundError(f"Config file '{file_path}' not found.")
+            raise FileNotFoundError(f"Config file '{file_path.resolve()}' not found.")
 
         with file_path.open("rb") as f:
             config = tomllib.load(f)["darts"]

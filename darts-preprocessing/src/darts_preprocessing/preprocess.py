@@ -11,13 +11,14 @@ from darts_preprocessing.engineering.indices import calculate_ndvi
 
 
 def load_and_preprocess_planet_scene(
-    planet_scene_path: Path, arcticdem_dir: Path, cache_dir: Path | None = None
+    planet_scene_path: Path, slope_vrt: Path, elevation_vrt: Path, cache_dir: Path | None = None
 ) -> xr.Dataset:
     """Load and preprocess a Planet Scene (PSOrthoTile or PSScene) into an xr.Dataset.
 
     Args:
         planet_scene_path (Path): path to the Planet Scene
-        arcticdem_dir (Path): path to the ArcticDEM directory
+        slope_vrt (Path): path to the ArcticDEM slope VRT file
+        elevation_vrt (Path): path to the ArcticDEM elevation VRT file
         cache_dir (Path | None): The cache directory. If None, no caching will be used. Defaults to None.
 
     Returns:
@@ -55,7 +56,7 @@ def load_and_preprocess_planet_scene(
 
             fpath = Path("data/input/planet/PSOrthoTile/4372514/5790392_4372514_2022-07-16_2459")
             arcticdem_dir = input_data_dir / "ArcticDEM"
-            tile = load_and_preprocess_planet_scene(fpath, arcticdem_dir)
+            tile = load_and_preprocess_planet_scene(fpath, arcticdem_dir / "slope.vrt", arcticdem_dir / "elevation.vrt")
         ```
 
 
@@ -90,7 +91,7 @@ def load_and_preprocess_planet_scene(
 
             fpath = Path("data/input/planet/PSOrthoTile/20230703_194241_43_2427")
             arcticdem_dir = input_data_dir / "ArcticDEM"
-            tile = load_and_preprocess_planet_scene(fpath, arcticdem_dir)
+            tile = load_and_preprocess_planet_scene(fpath, arcticdem_dir / "slope.vrt", arcticdem_dir / "elevation.vrt")
         ```
 
     """
@@ -100,7 +101,7 @@ def load_and_preprocess_planet_scene(
     # calculate xr.dataset ndvi
     ds_ndvi = calculate_ndvi(ds_planet)
 
-    ds_articdem = load_arcticdem(arcticdem_dir, ds_planet)
+    ds_articdem = load_arcticdem(slope_vrt, elevation_vrt, ds_planet)
 
     ds_tcvis = load_tcvis(ds_planet, cache_dir)
 

@@ -54,7 +54,7 @@ def load_tcvis(reference_dataset: xr.Dataset, cache_dir: Path | None = None) -> 
     # Try to load from cache - else from Google Earth Engine
     cache_fname = f"tcvis_{reference_dataset.attrs['tile_id']}.nc"
     if cache_dir is not None and (cache_dir / cache_fname).exists():
-        logger.debug(f"Loading cached TCVis from {cache_dir / cache_fname}")
+        logger.debug(f"Loading cached TCVis from {(cache_dir / cache_fname).resolve()}")
         return xr.open_dataset(cache_dir / cache_fname, engine="h5netcdf")
 
     logger.debug("Loading TCVis from Google Earth Engine, since no cache was found")
@@ -103,7 +103,7 @@ def load_tcvis(reference_dataset: xr.Dataset, cache_dir: Path | None = None) -> 
 
     # Save to cache
     if cache_dir is not None:
-        logger.debug(f"Saving TCVis to cache to {cache_dir / cache_fname}")
+        logger.debug(f"Saving TCVis to cache to {(cache_dir / cache_fname).resolve()}")
         cache_dir.mkdir(parents=True, exist_ok=True)
         ds.to_netcdf(cache_dir / cache_fname, engine="h5netcdf")
 

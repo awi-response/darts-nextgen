@@ -3,10 +3,16 @@
 from pathlib import Path
 
 
-def run_native_orthotile_pipeline(
-    input_data_dir: Path,
+def run_native_planet_pipeline(
+    orthotiles_dir: Path,
+    scenes_dir: Path,
     output_data_dir: Path,
+    arcticdem_slope_vrt: Path,
+    arcticdem_elevation_vrt: Path,
     model_dir: Path,
+    tcvis_model_name: str = "RTS_v6_tcvis.pt",
+    notcvis_model_name: str = "RTS_v6_notcvis.pt",
+    cache_dir: Path | None = None,
     ee_project: str | None = None,
     patch_size: int = 1024,
     overlap: int = 16,
@@ -16,9 +22,15 @@ def run_native_orthotile_pipeline(
     """Search for all PlanetScope scenes in the given directory and runs the segmentation pipeline on them.
 
     Args:
-        input_data_dir (Path): The "input" directory.
+        orthotiles_dir (Path): The directory containing the PlanetScope orthotiles.
+        scenes_dir (Path): The directory containing the PlanetScope scenes.
         output_data_dir (Path): The "output" directory.
+        arcticdem_slope_vrt (Path): The path to the ArcticDEM slope VRT file.
+        arcticdem_elevation_vrt (Path): The path to the ArcticDEM elevation VRT file.
         model_dir (Path): The path to the models to use for segmentation.
+        tcvis_model_name (str, optional): The name of the model to use for TCVis. Defaults to "RTS_v6_tcvis.pt".
+        notcvis_model_name (str, optional): The name of the model to use for not TCVis. Defaults to "RTS_v6_notcvis.pt".
+        cache_dir (Path | None, optional): The cache directory. If None, no caching will be used. Defaults to None.
         ee_project (str, optional): The Earth Engine project ID or number to use. May be omitted if
             project is defined within persistent API credentials obtained via `earthengine authenticate`.
         patch_size (int, optional): The patch size to use for inference. Defaults to 1024.
@@ -40,17 +52,15 @@ def run_native_orthotile_pipeline(
 
     init_ee(ee_project)
 
-    arcticdem_dir = input_data_dir / "ArcticDEM"
-
     # Find all PlanetScope orthotiles
-    for fpath in (input_data_dir / "planet" / "PSOrthoTile").glob("*/*/"):
+    for fpath in orthotiles_dir.glob("*/*/"):
         tile_id = fpath.parent.name
         scene_id = fpath.name
         outpath = output_data_dir / tile_id / scene_id
 
-        tile = load_and_preprocess_planet_scene(fpath, arcticdem_dir)
+        tile = load_and_preprocess_planet_scene(fpath, arcticdem_slope_vrt, arcticdem_elevation_vrt, cache_dir)
 
-        ensemble = EnsembleV1(model_dir / "RTS_v6_tcvis.pt", model_dir / "RTS_v6_notcvis.pt")
+        ensemble = EnsembleV1(model_dir / tcvis_model_name, model_dir / notcvis_model_name)
         tile = ensemble.segment_tile(
             tile, patch_size=patch_size, overlap=overlap, batch_size=batch_size, reflection=reflection
         )
@@ -63,13 +73,13 @@ def run_native_orthotile_pipeline(
         writer.export_polygonized(outpath)
 
     # Find all PlanetScope scenes
-    for fpath in (input_data_dir / "planet" / "PSScene").glob("*/"):
+    for fpath in scenes_dir.glob("*/"):
         scene_id = fpath.name
         outpath = output_data_dir / scene_id
 
-        tile = load_and_preprocess_planet_scene(fpath, arcticdem_dir)
+        tile = load_and_preprocess_planet_scene(fpath, arcticdem_slope_vrt, arcticdem_elevation_vrt, cache_dir)
 
-        ensemble = EnsembleV1(model_dir / "RTS_v6_tcvis.pt", model_dir / "RTS_v6_notcvis.pt")
+        ensemble = EnsembleV1(model_dir / tcvis_model_name, model_dir / notcvis_model_name)
         tile = ensemble.segment_tile(
             tile, patch_size=patch_size, overlap=overlap, batch_size=batch_size, reflection=reflection
         )
