@@ -10,14 +10,14 @@ import ee
 logger = logging.getLogger(__name__)
 
 
-def init_ee(project: str):
+def init_ee(project: str | None = None) -> None:
     """Initialize Earth Engine. Authenticate if necessary.
 
     Args:
         project (str): The project name.
 
     """
-    logger.debug("Initializing Earth Engine")
+    logger.debug(f"Initializing Earth Engine with project {project}")
     try:
         ee.Initialize(project=project)
         # geemap.ee_initialize(project=project, opt_url="https://earthengine-highvolume.googleapis.com")

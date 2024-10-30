@@ -24,24 +24,27 @@ def load_and_preprocess_planet_scene(
         xr.Dataset: preprocessed Planet Scene
 
     Examples:
+        ### PS Orthotile
+
         Data directory structure:
 
         ```sh
             data/input
+            ├── ArcticDEM
+            │   ├── elevation.vrt
+            │   ├── slope.vrt
+            │   ├── relative_elevation
+            │   │   └── 4372514_relative_elevation_100.tif
+            │   └── slope
+            │       └── 4372514_slope.tif
             └── planet
-                ├── ArcticDEM
-                │   ├── relative_elevation
-                │   │   └── 4372514_relative_elevation_100.tif
-                │   └── slope
-                │       └── 4372514_slope.tif
-                └── planet
-                    └── PSOrthoTile
-                        └── 4372514/5790392_4372514_2022-07-16_2459
-                            ├── 5790392_4372514_2022-07-16_2459_BGRN_Analytic_metadata.xml
-                            ├── 5790392_4372514_2022-07-16_2459_BGRN_DN_udm.tif
-                            ├── 5790392_4372514_2022-07-16_2459_BGRN_SR.tif
-                            ├── 5790392_4372514_2022-07-16_2459_metadata.json
-                            ├── 5790392_4372514_2022-07-16_2459_udm2.tif
+                └── PSOrthoTile
+                    └── 4372514/5790392_4372514_2022-07-16_2459
+                        ├── 5790392_4372514_2022-07-16_2459_BGRN_Analytic_metadata.xml
+                        ├── 5790392_4372514_2022-07-16_2459_BGRN_DN_udm.tif
+                        ├── 5790392_4372514_2022-07-16_2459_BGRN_SR.tif
+                        ├── 5790392_4372514_2022-07-16_2459_metadata.json
+                        └── 5790392_4372514_2022-07-16_2459_udm2.tif
         ```
 
         Load and preprocess a Planet Scene:
@@ -50,12 +53,47 @@ def load_and_preprocess_planet_scene(
             from pathlib import Path
             from darts_preprocessing.preprocess import load_and_preprocess_planet_scene
 
-            fpath = Path("data/input/planet/planet/PSOrthoTile/4372514/5790392_4372514_2022-07-16_2459")
-            arcticdem_dir = input_data_dir / "ArcticDEM" / "relative_elevation" / f"{scene_id}_relative_elevation_100.tif"
+            fpath = Path("data/input/planet/PSOrthoTile/4372514/5790392_4372514_2022-07-16_2459")
+            arcticdem_dir = input_data_dir / "ArcticDEM"
             tile = load_and_preprocess_planet_scene(fpath, arcticdem_dir)
         ```
 
-    """  # noqa: E501
+
+        ### PS Scene
+
+        Data directory structure:
+
+        ```sh
+            data/input
+            ├── ArcticDEM
+            │   ├── elevation.vrt
+            │   ├── slope.vrt
+            │   ├── relative_elevation
+            │   │   └── 4372514_relative_elevation_100.tif
+            │   └── slope
+            │       └── 4372514_slope.tif
+            └── planet
+                └── PSScene
+                    └── 20230703_194241_43_2427
+                        ├── 20230703_194241_43_2427_3B_AnalyticMS_metadata.xml
+                        ├── 20230703_194241_43_2427_3B_AnalyticMS_SR.tif
+                        ├── 20230703_194241_43_2427_3B_udm2.tif
+                        ├── 20230703_194241_43_2427_metadata.json
+                        └── 20230703_194241_43_2427.json
+        ```
+
+        Load and preprocess a Planet Scene:
+
+        ```python
+            from pathlib import Path
+            from darts_preprocessing.preprocess import load_and_preprocess_planet_scene
+
+            fpath = Path("data/input/planet/PSOrthoTile/20230703_194241_43_2427")
+            arcticdem_dir = input_data_dir / "ArcticDEM"
+            tile = load_and_preprocess_planet_scene(fpath, arcticdem_dir)
+        ```
+
+    """
     # load planet scene
     ds_planet = load_planet_scene(planet_scene_path)
 

@@ -52,7 +52,7 @@ def load_tcvis(reference_dataset: xr.Dataset, cache_dir: Path | None = None) -> 
     start_time = time.time()
 
     # Try to load from cache - else from Google Earth Engine
-    cache_fname = f"tcvis_{reference_dataset.attrs['scene_id']}.nc"
+    cache_fname = f"tcvis_{reference_dataset.attrs['tile_id']}.nc"
     if cache_dir is not None and (cache_dir / cache_fname).exists():
         logger.debug(f"Loading cached TCVis from {cache_dir / cache_fname}")
         return xr.open_dataset(cache_dir / cache_fname, engine="h5netcdf")

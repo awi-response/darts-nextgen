@@ -3,11 +3,52 @@
 import logging
 import time
 from pathlib import Path
+from typing import Literal
 
 import rioxarray  # noqa: F401
 import xarray as xr
 
 logger = logging.getLogger(__name__.replace("darts_", "darts."))
+
+
+def parse_planet_type(fpath: Path) -> Literal["orthotile", "scene"]:
+    """Parse the type of Planet data from the file path.
+
+    Args:
+        fpath (Path): The file path to the Planet data.
+
+    Returns:
+        Literal["orthotile", "scene"]: The type of Planet data.
+
+    Raises:
+        FileNotFoundError: If no matching TIFF file is found in the specified path.
+        ValueError: If the Planet data type cannot be parsed from the file path.
+
+    """
+    # Check if the directory parents contains a "PSOrthoTile" or "PSScene"
+    if "PSOrthoTile" == fpath.parent.parent.stem:
+        return "orthotile"
+    elif "PSScene" == fpath.parent.stem:
+        return "scene"
+
+    # If not suceeds, check if the directory contains a file with id of the parent directory
+
+    # Get imagepath
+    try:
+        ps_image_name_parts = next(fpath.glob("*_SR.tif")).split("_")
+    except StopIteration:
+        raise FileNotFoundError(f"No matching TIFF files found in {fpath} (.glob('*_SR.tif'))")
+
+    if len(ps_image_name_parts) == 6:  # PSOrthoTile
+        _, tile_id, _, _, _, _ = ps_image_name_parts
+        if tile_id == fpath.parent.stem:
+            return "orthotile"
+        else:
+            raise ValueError(f"Could not parse Planet data type from {fpath}")
+    elif len(ps_image_name_parts) == 7:  # PSScene
+        return "scene"
+    else:
+        raise ValueError(f"Could not parse Planet data type from {fpath}")
 
 
 def load_planet_scene(fpath: str | Path) -> xr.Dataset:
@@ -24,7 +65,10 @@ def load_planet_scene(fpath: str | Path) -> xr.Dataset:
 
     """
     start_time = time.time()
-    logger.debug(f"Loading Planet scene from {fpath}")
+
+    # Check if the directory contains a PSOrthoTile or PSScene
+    planet_type = parse_planet_type(fpath)
+    logger.debug(f"Loading Planet PS {planet_type.capitalize()} from {fpath}")
     # Convert to Path object if a string is provided
     fpath = fpath if isinstance(fpath, str) else Path(fpath)
 
@@ -42,7 +86,14 @@ def load_planet_scene(fpath: str | Path) -> xr.Dataset:
     # Create a list to hold datasets
     datasets = [
         planet_da.sel(band=index)
-        .assign_attrs({"data_source": "planet", "long_name": f"PLANET {name.capitalize()}", "units": "Reflectance"})
+        .assign_attrs(
+            {
+                "data_source": "planet",
+                "planet_type": planet_type,
+                "long_name": f"PLANET {name.capitalize()}",
+                "units": "Reflectance",
+            }
+        )
         .fillna(0)
         .rio.write_nodata(0)
         .astype("uint16")
@@ -53,7 +104,7 @@ def load_planet_scene(fpath: str | Path) -> xr.Dataset:
 
     # Merge all datasets into one
     ds_planet = xr.merge(datasets)
-    ds_planet.attrs["scene_id"] = fpath.stem
+    ds_planet.attrs["tile_id"] = fpath.parent.stem if planet_type == "orthotile" else fpath.stem
     logger.debug(f"Loaded Planet scene in {time.time() - start_time} seconds.")
     return ds_planet
 

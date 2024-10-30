@@ -7,7 +7,7 @@ def run_native_orthotile_pipeline(
     input_data_dir: Path,
     output_data_dir: Path,
     model_dir: Path,
-    ee_project: str = None,
+    ee_project: str | None = None,
     patch_size: int = 1024,
     overlap: int = 16,
     batch_size: int = 8,
@@ -42,9 +42,29 @@ def run_native_orthotile_pipeline(
 
     arcticdem_dir = input_data_dir / "ArcticDEM"
 
-    # Find all PlanetScope scenes
+    # Find all PlanetScope orthotiles
     for fpath in (input_data_dir / "planet" / "PSOrthoTile").glob("*/*/"):
-        scene_id = fpath.parent.name
+        tile_id = fpath.parent.name
+        scene_id = fpath.name
+        outpath = output_data_dir / tile_id / scene_id
+
+        tile = load_and_preprocess_planet_scene(fpath, arcticdem_dir)
+
+        ensemble = EnsembleV1(model_dir / "RTS_v6_tcvis.pt", model_dir / "RTS_v6_notcvis.pt")
+        tile = ensemble.segment_tile(
+            tile, patch_size=patch_size, overlap=overlap, batch_size=batch_size, reflection=reflection
+        )
+        tile = prepare_export(tile)
+
+        outpath.mkdir(parents=True, exist_ok=True)
+        writer = InferenceResultWriter(tile)
+        writer.export_probabilities(outpath)
+        writer.export_binarized(outpath)
+        writer.export_polygonized(outpath)
+
+    # Find all PlanetScope scenes
+    for fpath in (input_data_dir / "planet" / "PSScene").glob("*/"):
+        scene_id = fpath.name
         outpath = output_data_dir / scene_id
 
         tile = load_and_preprocess_planet_scene(fpath, arcticdem_dir)
