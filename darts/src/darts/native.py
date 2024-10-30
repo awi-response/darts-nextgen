@@ -7,7 +7,7 @@ def run_native_orthotile_pipeline(
     input_data_dir: Path,
     output_data_dir: Path,
     model_dir: Path,
-    ee_project: str,
+    ee_project: str = None,
     patch_size: int = 1024,
     overlap: int = 16,
     batch_size: int = 8,
@@ -19,7 +19,8 @@ def run_native_orthotile_pipeline(
         input_data_dir (Path): The "input" directory.
         output_data_dir (Path): The "output" directory.
         model_dir (Path): The path to the models to use for segmentation.
-        ee_project (str): The Earth Engine project to use.
+        ee_project (str, optional): The Earth Engine project ID or number to use. May be omitted if
+            project is defined within persistent API credentials obtained via `earthengine authenticate`.
         patch_size (int, optional): The patch size to use for inference. Defaults to 1024.
         overlap (int, optional): The overlap to use for inference. Defaults to 16.
         batch_size (int, optional): The batch size to use for inference. Defaults to 8.
