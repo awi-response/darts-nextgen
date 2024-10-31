@@ -1,6 +1,7 @@
 """Entrypoint for the darts-pipeline CLI."""
 
 import logging
+import sys
 from pathlib import Path
 from typing import Annotated
 
@@ -60,6 +61,7 @@ def launcher(  # noqa: D103
 ):
     command, bound = app.parse_args(tokens)
     add_logging_handlers(command.__name__, console, log_dir)
+    logger.debug(f"Running on Python version {sys.version}")
     return command(*bound.args, **bound.kwargs)
 
 

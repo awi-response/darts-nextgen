@@ -1,11 +1,41 @@
 """ArcticDEM related data loading."""
 
+import io
 import logging
 import os
 import time
+import zipfile
 from pathlib import Path
 
+import requests
+
 logger = logging.getLogger(__name__.replace("darts_", "darts."))
+
+
+def download_arcticdem_extend(dem_data_dir: Path):
+    """Download the gdal ArcticDEM extend data from the provided URL and extracts it to the specified directory.
+
+    Args:
+        dem_data_dir (Path): The directory where the extracted data will be saved.
+
+    """
+    start = time.time()
+    url = "https://data.pgc.umn.edu/elev/dem/setsm/ArcticDEM/indexes/ArcticDEM_Mosaic_Index_latest_gpqt.zip"
+    logger.info(f"Downloading the gdal arcticdem extend from {url} to {dem_data_dir.resolve()}")
+    response = requests.get(url)
+
+    # Get the downloaded data as a byte string
+    data = response.content
+
+    # Create a bytesIO object
+    buffer = io.BytesIO(data)
+
+    # Create a zipfile.ZipFile object and extract the files to a directory
+    dem_data_dir.mkdir(parents=True, exist_ok=True)
+    with zipfile.ZipFile(buffer, "r") as zip_ref:
+        zip_ref.extractall(dem_data_dir)
+
+    logger.info(f"Download completed in {time.time() - start:.2f} seconds")
 
 
 def create_arcticdem_vrt(dem_data_dir: Path, vrt_target_dir: Path):
@@ -20,7 +50,7 @@ def create_arcticdem_vrt(dem_data_dir: Path, vrt_target_dir: Path):
 
     """
     start_time = time.time()
-    logger.debug(f"Creating ArcticDEM VRT file at {vrt_target_dir} based on {dem_data_dir}.")
+    logger.debug(f"Creating ArcticDEM VRT file at {vrt_target_dir.resolve()} based on {dem_data_dir.resolve()}")
 
     try:
         from osgeo import gdal
@@ -57,11 +87,11 @@ def create_arcticdem_vrt(dem_data_dir: Path, vrt_target_dir: Path):
         # check the file first if we can write to it
 
         ds_path = dem_data_dir / subdir
-        filelist = [str(f.absolute().resolve()) for f in ds_path.glob("*.tif")]
+        filelist = [str(f.resolve()) for f in ds_path.glob("*.tif")]
         logger.debug(f"Found {len(filelist)} files for {name} at {ds_path}.")
-        logger.debug(f"Writing VRT to '{output_file_path}'")
+        logger.debug(f"Writing VRT to '{output_file_path.resolve()}'")
         src_nodata = "nan" if name == "slope" else 0
         opt = gdal.BuildVRTOptions(srcNodata=src_nodata, VRTNodata=0)
-        gdal.BuildVRT(str(output_file_path.absolute()), filelist, options=opt)
+        gdal.BuildVRT(str(output_file_path.resolve()), filelist, options=opt)
 
     logger.debug(f"Creation of VRT took {time.time() - start_time:.2f}s")
