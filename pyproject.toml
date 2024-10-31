@@ -50,6 +50,7 @@ cuda12 = [
     "cupy-cuda12x>=13.3.0",
     "cucim-cu12==24.8.*",
 ]
+gdal393 = ["gdal==3.9.3"]
 gdal39 = ["gdal==3.9.2"]
 gdal38 = ["gdal==3.8.5"]
 gdal384 = ["gdal==3.8.4"]
