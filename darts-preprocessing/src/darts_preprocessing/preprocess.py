@@ -170,7 +170,7 @@ def load_and_preprocess_sentinel2_scene(
     ds_tcvis = load_tcvis(ds_s2, cache_dir)
 
     # load scl
-    ds_data_masks = load_s2_masks(s2_scene_path)
+    ds_data_masks = load_s2_masks(s2_scene_path, ds_s2)
 
     # merge to final dataset
     ds_merged = xr.merge([ds_s2, ds_ndvi, ds_articdem, ds_tcvis, ds_data_masks])

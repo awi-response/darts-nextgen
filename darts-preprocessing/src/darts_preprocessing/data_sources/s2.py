@@ -4,6 +4,8 @@ import logging
 import time
 from pathlib import Path
 
+import rasterio
+import rasterio.enums
 import rioxarray  # noqa: F401
 import xarray as xr
 
@@ -59,11 +61,12 @@ def load_s2_scene(fpath: str | Path) -> xr.Dataset:
     return ds_s2
 
 
-def load_s2_masks(fpath: str | Path) -> xr.Dataset:
+def load_s2_masks(fpath: str | Path, reference_dataset: xr.Dataset) -> xr.Dataset:
     """Load the valid and quality data masks from a Sentinel 2 scene.
 
     Args:
         fpath (str | Path): The path to the directory containing the TIFF files.
+        reference_dataset (xr.Dataset): The reference dataset to reproject, resampled and cropped the masks data to.
 
     Raises:
         FileNotFoundError: If no matching TIFF file is found in the specified path.
@@ -87,6 +90,8 @@ def load_s2_masks(fpath: str | Path) -> xr.Dataset:
 
     # See scene classes here: https://custom-scripts.sentinel-hub.com/custom-scripts/sentinel-2/scene-classification/
     da_scl = xr.open_dataarray(scl_path)
+
+    da_scl = da_scl.rio.reproject_match(reference_dataset, sampling=rasterio.enums.Resampling.nearest)
 
     # valid data mask: valid data = 1, no data = 0
     valid_data_mask = (
