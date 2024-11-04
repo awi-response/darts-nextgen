@@ -51,15 +51,15 @@ class EnsembleV1:
         tcvis_probabilities = self.rts_v6_tcvis_model.segment_tile(
             tile, patch_size=patch_size, overlap=overlap, batch_size=batch_size, reflection=reflection
         )["probabilities"].copy()
-        notcvis_propabilities = self.rts_v6_notcvis_model.segment_tile(
+        notcvis_probabilities = self.rts_v6_notcvis_model.segment_tile(
             tile, patch_size=patch_size, overlap=overlap, batch_size=batch_size, reflection=reflection
         )["probabilities"].copy()
 
-        tile["probabilities"] = (tcvis_probabilities + notcvis_propabilities) / 2
+        tile["probabilities"] = (tcvis_probabilities + notcvis_probabilities) / 2
 
         if keep_inputs:
             tile["probabilities-tcvis"] = tcvis_probabilities
-            tile["probabilities-notcvis"] = notcvis_propabilities
+            tile["probabilities-notcvis"] = notcvis_probabilities
 
         return tile
 
