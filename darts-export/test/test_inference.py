@@ -78,3 +78,37 @@ def test_writeVectorsComplex(probabilities_2: Dataset, tmp_path: Path):
         else:
             gdf = gpd.read_file(tmp_path / f"pred_segments.{suffix}")
         assert gdf.shape == (4, len(POLYGONOUTPUT_EXPECTED_COLUMNS))
+
+
+def test_writeProbabilitiesWithSubmodels(ensemble_submodel_dataset, tmp_path):
+    ds = inference.InferenceResultWriter(ensemble_submodel_dataset)
+    res = ds.export_probabilities(tmp_path)
+
+    assert res.is_file()
+
+    assert (tmp_path / (res.stem + "-notcvis.tif")).is_file()
+    assert (tmp_path / (res.stem + "-tcvis.tif")).is_file()
+
+
+def test_writeBinarizedWithSubmodels(ensemble_submodel_dataset, tmp_path):
+    ds = inference.InferenceResultWriter(ensemble_submodel_dataset)
+    res = ds.export_binarized(tmp_path)
+
+    assert res.is_file()
+
+    assert (tmp_path / (res.stem + "-notcvis.tif")).is_file()
+    assert (tmp_path / (res.stem + "-tcvis.tif")).is_file()
+
+
+def test_writeVectorsWithSubmodels(ensemble_submodel_dataset, tmp_path):
+    ds = inference.InferenceResultWriter(ensemble_submodel_dataset)
+    ds.export_polygonized(tmp_path)
+
+    assert (tmp_path / "pred_segments.parquet").is_file()
+    assert (tmp_path / "pred_segments-notcvis.parquet").is_file()
+    assert (tmp_path / "pred_segments-tcvis.parquet").is_file()
+    assert (tmp_path / "pred_segments.gpkg").is_file()
+
+    t = gpd.list_layers(tmp_path / "pred_segments.gpkg")
+
+    assert set(t.name) == {"pred_segments", "pred_segments (TCVIS)", "pred_segments (NOTCVIS)"}

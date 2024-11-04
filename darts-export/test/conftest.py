@@ -57,3 +57,16 @@ def probabilities_2():
     nd_prob_cluster[12:15, 84:87] = 110
 
     return _create_dataset(nd_prob_cluster, binarization_threshold=50)
+
+
+@pytest.fixture
+def ensemble_submodel_dataset(probabilities_2):
+    ensemble_ds = probabilities_2
+
+    ensemble_ds["probabilities-tcvis"] = ensemble_ds["probabilities"].copy()
+    ensemble_ds["probabilities-notcvis"] = ensemble_ds["probabilities"].copy()
+
+    ensemble_ds["binarized_segmentation-tcvis"] = ensemble_ds["binarized_segmentation"].copy()
+    ensemble_ds["binarized_segmentation-notcvis"] = ensemble_ds["binarized_segmentation"].copy()
+
+    return ensemble_ds

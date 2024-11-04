@@ -44,6 +44,7 @@ def run_native_planet_pipeline(
     overlap: int = 16,
     batch_size: int = 8,
     reflection: int = 0,
+    write_model_outputs: bool = False,
 ):
     """Search for all PlanetScope scenes in the given directory and runs the segmentation pipeline on them.
 
@@ -63,6 +64,8 @@ def run_native_planet_pipeline(
         overlap (int, optional): The overlap to use for inference. Defaults to 16.
         batch_size (int, optional): The batch size to use for inference. Defaults to 8.
         reflection (int, optional): The reflection padding to use for inference. Defaults to 0.
+        write_model_outputs (bool, optional): Also save the model outputs, not only the ensemble result.
+            Defaults to False.
 
     Todo:
         Document the structure of the input data dir.
@@ -84,7 +87,12 @@ def run_native_planet_pipeline(
 
         ensemble = EnsembleV1(model_dir / tcvis_model_name, model_dir / notcvis_model_name)
         tile = ensemble.segment_tile(
-            tile, patch_size=patch_size, overlap=overlap, batch_size=batch_size, reflection=reflection
+            tile,
+            patch_size=patch_size,
+            overlap=overlap,
+            batch_size=batch_size,
+            reflection=reflection,
+            keep_inputs=write_model_outputs,
         )
         tile = prepare_export(tile)
 
@@ -109,6 +117,7 @@ def run_native_sentinel2_pipeline(
     overlap: int = 16,
     batch_size: int = 8,
     reflection: int = 0,
+    write_model_outputs: bool = False,
 ):
     """Search for all PlanetScope scenes in the given directory and runs the segmentation pipeline on them.
 
@@ -127,6 +136,8 @@ def run_native_sentinel2_pipeline(
         overlap (int, optional): The overlap to use for inference. Defaults to 16.
         batch_size (int, optional): The batch size to use for inference. Defaults to 8.
         reflection (int, optional): The reflection padding to use for inference. Defaults to 0.
+        write_model_outputs (bool, optional): Also save the model outputs, not only the ensemble result.
+            Defaults to False.
 
     Todo:
         Document the structure of the input data dir.
@@ -150,7 +161,12 @@ def run_native_sentinel2_pipeline(
 
         ensemble = EnsembleV1(model_dir / tcvis_model_name, model_dir / notcvis_model_name)
         tile = ensemble.segment_tile(
-            tile, patch_size=patch_size, overlap=overlap, batch_size=batch_size, reflection=reflection
+            tile,
+            patch_size=patch_size,
+            overlap=overlap,
+            batch_size=batch_size,
+            reflection=reflection,
+            keep_inputs=write_model_outputs,
         )
         tile = prepare_export(tile)
 
