@@ -5,9 +5,9 @@ from collections import OrderedDict
 import torch
 import torch.nn as nn
 
-import darts_superresolution.model.networks as networks
-from darts_superresolution.model.base_model import BaseModel
-from darts_superresolution.model.scheduler import CosineAnnealingWithDecay
+import networks as networks
+from model.base_model import BaseModel
+from model.scheduler import CosineAnnealingWithDecay
 
 logger = logging.getLogger(__name__)
 

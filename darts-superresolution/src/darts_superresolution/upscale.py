@@ -8,8 +8,8 @@ import numpy as np
 import torch
 import xarray as xr
 
-from darts_superresolution.data_processing.patching import create_patches_from_tile
-from darts_superresolution.model import GaussianDiffusion, define_net
+from data_processing.patching import create_patches_from_tile
+from model import GaussianDiffusion, define_net
 
 logger = logging.getLogger(__name__)
 
@@ -56,6 +56,7 @@ class Sentinel2Upscaler:
         logger.debug(f"Loading model from {model_checkpoint}")
         self.device = torch.device("cpu") if not torch.cuda.is_available() else torch.device("cuda")
         ckpt = torch.load(model_checkpoint, map_location=self.device)
+        print(ckpt["config"])
         self.config = validate_config(ckpt["config"])
         self.config["phase"] = "eval"
         logger.debug(f"Loaded config: {self.config}")
@@ -89,6 +90,7 @@ class Sentinel2Upscaler:
         tensor_tile = tensor_tile.unsqueeze(0)
 
         upsampled_data = create_patches_from_tile(tensor_tile).to(self.device)
+
         output = self.model.super_resolution(upsampled_data, continous=True)[-1]  # c, h, w
         output = output.cpu().detach()
 
@@ -102,7 +104,10 @@ class Sentinel2Upscaler:
         output[3, :, :] = (output[3, :, :] * (4553 - 83)) + 83
 
         output = output.numpy().astype(np.uint16)
-        for i, feature_name in enumerate(["red", "green", "blue", "nir"]):
-            tile[feature_name] = tile[feature_name].copy(data=output[i, :, :])
+
+        # This bit still throws an error because lr and sr do not match in shape, should be easy to fix.
+
+        # for i, feature_name in enumerate(["red", "green", "blue", "nir"]):
+        #     tile[feature_name] = tile[feature_name].copy(data=output[i, :, :])
 
         return output

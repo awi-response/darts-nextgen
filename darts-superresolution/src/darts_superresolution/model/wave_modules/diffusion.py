@@ -119,6 +119,8 @@ class GaussianDiffusion(nn.Module):
             pass
             # self.set_new_noise_schedule(schedule_opt)
 
+        print("Channels: ", self.channels)
+
     def set_loss(self, device):
         if self.loss_type == "l1":
             self.loss_func = nn.L1Loss(reduction="sum").to(device)
@@ -265,6 +267,7 @@ class GaussianDiffusion(nn.Module):
 
     @torch.no_grad()
     def super_resolution(self, x_in, continous=False, sample_inter=None):
+        #print("Shape 4: ", x_in.shape)
         logger.debug(f"Super resolution for {x_in.shape} with continous={continous}")
         return self.p_sample_loop(x_in, continous, sample_inter)
 

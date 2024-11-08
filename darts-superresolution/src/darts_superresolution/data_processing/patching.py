@@ -5,7 +5,7 @@ import logging
 import torch
 import torch.nn.functional as F  # noqa: N812
 
-from darts_superresolution.data_processing.util import transform_augment_tensor
+from data_processing.util import transform_augment_tensor
 
 logger = logging.getLogger(__name__)
 
