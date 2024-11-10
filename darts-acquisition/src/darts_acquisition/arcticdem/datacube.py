@@ -1,14 +1,10 @@
-"""ArcticDEM related data loading."""
+"""Downloading and loading related functions for the Zarr-Datacube approach."""
 
 import io
 import logging
-import os
-import signal
-import tarfile
 import time
 import zipfile
 from pathlib import Path
-from threading import Event
 from typing import Literal
 
 import geopandas as gpd
@@ -22,14 +18,6 @@ import zarr
 import zarr.storage
 from lovely_numpy import lovely
 from odc.geo.geobox import GeoBox
-from rich.progress import (
-    BarColumn,
-    DownloadColumn,
-    Progress,
-    TextColumn,
-    TimeRemainingColumn,
-    TransferSpeedColumn,
-)
 
 from darts_acquisition.utils.storage import optimize_coord_encoding
 
@@ -37,6 +25,7 @@ logger = logging.getLogger(__name__.replace("darts_", "darts."))
 
 
 RESOLUTIONS = Literal[2, 10, 32]
+DATA_VARS = ["dem", "count", "mad", "maxdate", "mindate", "datamask"]
 
 
 def download_arcticdem_extend(dem_data_dir: Path):
@@ -78,95 +67,12 @@ def download_arcticdem_extend(dem_data_dir: Path):
     logger.info(f"Download completed in {time.time() - start:.2f} seconds")
 
 
-def download_arcticdem_scene(dem_data_dir: Path, tile_url: str, force: bool = False):
-    """Download an ArcticDEM tile from the provided URL and extracts it to the specified directory.
-
-    This saves the data on disk. For a memory-only solution, use `download_arcticdem_stac`.
-
-    Assets include among others:
-        - Hillshade
-        - DEM
-        - Count
-        - Median Absolute Deviation
-
-    Args:
-        dem_data_dir (Path): The directory where the extracted data will be saved.
-        tile_url (str): The URL of the ArcticDEM tile. Expects a tar.gz file.
-        force (bool, optional): Weather to download the file, even if it already exists. Defaults to False.
-
-    """
-    start = time.time()
-    fname = tile_url.split("/")[-1]
-    tile_name = ".".join(fname.split(".")[:-2])
-
-    if not force and (dem_data_dir / tile_name / f"{tile_name}_dem.tif").exists():
-        (f"ArcticDEM tile '{tile_name}' already exists in {dem_data_dir.resolve()}")
-        return
-
-    logger.info(f"Downloading the arcticdem tile '{tile_name}' from {tile_url} to {dem_data_dir.resolve()}")
-
-    response = requests.get(tile_url, stream=True)
-    response.raise_for_status()
-    total = int(response.headers.get("content-length", 0))
-
-    logger.debug(f"Downloading {fname} ({total} bytes)")
-
-    done_event = Event()
-
-    def handle_sigint(signum, frame):
-        done_event.set()
-
-    signal.signal(signal.SIGINT, handle_sigint)
-
-    # Create an IO stream to write the data to
-    with io.BytesIO() as buffer:
-        # Create a progress bar
-        download_progress = Progress(
-            TextColumn("[bold blue]{task.fields[filename]}", justify="right"),
-            BarColumn(bar_width=None),
-            "[progress.percentage]{task.percentage:>3.1f}%",
-            "•",
-            DownloadColumn(),
-            "•",
-            TransferSpeedColumn(),
-            "•",
-            TimeRemainingColumn(),
-        )
-        with download_progress:
-            task = download_progress.add_task("download", filename=fname, total=total)
-
-            for chunk in response.iter_content(chunk_size=32768):
-                download_progress.update(task, advance=len(chunk))
-                if chunk:
-                    buffer.write(chunk)
-                if done_event.is_set():
-                    break
-            download_progress.update(task, completed=total)
-            download_progress.refresh()
-            download_progress.stop()
-
-        logger.debug(f"Downloaded {len(buffer.getvalue())} bytes, starting extraction")
-
-        # Create a tarfile object and extract the files to a directory
-        (dem_data_dir / tile_name).mkdir(parents=True, exist_ok=True)
-        buffer.seek(0)
-        with tarfile.open(fileobj=buffer, mode="r:gz") as tar:
-            tar.extractall(dem_data_dir / tile_name)
-
-    tile_dir = dem_data_dir / tile_name
-    tile_assets = [str(p.relative_to(tile_dir)) for p in tile_dir.glob("**/*") if p.is_file()]
-    tile_assets_str = "\n\t- " + "\n\t- ".join(tile_assets)
-    logger.debug(f"Extracted files:\t\n- {tile_assets_str}")
-    total_gb = total / 1024 / 1024 / 1024
-    logger.info(f"Download of '{fname}' ({total_gb:.1f} Gb) completed in {time.time() - start:.2f} seconds")
-
-
-def download_arcticdem_stac(stac_url: str, crs: str = "3413", resolution: RESOLUTIONS = 2) -> xr.Dataset:
+def download_arcticdem_stac(stac_url: str) -> xr.Dataset:
     """Download ArcticDEM data from the provided STAC URL.
 
     This function utilizes pystac, xpystac and odc-stac to create a lazy dataset containing all assets.
 
-    Assets include among others:
+    Assets should include:
         - dem
         - count
         - mad
@@ -178,8 +84,6 @@ def download_arcticdem_stac(stac_url: str, crs: str = "3413", resolution: RESOLU
         stac_url (str): The URL of the ArcticDEM STAC. Must be one of:
             - A stac-browser url, like it is provided in the mosaic-extend dataframe, e.g. https://polargeospatialcenter.github.io/stac-browser/#/external/pgc-opendata-dems.s3.us-west-2.amazonaws.com/arcticdem/mosaics/v4.1/32m/36_24/36_24_32m_v4.1.json
             - A direct link to the STAC file, e.g. https://pgc-opendata-dems.s3.us-west-2.amazonaws.com/arcticdem/mosaics/v4.1/32m/36_24/36_24_32m_v4.1.json
-        crs (str, optional): The coordinate reference system of the data. Defaults to "3413".
-        resolution (Literal[2, 10, 32], optional): The resolution of the data. Defaults to 2 (m).
 
     Returns:
         xr.Dataset: The ArcticDEM data as an lazy xarray Dataset.
@@ -193,9 +97,11 @@ def download_arcticdem_stac(stac_url: str, crs: str = "3413", resolution: RESOLU
     if "#" in stac_url:
         stac_url = "https://" + "/".join(stac_url.split("#")[1].split("/")[2:])
 
+    resolution = int(stac_url.split("/")[-3].replace("m", ""))
+
     item = pystac.Item.from_file(stac_url)
 
-    ds = xr.open_dataset(item, engine="stac", resolution=resolution, crs=crs).isel(time=0).drop_vars("time")
+    ds = xr.open_dataset(item, engine="stac", resolution=resolution, crs="3413").isel(time=0).drop_vars("time")
 
     logger.info(f"Metadata download completed in {time.time() - start:.2f} seconds")
 
@@ -248,13 +154,15 @@ def create_empty_datacube(storage: zarr.storage.Store, resolution: int, chunk_si
     )
 
 
-def procedural_download_datacube(storage: zarr.storage.Store, scenes: gpd.GeoDataFrame, resolution: int):
+def procedural_download_datacube(storage: zarr.storage.Store, scenes: gpd.GeoDataFrame):
     """Download the ArcticDEM data for the specified scenes and add it to the datacube.
 
     Args:
         storage (zarr.storage.Store): The zarr storage object where the datacube will be saved.
         scenes (gpd.GeoDataFrame): The GeoDataFrame containing the scene information from the mosaic extend dataframe.
-        resolution (int): The resolution of a single pixel in meters.
+
+    References:
+        - https://earthmover.io/blog/serverless-datacube-pipeline
 
     """
     # Check if zarr data already contains the data via the attrs
@@ -263,16 +171,18 @@ def procedural_download_datacube(storage: zarr.storage.Store, scenes: gpd.GeoDat
     loaded_scenes = arcticdem_datacube.attrs.get("loaded_scenes", []).copy()
     # TODO: Add another attribute called "loading_scenes" to keep track of the scenes that are currently being loaded
     # This is necessary for parallel loading of the data
+    # Maybe it would be better to turn this into a class which is meant to be used as singleton and can store
+    # the loaded scenes as state
 
     for sceneinfo in scenes.itertuples():
         # Skip if the scene is already in the datacube
         if sceneinfo.dem_id in loaded_scenes:
             continue
 
-        scene = download_arcticdem_stac(sceneinfo.s3url, resolution=resolution)
+        scene = download_arcticdem_stac(sceneinfo.s3url)
 
-        x_start_idx = int((scene.x[0] - arcticdem_datacube.x[0]) // resolution)
-        y_start_idx = int((arcticdem_datacube.y[0] - scene.y[0]) // resolution)  # inverse because of the flipped y-axis
+        x_start_idx = int((scene.x[0] - arcticdem_datacube.x[0]) // scene.x.attrs["resolution"])
+        y_start_idx = int((scene.y[0] - arcticdem_datacube.y[0]) // scene.y.attrs["resolution"])
         target_slice = {
             "x": slice(x_start_idx, x_start_idx + scene.sizes["x"]),
             "y": slice(y_start_idx, y_start_idx + scene.sizes["y"]),
@@ -296,27 +206,45 @@ def procedural_download_datacube(storage: zarr.storage.Store, scenes: gpd.GeoDat
     zarr.consolidate_metadata(storage)
 
 
-def get_arcticdem_tile(reference_dataset: xr.Dataset, data_dir: Path) -> xr.Dataset:
+def get_arcticdem_tile(
+    reference_dataset: xr.Dataset,
+    data_dir: Path,
+    resolution: RESOLUTIONS | None = None,
+    chunk_size: int = 4000,
+    buffer: int = 256,
+) -> xr.Dataset:
     """Get the corresponding ArcticDEM tile for the given reference dataset.
 
     Args:
         reference_dataset (xr.Dataset): The reference dataset.
         data_dir (Path): The directory where the ArcticDEM data is stored.
+        resolution (Literal[2, 10, 32] | None, optional): The resolution of the ArcticDEM data in m.
+            If None tries to automatically detect the lowest resolution possible for the reference. Defaults to None.
+        chunk_size (int, optional): The chunk size for the datacube. Only relevant for the initial creation.
+            Has no effect otherwise. Defaults to 4000.
+        buffer (int, optional): The buffer around the reference dataset in pixels. Defaults to 256.
 
     Returns:
         xr.Dataset: The ArcticDEM tile.
 
     """
+    # TODO: What is a good chunk size?
     # TODO: what happens if two processes try to download the same file at the same time?
     start = time.time()
     logger.info(f"Getting ArcticDEM tile from {data_dir.resolve()}")
 
-    # TODO: Add these as parameters
-    resolution = 32
-    chunk_size = 4_000  # TODO: What is a good chunk size?
-    buffer = 256 * 3.125  # 256 pixels * 3.125 m/pixel - the resolution of the reference dataset
+    reference_resolution = abs(int(reference_dataset.x[1] - reference_dataset.x[0]))
+    # Select the resolution based on the reference dataset
+    if resolution is None:
+        # TODO: Discuss about the resolution thresholds
+        if reference_resolution < 8:
+            resolution = 2
+        elif reference_resolution < 25:
+            resolution = 10
+        else:
+            resolution = 32
 
-    datacube_fpath = data_dir / "datacube.zarr"
+    datacube_fpath = data_dir / f"datacube_{resolution}m_v4.1.zarr"
     storage = zarr.storage.FSStore(datacube_fpath)
 
     # Check if the zarr data already exists
@@ -327,25 +255,29 @@ def get_arcticdem_tile(reference_dataset: xr.Dataset, data_dir: Path) -> xr.Data
     # Get the adjacent arcticdem scenes
     # * Note: We could also use pystac here, but this would result in a slight performance decrease
     # * because of the network overhead
+
+    # Load the extend, download if the file does not exist
     extend_fpath = data_dir / f"ArcticDEM_Mosaic_Index_v4_1_{resolution}m.parquet"
-    # Download the extend file if it does not exist
     if not extend_fpath.exists():
         download_arcticdem_extend(data_dir)
     extend = gpd.read_parquet(extend_fpath)
 
     # Add a buffer around the reference dataset to get the adjacent scenes
+    buffer_m = buffer * reference_resolution  # 256 pixels * the resolution of the reference dataset
     reference_bbox = shapely.geometry.box(*reference_dataset.rio.transform_bounds("epsg:3413")).buffer(
-        buffer, join_style="mitre"
+        buffer_m, join_style="mitre"
     )
     adjacent_scenes = extend[extend.intersects(reference_bbox)]
-    procedural_download_datacube(storage, adjacent_scenes, resolution)
+
+    # Download the adjacent scenes (if necessary)
+    procedural_download_datacube(storage, adjacent_scenes)
     logger.debug(f"Procedural download completed in {time.time() - start:.2f} seconds")
 
     # Load the datacube and set the spatial_ref since it is set as a coordinate within the zarr format
     arcticdem_datacube = xr.open_zarr(storage).set_coords("spatial_ref")
 
+    # Get an AOI slice of the datacube, since rio.reproject_match would load the whole datacube
     xmin, ymin, xmax, ymax = reference_bbox.bounds
-
     aoi_slice = {
         "x": slice(xmin, xmax),
         "y": slice(ymax, ymin),
@@ -354,66 +286,8 @@ def get_arcticdem_tile(reference_dataset: xr.Dataset, data_dir: Path) -> xr.Data
     arcticdem_aoi = arcticdem_datacube.sel(aoi_slice)
     logger.debug(f"ArcticDEM AOI: {arcticdem_aoi}")
 
+    # TODO: I think the buffer gets lost here, because the reproject_match function crops to the reference dataset
     ds = arcticdem_aoi.rio.reproject_match(reference_dataset, resampling=rasterio.enums.Resampling.cubic)
 
     logger.info(f"ArcticDEM tile loaded in {time.time() - start:.2f} seconds")
     return ds
-
-
-def create_arcticdem_vrt(dem_data_dir: Path, vrt_target_dir: Path):
-    """Create a VRT file from ArcticDEM data.
-
-    Args:
-        dem_data_dir (Path): The directory containing the ArcticDEM data (.tif).
-        vrt_target_dir (Path): The output directory.
-
-    Raises:
-        OSError: If the target directory is not writable.
-
-    """
-    start_time = time.time()
-    logger.debug(f"Creating ArcticDEM VRT file at {vrt_target_dir.resolve()} based on {dem_data_dir.resolve()}")
-
-    try:
-        from osgeo import gdal
-
-        logger.debug(f"Found gdal bindings {gdal.__version__}.")
-    except ModuleNotFoundError as e:
-        logger.exception(
-            "The python GDAL bindings where not found. Please install those which are appropriate for your platform."
-        )
-        raise e
-
-    # decide on the exception behavior of GDAL to supress a warning if we dont
-    # don't know if this is necessary in all GDAL versions
-    try:
-        gdal.UseExceptions()
-        logger.debug("Enabled gdal exceptions")
-    except AttributeError():
-        pass
-
-    # subdirs = {"elevation": "tiles_rel_el", "slope": "tiles_slope"}
-    subdirs = {"elevation": "relative_elevation", "slope": "slope"}
-
-    # check first if BOTH files are writable
-    non_writable_files = []
-    for name in subdirs.keys():
-        output_file_path = vrt_target_dir / f"{name}.vrt"
-        if not os.access(output_file_path, os.W_OK) and output_file_path.exists():
-            non_writable_files.append(output_file_path)
-    if len(non_writable_files) > 0:
-        raise OSError(f"cannot write to {', '.join([f.name for f in non_writable_files])}")
-
-    for name, subdir in subdirs.items():
-        output_file_path = vrt_target_dir / f"{name}.vrt"
-        # check the file first if we can write to it
-
-        ds_path = dem_data_dir / subdir
-        filelist = [str(f.resolve()) for f in ds_path.glob("*.tif")]
-        logger.debug(f"Found {len(filelist)} files for {name} at {ds_path}.")
-        logger.debug(f"Writing VRT to '{output_file_path.resolve()}'")
-        src_nodata = "nan" if name == "slope" else 0
-        opt = gdal.BuildVRTOptions(srcNodata=src_nodata, VRTNodata=0)
-        gdal.BuildVRT(str(output_file_path.resolve()), filelist, options=opt)
-
-    logger.debug(f"Creation of VRT took {time.time() - start_time:.2f}s")

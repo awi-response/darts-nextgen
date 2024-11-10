@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Annotated
 
 import cyclopts
-from darts_acquisition.arcticdem import create_arcticdem_vrt
+from darts_acquisition.arcticdem.vrt import create_arcticdem_vrt
 from rich.console import Console
 
 from darts import __version__
@@ -29,7 +29,7 @@ pipeline_group = cyclopts.Group.create_ordered("Pipeline Commands")
 data_group = cyclopts.Group.create_ordered("Data Commands")
 
 
-# @app.command
+@app.command
 def hello(name: str, n: int = 1):
     """Say hello to someone.
 
