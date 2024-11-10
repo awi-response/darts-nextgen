@@ -47,7 +47,7 @@ def load_vrt(vrt_path: Path, reference_dataset: xr.Dataset) -> xr.DataArray:
     return da
 
 
-def load_arcticdem(slope_vrt: Path, elevation_vrt: Path, reference_dataset: xr.Dataset) -> xr.Dataset:
+def load_arcticdem_from_vrt(slope_vrt: Path, elevation_vrt: Path, reference_dataset: xr.Dataset) -> xr.Dataset:
     """Load ArcticDEM data and reproject it to match the reference dataset.
 
     Args:

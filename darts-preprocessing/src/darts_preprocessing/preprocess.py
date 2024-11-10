@@ -4,7 +4,7 @@ from pathlib import Path
 
 import xarray as xr
 
-from darts_preprocessing.data_sources.arcticdem import load_arcticdem
+from darts_preprocessing.data_sources.arcticdem import load_arcticdem_from_vrt
 from darts_preprocessing.data_sources.planet import load_planet_masks, load_planet_scene
 from darts_preprocessing.data_sources.s2 import load_s2_masks, load_s2_scene
 from darts_preprocessing.data_sources.tcvis import load_tcvis
@@ -102,7 +102,7 @@ def load_and_preprocess_planet_scene(
     # calculate xr.dataset ndvi
     ds_ndvi = calculate_ndvi(ds_planet)
 
-    ds_articdem = load_arcticdem(slope_vrt, elevation_vrt, ds_planet)
+    ds_articdem = load_arcticdem_from_vrt(slope_vrt, elevation_vrt, ds_planet)
 
     ds_tcvis = load_tcvis(ds_planet, cache_dir)
 
@@ -165,7 +165,7 @@ def load_and_preprocess_sentinel2_scene(
     # calculate xr.dataset ndvi
     ds_ndvi = calculate_ndvi(ds_s2)
 
-    ds_articdem = load_arcticdem(slope_vrt, elevation_vrt, ds_s2)
+    ds_articdem = load_arcticdem_from_vrt(slope_vrt, elevation_vrt, ds_s2)
 
     ds_tcvis = load_tcvis(ds_s2, cache_dir)
 
