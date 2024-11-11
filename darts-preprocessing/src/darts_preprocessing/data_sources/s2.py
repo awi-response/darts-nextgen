@@ -28,7 +28,7 @@ def load_s2_scene(fpath: str | Path) -> xr.Dataset:
     start_time = time.time()
 
     # Convert to Path object if a string is provided
-    fpath = fpath if isinstance(fpath, str) else Path(fpath)
+    fpath = fpath if isinstance(fpath, Path) else Path(fpath)
 
     logger.debug(f"Loading Sentinel 2 scene from {fpath.resolve()}")
 
@@ -80,7 +80,7 @@ def load_s2_masks(fpath: str | Path, reference_dataset: xr.Dataset) -> xr.Datase
     start_time = time.time()
 
     # Convert to Path object if a string is provided
-    fpath = fpath if isinstance(fpath, str) else Path(fpath)
+    fpath = fpath if isinstance(fpath, Path) else Path(fpath)
 
     logger.debug(f"Loading data masks from {fpath.resolve()}")
 
