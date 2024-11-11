@@ -1,6 +1,9 @@
 """Pipeline without any other framework."""
 
+import logging
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 
 def planet_file_generator(orthotiles_dir: Path, scenes_dir: Path, output_data_dir: Path):
@@ -83,24 +86,27 @@ def run_native_planet_pipeline(
 
     # Find all PlanetScope orthotiles
     for fpath, outpath in planet_file_generator(orthotiles_dir, scenes_dir, output_data_dir):
-        tile = load_and_preprocess_planet_scene(fpath, arcticdem_slope_vrt, arcticdem_elevation_vrt, cache_dir)
+        try:
+            tile = load_and_preprocess_planet_scene(fpath, arcticdem_slope_vrt, arcticdem_elevation_vrt, cache_dir)
 
-        ensemble = EnsembleV1(model_dir / tcvis_model_name, model_dir / notcvis_model_name)
-        tile = ensemble.segment_tile(
-            tile,
-            patch_size=patch_size,
-            overlap=overlap,
-            batch_size=batch_size,
-            reflection=reflection,
-            keep_inputs=write_model_outputs,
-        )
-        tile = prepare_export(tile)
+            ensemble = EnsembleV1(model_dir / tcvis_model_name, model_dir / notcvis_model_name)
+            tile = ensemble.segment_tile(
+                tile,
+                patch_size=patch_size,
+                overlap=overlap,
+                batch_size=batch_size,
+                reflection=reflection,
+                keep_inputs=write_model_outputs,
+            )
+            tile = prepare_export(tile)
 
-        outpath.mkdir(parents=True, exist_ok=True)
-        writer = InferenceResultWriter(tile)
-        writer.export_probabilities(outpath)
-        writer.export_binarized(outpath)
-        writer.export_polygonized(outpath)
+            outpath.mkdir(parents=True, exist_ok=True)
+            writer = InferenceResultWriter(tile)
+            writer.export_probabilities(outpath)
+            writer.export_binarized(outpath)
+            writer.export_polygonized(outpath)
+        except Exception as e:
+            logger.warning(f"could not process folder '{fpath.absolute()}' (Error: {e})")
 
 
 def run_native_sentinel2_pipeline(
@@ -155,23 +161,28 @@ def run_native_sentinel2_pipeline(
 
     # Find all Sentinel 2 scenes
     for fpath in sentinel2_dir.glob("*/"):
-        scene_id = fpath.name
-        outpath = output_data_dir / scene_id
-        tile = load_and_preprocess_sentinel2_scene(fpath, arcticdem_slope_vrt, arcticdem_elevation_vrt, cache_dir)
+        try:
+            scene_id = fpath.name
+            outpath = output_data_dir / scene_id
 
-        ensemble = EnsembleV1(model_dir / tcvis_model_name, model_dir / notcvis_model_name)
-        tile = ensemble.segment_tile(
-            tile,
-            patch_size=patch_size,
-            overlap=overlap,
-            batch_size=batch_size,
-            reflection=reflection,
-            keep_inputs=write_model_outputs,
-        )
-        tile = prepare_export(tile)
+            tile = load_and_preprocess_sentinel2_scene(fpath, arcticdem_slope_vrt, arcticdem_elevation_vrt, cache_dir)
 
-        outpath.mkdir(parents=True, exist_ok=True)
-        writer = InferenceResultWriter(tile)
-        writer.export_probabilities(outpath)
-        writer.export_binarized(outpath)
-        writer.export_polygonized(outpath)
+            ensemble = EnsembleV1(model_dir / tcvis_model_name, model_dir / notcvis_model_name)
+            tile = ensemble.segment_tile(
+                tile,
+                patch_size=patch_size,
+                overlap=overlap,
+                batch_size=batch_size,
+                reflection=reflection,
+                keep_inputs=write_model_outputs,
+            )
+            tile = prepare_export(tile)
+
+            outpath.mkdir(parents=True, exist_ok=True)
+            writer = InferenceResultWriter(tile)
+            writer.export_probabilities(outpath)
+            writer.export_binarized(outpath)
+            writer.export_polygonized(outpath)
+
+        except Exception as e:
+            logger.warning(f"could not process folder '{fpath.relative_to(sentinel2_dir)}' (Error: {e})")
