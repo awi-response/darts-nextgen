@@ -1,9 +1,13 @@
 """DARTS v1 ensemble based on two models, one trained with TCVIS data and the other without."""
 
+import logging
 from pathlib import Path
 
 import xarray as xr
 from darts_segmentation.segment import SMPSegmenter
+
+logger = logging.getLogger(__name__.replace("darts_", "darts."))
+print(__name__.replace("darts_", "darts."))
 
 
 class EnsembleV1:
@@ -21,6 +25,10 @@ class EnsembleV1:
             rts_v6_notcvis_model_path (str | Path): Path to the model trained without TCVIS data.
 
         """
+        logger.debug(
+            f"Loading models:\n\tTCVIS Model: {rts_v6_tcvis_model_path.absolute()}\n\tNOTCVIS Model: {rts_v6_notcvis_model_path.absolute()}"
+        )
+
         self.rts_v6_tcvis_model = SMPSegmenter(rts_v6_tcvis_model_path)
         self.rts_v6_notcvis_model = SMPSegmenter(rts_v6_notcvis_model_path)
 
