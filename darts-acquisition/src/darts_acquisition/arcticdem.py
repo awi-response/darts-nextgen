@@ -41,15 +41,24 @@ def download_arcticdem_extend(dem_data_dir: Path):
 def create_arcticdem_vrt(dem_data_dir: Path, vrt_target_dir: Path):  # noqa: C901
     """Create a VRT file from ArcticDEM data.
 
+    This command expects the tiles for slope and relative elevation in the subfolders `relative_elevation` and `slope`
+    of `dem_data_dir`. The tool requires the python gdal bindings to be installed.
+
     Args:
-        dem_data_dir (Path): The directory containing the ArcticDEM data (.tif).
+        dem_data_dir (Path): The directory containing subfolders `relative_elevation` and `slope` with
+            ArcticDEM data (.tif).
         vrt_target_dir (Path): The output directory.
 
     Raises:
         OSError: If the target directory is not writable.
+        ValueError: If the command parameters are invalid
 
     """
     start_time = time.time()
+
+    if not dem_data_dir.exists():
+        raise ValueError(f"The DEM data dir does not exist: {dem_data_dir.resolve().absolute()}")
+
     logger.debug(f"Creating ArcticDEM VRT file at {vrt_target_dir.resolve()} based on {dem_data_dir.resolve()}")
 
     try:
