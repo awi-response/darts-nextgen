@@ -25,7 +25,9 @@ class EnsembleV1:
 
         """
         logger.debug(
-            f"Loading models:\n\tTCVIS Model: {rts_v6_tcvis_model_path.absolute()}\n\tNOTCVIS Model: {rts_v6_notcvis_model_path.absolute()}"
+            "Loading models:\n"
+            f"\tTCVIS Model: {rts_v6_tcvis_model_path.absolute()}\n"
+            f"\tNOTCVIS Model: {rts_v6_notcvis_model_path.absolute()}"
         )
 
         self.rts_v6_tcvis_model = SMPSegmenter(rts_v6_tcvis_model_path)
