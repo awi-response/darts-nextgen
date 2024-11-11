@@ -7,7 +7,6 @@ import xarray as xr
 from darts_segmentation.segment import SMPSegmenter
 
 logger = logging.getLogger(__name__.replace("darts_", "darts."))
-print(__name__.replace("darts_", "darts."))
 
 
 class EnsembleV1:
