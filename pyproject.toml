@@ -25,6 +25,8 @@ dependencies = [
     "boto3>=1.35.54",
     "odc-geo>=0.4.8",
     "zarr[jupyter]>=2.18.3",
+    "cartopy>=0.24.1",
+    "odc-stac>=0.3.10",
     # Training and Inference
     "segmentation-models-pytorch>=0.3.4",
     # Processing
