@@ -171,6 +171,18 @@ def load_and_preprocess_sentinel2_scene(
 
     # load scl
     ds_data_masks = load_s2_masks(s2_scene_path, ds_s2)
+    # [valid_data_mask, quality_data_mask]
+    if ds_data_masks is None:
+        ds_data_masks = xr.merge(
+            {
+                "valid_data_mask": (
+                    xr.ones_like(ds_s2, dtype=int).assign_attrs({"data_source": "s2", "long_name": "Valid Data Mask"})
+                ),
+                "quality_data_mask": (
+                    xr.ones_like(ds_s2, dtype=int).assign_attrs({"data_source": "s2", "long_name": "Quality Data Mask"})
+                ),
+            }
+        )
 
     # merge to final dataset
     ds_merged = xr.merge([ds_s2, ds_ndvi, ds_articdem, ds_tcvis, ds_data_masks])
