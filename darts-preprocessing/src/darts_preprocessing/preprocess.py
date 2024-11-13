@@ -143,8 +143,8 @@ def load_and_preprocess_sentinel2_scene(
             │       └── 4372514_slope.tif
             └── sentinel2
                 └── 20220826T200911_20220826T200905_T17XMJ/
-                    ├── 20220826T200911_20220826T200905_T17XMJ_SCL_clip.tif
-                    └── 20220826T200911_20220826T200905_T17XMJ_SR_clip.tif
+                    ├── 20220826T200911_20220826T200905_T17XMJ_SCL(_clip).tif
+                    └── 20220826T200911_20220826T200905_T17XMJ_SR(_clip).tif
         ```
 
         Load and preprocess a Sentinel Scene:

@@ -34,9 +34,9 @@ def load_s2_scene(fpath: str | Path) -> xr.Dataset:
 
     # Get imagepath
     try:
-        s2_image = next(fpath.glob("*_SR_*.tif"))
+        s2_image = next(fpath.glob("*_SR*.tif"))
     except StopIteration:
-        raise FileNotFoundError(f"No matching TIFF files found in {fpath.resolve()} (.glob('*_SR_clip.tif'))")
+        raise FileNotFoundError(f"No matching TIFF files found in {fpath.resolve()} (.glob('*_SR*.tif'))")
 
     # Define band names and corresponding indices
     s2_da = xr.open_dataarray(s2_image)
