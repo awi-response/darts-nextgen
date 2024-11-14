@@ -68,7 +68,7 @@ class SMPSegmenter:
         self.model.eval()
 
         logger.debug(
-            f"sucessfully loaded model from {Path(model_checkpoint).absolute()}:\n"
+            f"successfully loaded model from {Path(model_checkpoint).absolute()}:\n"
             f"\tinputs: {self.config['input_combination']}"
         )
 
