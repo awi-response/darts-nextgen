@@ -1,0 +1,7 @@
+[darts]
+orthotiles-dir = "data/input/planet/PSOrthoTile"
+scenes-dir = "data/input/planet/PSScene"
+arcticdem-slope-vrt = "data/input/ArcticDEM/slope.vrt"
+arcticdem-elevation-vrt = "data/input/ArcticDEM/elevation.vrt"
+output-data-dir = "data/output"
+model-dir = "models"
