@@ -22,11 +22,10 @@ dependencies = [
     "xee>=0.0.19",
     "pystac>=1.11.0",
     "xpystac>=0.1.3",
-    "boto3>=1.35.54",
     "odc-geo>=0.4.8",
+    "odc-stac[botocore]>=0.3.10",
     "zarr[jupyter]>=2.18.3",
     "cartopy>=0.24.1",
-    "odc-stac>=0.3.10",
     # Training and Inference
     "segmentation-models-pytorch>=0.3.4",
     # Processing

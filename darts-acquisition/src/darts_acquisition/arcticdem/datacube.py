@@ -15,7 +15,6 @@ import shapely
 import xarray as xr
 import zarr
 import zarr.storage
-from lovely_numpy import lovely
 from odc.geo.geobox import GeoBox
 
 from darts_acquisition.utils.storage import optimize_coord_encoding
@@ -127,6 +126,7 @@ def download_arcticdem_extent(dem_data_dir: Path):
     )
 
 
+# ! unused - remove later
 def download_arcticdem_stac(stac_url: str) -> xr.Dataset:
     """Download ArcticDEM data from the provided STAC URL.
 
@@ -219,6 +219,21 @@ def create_empty_datacube(storage: zarr.storage.Store, resolution: int, chunk_si
     logger.info(f"Empty datacube created in {tick_fend - tick_fstart:.2f} seconds")
 
 
+def convert_s3url_to_stac(s3url: str) -> str:
+    """Convert an ArcticDEM S3 URL to a STAC URL.
+
+    The field in the extent dataframe is a STAC browser URL, hence we need to convert it to a STAC URL.
+
+    Args:
+        s3url (str): The S3 STAC-Browser URL of the ArcticDEM data.
+
+    Returns:
+        str: The STAC URL of the ArcticDEM data.
+
+    """
+    return "https://" + "/".join(s3url.split("#")[1].split("/")[2:])
+
+
 def procedural_download_datacube(storage: zarr.storage.Store, scenes: gpd.GeoDataFrame):
     """Download the ArcticDEM data for the specified scenes and add it to the datacube.
 
@@ -238,77 +253,86 @@ def procedural_download_datacube(storage: zarr.storage.Store, scenes: gpd.GeoDat
     # Check if zarr data already contains the data via the attrs
     arcticdem_datacube = xr.open_zarr(storage, mask_and_scale=False)
 
-    loaded_scenes = arcticdem_datacube.attrs.get("loaded_scenes", []).copy()
+    loaded_scenes: list[str] = arcticdem_datacube.attrs.get("loaded_scenes", []).copy()
     # TODO: Add another attribute called "loading_scenes" to keep track of the scenes that are currently being loaded
     # This is necessary for parallel loading of the data
     # Maybe it would be better to turn this into a class which is meant to be used as singleton and can store
     # the loaded scenes as state
 
-    new_scenes_loaded = False
-    for sceneinfo in scenes.itertuples():
-        # Skip if the scene is already in the datacube
-        if sceneinfo.dem_id in loaded_scenes:
-            logger.debug(f"Scene {sceneinfo.dem_id} already loaded, skipping")
-            continue
+    # Collect all scenes which should be downloaded
+    new_scenes = scenes[~scenes.dem_id.isin(loaded_scenes)]
 
-        logger.debug(f"Downloading scene {sceneinfo.dem_id} from {sceneinfo.s3url}")
-        scene = download_arcticdem_stac(sceneinfo.s3url)
+    if not len(new_scenes):
+        logger.debug("No new scenes to download")
+        return
+    logger.debug(f"Found {len(new_scenes)} new scenes: {new_scenes.dem_id.to_list()}")
 
-        for var in scene.data_vars:
-            if var not in arcticdem_datacube.data_vars:
-                # logger.debug(f"Variable '{var}' not in the datacube, skipping")
-                continue
-            tick_sdownload = time.perf_counter()
-            # This should actually download the data into memory
-            # I have no clue why I need to call load twice, but without the data download would start when dropping nan
-            # which results in multiple download within the dropna functions and longer loading times...
-            inmem_var = scene[var].load().load()
-            tick_edownload = time.perf_counter()
-            logger.debug(
-                f"Downloaded '{sceneinfo.dem_id}:{var}' in {tick_edownload - tick_sdownload:.2f}s: "
-                f"{lovely(inmem_var.values)}"
-            )
-            # The edges can have all-nan values which would overwrite existing valid data, hence we drop it
-            inmem_var = inmem_var.dropna("x", how="all").dropna("y", how="all")
-            tick_edrop = time.perf_counter()
-            logger.debug(f"Dropped NaNs in {tick_edrop - tick_edownload:.2f}s.")
+    # Collect the stac items
+    new_scenes["stacurl"] = new_scenes.s3url.apply(convert_s3url_to_stac)
+    items = pystac.ItemCollection([pystac.Item.from_file(scene.stacurl) for scene in new_scenes.itertuples()])
 
-            # Get the slice of the datacube where the scene will be written
-            x_start_idx = int((inmem_var.x[0] - arcticdem_datacube.x[0]) // inmem_var.x.attrs["resolution"])
-            y_start_idx = int((inmem_var.y[0] - arcticdem_datacube.y[0]) // inmem_var.y.attrs["resolution"])
-            target_slice = {
-                "x": slice(x_start_idx, x_start_idx + inmem_var.sizes["x"]),
-                "y": slice(y_start_idx, y_start_idx + inmem_var.sizes["y"]),
-            }
-            logger.debug(f"Target slice of '{sceneinfo.dem_id}:{var}': {target_slice}")
+    # Parse the resolution from the first item
+    resolution = int(new_scenes.stacurl.iloc[0].split("/")[-3].replace("m", ""))
+    assert resolution in [2, 10, 32], f"Resolution {resolution} not supported, only 2m, 10m and 32m are supported"
 
-            arcticdem_datacube[var][target_slice] = inmem_var.values  # noqa: PD011
-            # We need to manually delete the attributes (only in memory), since xarray has weird behaviour
-            # when _FillValue is set and mask_and_scale=False when opening the zarr
-            arcticdem_datacube[var].attrs = {}
-            arcticdem_datacube[var][target_slice].to_zarr(storage, region="auto", safe_chunks=False)
-            tick_ewrite = time.perf_counter()
-            logger.debug(f"Written '{sceneinfo.dem_id}:{var}' to datacube in {tick_ewrite - tick_edownload:.2f}s")
-        loaded_scenes.append(sceneinfo.dem_id)
-        new_scenes_loaded = True
+    # Read the metadata and calculate the target slice
+    # TODO: There should be a way to calculate the target slice without downloading the metadata
+    # However, this is fine for now, since the overhead is very small and the resulting code very clear
 
-    if new_scenes_loaded:
-        logger.debug(f"Updating the loaded scenes metavar in the datacube. ({len(loaded_scenes)} scenes)")
-        # Update storage (with native zarr, since xarray does not support this yet)
-        za = zarr.open(storage)
-        za.attrs["loaded_scenes"] = loaded_scenes
-        # Xarray default behaviour is to read the consolidated metadata, hence, we must update it
-        zarr.consolidate_metadata(storage)
+    # This does not download the data into memory, since chunks=-1 will create a dask array
+    # We need the coordinate information to calculate the target slice and the needed chunking for the real loading
+    ds = xr.open_dataset(items, bands=DATA_VARS, engine="stac", resolution=resolution, crs="3413", chunks=-1)
 
-        tick_fend = time.perf_counter()
-        logger.info(f"Procedural download of {len(scenes)} scenes completed in {tick_fend - tick_fstart:.2f} seconds")
+    # Get the slice of the datacube where the scene will be written
+    x_start_idx = int((ds.x[0] - arcticdem_datacube.x[0]) // ds.x.attrs["resolution"])
+    y_start_idx = int((ds.y[0] - arcticdem_datacube.y[0]) // ds.y.attrs["resolution"])
+    target_slice = {
+        "x": slice(x_start_idx, x_start_idx + ds.sizes["x"]),
+        "y": slice(y_start_idx, y_start_idx + ds.sizes["y"]),
+    }
+
+    arcticdem_datacube_aoi = arcticdem_datacube.isel(target_slice).drop_vars("spatial_ref")
+
+    # Now open the data for real, but still as dask array, hence the download occurs later
+    ds = (
+        xr.open_dataset(
+            items,
+            bands=DATA_VARS,
+            engine="stac",
+            resolution=resolution,
+            crs="3413",
+            chunks=dict(arcticdem_datacube_aoi.chunks),
+        )
+        .max("time")
+        .drop_vars("spatial_ref")
+    )
+
+    # Sometimes the data downloaded from stac has nan-borders, which would overwrite existing data
+    # Replace these nan borders with existing data if there is any
+    ds = ds.fillna(arcticdem_datacube_aoi)
+
+    # Write the data to the datacube, we manually aligned the chunks, hence we can do safe_chunks=False
+    tick_downloads = time.perf_counter()
+    ds.to_zarr(storage, region=target_slice, safe_chunks=False)
+    tick_downloade = time.perf_counter()
+    logger.debug(f"Downloaded and written data to datacube in {tick_downloade - tick_downloads:.2f}s")
+
+    # Update loaded_scenes (with native zarr, since xarray does not support this yet)
+    loaded_scenes.extend(new_scenes.dem_id)
+    za = zarr.open(storage)
+    za.attrs["loaded_scenes"] = loaded_scenes
+    # Xarray default behaviour is to read the consolidated metadata, hence, we must update it
+    zarr.consolidate_metadata(storage)
+
+    tick_fend = time.perf_counter()
+    logger.info(f"Procedural download of {len(new_scenes)} scenes completed in {tick_fend - tick_fstart:.2f} seconds")
 
 
 def get_arcticdem_tile(
     reference_dataset: xr.Dataset,
     data_dir: Path,
     resolution: RESOLUTIONS,
-    chunk_size: int = 4000,
+    chunk_size: int = 6000,
     buffer: int = 256,
 ) -> xr.Dataset:
     """Get the corresponding ArcticDEM tile for the given reference dataset.
@@ -318,7 +342,7 @@ def get_arcticdem_tile(
         data_dir (Path): The directory where the ArcticDEM data is stored.
         resolution (Literal[2, 10, 32]): The resolution of the ArcticDEM data in m.
         chunk_size (int, optional): The chunk size for the datacube. Only relevant for the initial creation.
-            Has no effect otherwise. Defaults to 4000.
+            Has no effect otherwise. Defaults to 6000.
         buffer (int, optional): The buffer around the reference dataset in pixels. Defaults to 256.
 
     Returns:
@@ -383,12 +407,11 @@ def get_arcticdem_tile(
     logger.debug(f"AOI slice: {aoi_slice}")
     arcticdem_aoi = arcticdem_datacube.sel(aoi_slice)
 
-    tick_sload = time.perf_counter()
+    # The following code would load the data from disk, but we want to keep it lazy
+    # tick_sload = time.perf_counter()
     # arcticdem_aoi = arcticdem_aoi.compute()
-    tick_eload = time.perf_counter()
-    logger.debug(f"ArcticDEM AOI loaded from disk in {tick_eload - tick_sload:.2f} seconds")
-
-    # TODO: Add Metadata etc. according to our standards
+    # tick_eload = time.perf_counter()
+    # logger.debug(f"ArcticDEM AOI loaded from disk in {tick_eload - tick_sload:.2f} seconds")
 
     logger.info(f"ArcticDEM tile loaded in {time.perf_counter() - tick_fstart:.2f} seconds")
     return arcticdem_aoi

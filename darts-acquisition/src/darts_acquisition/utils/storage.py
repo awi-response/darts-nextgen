@@ -1,8 +1,33 @@
+"""Utility functions related to storage of e.g. zarr arrays."""
+
+from typing import TypedDict
+
 import numpy as np
 import zarr
+import zarr.codecs
+from numcodecs.abc import Codec
 
 
-def optimize_coord_encoding(values, dx):
+class CoordEncoding(TypedDict):
+    """TypedDict for the encoding of regularly spaced coordinates."""
+
+    compressor: zarr.Blosc
+    filters: tuple[Codec, Codec]
+
+
+def optimize_coord_encoding(values: np.ndarray, dx: int) -> CoordEncoding:
+    """Optimize zarr encoding of regularly spaced coordinates.
+
+    Taken from https://github.com/earth-mover/serverless-datacube-demo/blob/a15423b9734898f52468bebc441e29ccf3789410/src/lib.py#L280
+
+    Args:
+        values (np.ndarray): The coordinates to encode
+        dx (int): The spacing between the coordinates
+
+    Returns:
+        CoordEncoding: A dictionary containing the zarr compressor and filters to use
+
+    """
     dx_all = np.diff(values)
     # dx = dx_all[0]
     np.testing.assert_allclose(dx_all, dx), "must be regularly spaced"
