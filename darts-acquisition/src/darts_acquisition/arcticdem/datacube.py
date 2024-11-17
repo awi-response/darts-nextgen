@@ -230,6 +230,14 @@ def convert_s3url_to_stac(s3url: str) -> str:
     Returns:
         str: The STAC URL of the ArcticDEM data.
 
+    Example:
+        ```python
+        s3url = "https://polargeospatialcenter.github.io/stac-browser/#/external/pgc-opendata-dems.s3.us-west-2.amazonaws.com/arcticdem/mosaics/v4.1/32m/36_24/36_24_32m_v4.1.json"
+        stacurl = convert_s3url_to_stac(s3url)
+        stacurl
+        >>> "https://pgc-opendata-dems.s3.us-west-2.amazonaws.com/arcticdem/mosaics/v4.1/32m/36_24/36_24_32m_v4.1.json"
+        ```
+
     """
     return "https://" + "/".join(s3url.split("#")[1].split("/")[2:])
 
