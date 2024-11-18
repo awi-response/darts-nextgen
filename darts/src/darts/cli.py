@@ -6,11 +6,10 @@ from pathlib import Path
 from typing import Annotated
 
 import cyclopts
-from darts_acquisition.arcticdem.vrt import create_arcticdem_vrt
 from rich.console import Console
 
 from darts import __version__
-from darts.native import run_native_planet_pipeline, run_native_sentinel2_pipeline
+from darts.native import run_native_planet_pipeline, run_native_planet_pipeline_fast, run_native_sentinel2_pipeline
 from darts.utils.config import ConfigParser
 from darts.utils.logging import add_logging_handlers, setup_logging
 
@@ -49,8 +48,23 @@ def hello(name: str, n: int = 1):
 
 
 app.command(group=pipeline_group)(run_native_planet_pipeline)
+app.command(group=pipeline_group)(run_native_planet_pipeline_fast)
 app.command(group=pipeline_group)(run_native_sentinel2_pipeline)
-app.command(group=data_group)(create_arcticdem_vrt)
+
+
+# Custom wrapper for the create_arcticdem_vrt function, which dodges the loading of all the heavy modules
+@app.command(group=data_group)
+def create_arcticdem_vrt(dem_data_dir: Path, vrt_target_dir: Path):
+    """Create a VRT file from ArcticDEM data.
+
+    Args:
+        dem_data_dir (Path): The directory containing the ArcticDEM data (.tif).
+        vrt_target_dir (Path): The output directory.
+
+    """
+    from darts_acquisition.arcticdem.vrt import create_arcticdem_vrt as _create_arcticdem_vrt
+
+    _create_arcticdem_vrt(dem_data_dir, vrt_target_dir)
 
 
 # Intercept the logging behavior to add a file handler

@@ -39,7 +39,7 @@ def calculate_topographic_position_index(
         "_FillValue": float("nan"),
     }
 
-    arcticdem_ds["tpi"] = tpi
+    arcticdem_ds["relative_elevation"] = tpi
     return arcticdem_ds
 
 

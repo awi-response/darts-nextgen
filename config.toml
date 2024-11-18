@@ -12,6 +12,7 @@ tcvis-model-name = "RTS_v6_tcvis.pt"
 notcvis-model-name = "RTS_v6_notcvis.pt"
 arcticdem-slope-vrt = "data/input/ArcticDEM/slope.vrt"
 arcticdem-elevation-vrt = "data/input/ArcticDEM/elevation.vrt"
+arcticdem-dir = "data/download/arcticdem"
 cache-dir = "data/download"
 
 [darts.segmentation]

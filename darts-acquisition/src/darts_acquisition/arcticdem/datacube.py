@@ -336,7 +336,7 @@ def procedural_download_datacube(storage: zarr.storage.Store, scenes: gpd.GeoDat
     logger.info(f"Procedural download of {len(new_scenes)} scenes completed in {tick_fend - tick_fstart:.2f} seconds")
 
 
-def get_arcticdem_tile(
+def load_arcticdem_tile(
     reference_dataset: xr.Dataset,
     data_dir: Path,
     resolution: RESOLUTIONS,
@@ -414,6 +414,9 @@ def get_arcticdem_tile(
     }
     logger.debug(f"AOI slice: {aoi_slice}")
     arcticdem_aoi = arcticdem_datacube.sel(aoi_slice)
+
+    # Change dtype of the datamask to uint8 for later reproject_match
+    arcticdem_aoi["datamask"] = arcticdem_aoi.datamask.astype("uint8")
 
     # The following code would load the data from disk, but we want to keep it lazy
     # tick_sload = time.perf_counter()
