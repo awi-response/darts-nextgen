@@ -187,6 +187,8 @@ def run_native_planet_pipeline_fast(
     notcvis_model_name: str = "RTS_v6_notcvis.pt",
     cache_dir: Path | None = None,
     ee_project: str | None = None,
+    tpi_outer_radius: int = 30,
+    tpi_inner_radius: int = 25,
     patch_size: int = 1024,
     overlap: int = 16,
     batch_size: int = 8,
@@ -209,6 +211,10 @@ def run_native_planet_pipeline_fast(
         cache_dir (Path | None, optional): The cache directory. If None, no caching will be used. Defaults to None.
         ee_project (str, optional): The Earth Engine project ID or number to use. May be omitted if
             project is defined within persistent API credentials obtained via `earthengine authenticate`.
+        tpi_outer_radius (int, optional): The outer radius of the annulus kernel for the tpi calculation
+            in number of cells. Defaults to 30.
+        tpi_inner_radius (int, optional): The inner radius of the annulus kernel for the tpi calculation
+            in number of cells. Defaults to 25.
         patch_size (int, optional): The patch size to use for inference. Defaults to 1024.
         overlap (int, optional): The overlap to use for inference. Defaults to 16.
         batch_size (int, optional): The batch size to use for inference. Defaults to 8.
@@ -240,11 +246,11 @@ def run_native_planet_pipeline_fast(
     # Find all PlanetScope orthotiles
     for fpath, outpath in planet_file_generator(orthotiles_dir, scenes_dir, output_data_dir):
         optical = load_planet_scene(fpath)
-        arcticdem = load_arcticdem_tile(optical, arcticdem_dir, resolution=32)
+        arcticdem = load_arcticdem_tile(optical, arcticdem_dir, resolution=2, buffer=tpi_outer_radius)
         tcvis = load_tcvis(optical, cache_dir)
         data_masks = load_planet_masks(fpath)
 
-        tile = preprocess_legacy_fast(optical, arcticdem, tcvis, data_masks)
+        tile = preprocess_legacy_fast(optical, arcticdem, tcvis, data_masks, tpi_outer_radius, tpi_inner_radius)
 
         ensemble = EnsembleV1(model_dir / tcvis_model_name, model_dir / notcvis_model_name)
         tile = ensemble.segment_tile(

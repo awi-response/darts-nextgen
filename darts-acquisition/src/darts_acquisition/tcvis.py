@@ -66,7 +66,7 @@ def load_tcvis(reference_dataset: xr.Dataset, cache_dir: Path | None = None) -> 
         warnings.filterwarnings("ignore", category=UserWarning, message=EE_WARN_MSG)
         ds = xr.open_dataset(ee_image_tcvis, engine="ee", geometry=geom, crs=str(reference_dataset.rio.crs), scale=30)
     # Update dataset properties to fit our pipeline-api
-    ds = ds.isel(time=0).rename({"X": "x", "Y": "y"}).transpose("y", "x")
+    ds = ds.isel(time=0).drop_vars("time").rename({"X": "x", "Y": "y"}).transpose("y", "x")
     ds = ds.rename_vars(
         {
             "TCB_slope": "tc_brightness",

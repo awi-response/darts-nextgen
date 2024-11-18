@@ -1,9 +1,10 @@
 """Computation of ArcticDEM derived products."""
 
 import logging
+import time
 
 import xarray as xr
-from xrspatial import convolution, focal, slope
+from xrspatial import convolution, slope
 
 logger = logging.getLogger(__name__.replace("darts_", "darts."))
 
@@ -22,13 +23,18 @@ def calculate_topographic_position_index(
         xr.Dataset: The input Dataset with the calculated TPI added as a new variable 'tpi'.
 
     """
+    tick_fstart = time.perf_counter()
     cellsize_x, cellsize_y = convolution.calc_cellsize(arcticdem_ds.dem)  # Should be equal to the resolution of the DEM
     # Use an annulus kernel with a ring at a distance from 25-30 cells away from focal point
-    outer_radius = str(cellsize_x * outer_radius) + "m"
-    inner_radius = str(cellsize_x * inner_radius) + "m"
-    kernel = convolution.annulus_kernel(cellsize_x, cellsize_y, outer_radius, inner_radius)
+    outer_radius_m = str(cellsize_x * outer_radius) + "m"
+    inner_radius_m = str(cellsize_x * inner_radius) + "m"
+    kernel = convolution.annulus_kernel(cellsize_x, cellsize_y, outer_radius_m, inner_radius_m)
+    logger.debug(
+        f"Calculating Topographic Position Index with annulus kernel of "
+        f"{inner_radius}-{outer_radius} ({inner_radius_m}-{outer_radius_m}) cells."
+    )
 
-    tpi = arcticdem_ds.dem - focal.apply(arcticdem_ds.dem, kernel)
+    tpi = arcticdem_ds.dem - convolution.convolution_2d(arcticdem_ds.dem.values, kernel) / kernel.sum()
     tpi.attrs = {
         "long_name": "Topographic Position Index",
         "units": "m",
@@ -39,7 +45,10 @@ def calculate_topographic_position_index(
         "_FillValue": float("nan"),
     }
 
-    arcticdem_ds["relative_elevation"] = tpi
+    arcticdem_ds["tpi"] = tpi.compute()
+
+    tick_fend = time.perf_counter()
+    logger.info(f"Topographic Position Index calculated in {tick_fend - tick_fstart:.2f} seconds.")
     return arcticdem_ds
 
 
@@ -53,6 +62,9 @@ def calculate_slope(arcticdem_ds: xr.Dataset) -> xr.Dataset:
         xr.Dataset: The input Dataset with the calculated slope added as a new variable 'slope'.
 
     """
+    tick_fstart = time.perf_counter()
+    logger.debug("Calculating slope of the terrain surface.")
+
     slope_deg = slope(arcticdem_ds.dem)
     slope_deg.attrs = {
         "long_name": "Slope",
@@ -61,5 +73,8 @@ def calculate_slope(arcticdem_ds: xr.Dataset) -> xr.Dataset:
         "source": "ArcticDEM",
         "_FillValue": float("nan"),
     }
-    arcticdem_ds["slope"] = slope_deg
+    arcticdem_ds["slope"] = slope_deg.compute()
+
+    tick_fend = time.perf_counter()
+    logger.info(f"Slope calculated in {tick_fend - tick_fstart:.2f} seconds.")
     return arcticdem_ds

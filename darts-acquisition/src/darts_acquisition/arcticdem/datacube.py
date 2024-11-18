@@ -28,7 +28,7 @@ DATA_VARS = ["dem", "datamask"]  # ["dem", "count", "mad", "maxdate", "mindate",
 DATA_VARS_META = {
     "dem": {
         "long_name": "Digital Elevation Model",
-        "source": "ArcticDEM",
+        "data_source": "ArcticDEM",
         "units": "m",
         "description": "Digital Elevation Model, elevation resolution is cropped to ~1cm",
     },
@@ -124,50 +124,6 @@ def download_arcticdem_extent(dem_data_dir: Path):
         f"Download and extraction of the arcticdem mosiac extent from {url} to {dem_data_dir.resolve()}"
         f"completed in {tick_extract - tick_fstart:.2f} seconds"
     )
-
-
-# ! unused - remove later
-def download_arcticdem_stac(stac_url: str) -> xr.Dataset:
-    """Download ArcticDEM data from the provided STAC URL.
-
-    This function utilizes pystac, xpystac and odc-stac to create a lazy dataset containing all assets.
-
-    Assets should include:
-        - dem
-        - count
-        - mad
-        - maxdate
-        - mindate
-        - datamask
-
-    Read more here: https://www.pgc.umn.edu/guides/stereo-derived-elevation-models/pgc-dem-products-arcticdem-rema-and-earthdem
-
-    Args:
-        stac_url (str): The URL of the ArcticDEM STAC. Must be one of:
-            - A stac-browser url, like it is provided in the mosaic-extent dataframe, e.g. https://polargeospatialcenter.github.io/stac-browser/#/external/pgc-opendata-dems.s3.us-west-2.amazonaws.com/arcticdem/mosaics/v4.1/32m/36_24/36_24_32m_v4.1.json
-            - A direct link to the STAC file, e.g. https://pgc-opendata-dems.s3.us-west-2.amazonaws.com/arcticdem/mosaics/v4.1/32m/36_24/36_24_32m_v4.1.json
-
-    Returns:
-        xr.Dataset: The ArcticDEM data as an lazy xarray Dataset.
-            Data downloaded on demand, NOT from within this function.
-
-    """
-    tick_fstart = time.perf_counter()
-
-    # Check weather the browser url is provided -> if so parse the right url from the string
-    if "#" in stac_url:
-        stac_url = "https://" + "/".join(stac_url.split("#")[1].split("/")[2:])
-
-    resolution = int(stac_url.split("/")[-3].replace("m", ""))
-    logger.debug(f"Downloading ArcticDEM data from {stac_url} with a resolution of {resolution}m")
-
-    item = pystac.Item.from_file(stac_url)
-    ds = xr.open_dataset(item, engine="stac", resolution=resolution, crs="3413").isel(time=0).drop_vars("time")
-
-    tick_fend = time.perf_counter()
-    logger.debug(f"Scene metadata download completed in {tick_fend - tick_fstart:.2f} seconds")
-
-    return ds
 
 
 def create_empty_datacube(storage: zarr.storage.Store, resolution: int, chunk_size: int):
@@ -418,11 +374,11 @@ def load_arcticdem_tile(
     # Change dtype of the datamask to uint8 for later reproject_match
     arcticdem_aoi["datamask"] = arcticdem_aoi.datamask.astype("uint8")
 
-    # The following code would load the data from disk, but we want to keep it lazy
-    # tick_sload = time.perf_counter()
-    # arcticdem_aoi = arcticdem_aoi.compute()
-    # tick_eload = time.perf_counter()
-    # logger.debug(f"ArcticDEM AOI loaded from disk in {tick_eload - tick_sload:.2f} seconds")
+    # The following code would load the data from disk
+    tick_sload = time.perf_counter()
+    arcticdem_aoi = arcticdem_aoi.compute()
+    tick_eload = time.perf_counter()
+    logger.debug(f"ArcticDEM AOI loaded from disk in {tick_eload - tick_sload:.2f} seconds")
 
     logger.info(f"ArcticDEM tile loaded in {time.perf_counter() - tick_fstart:.2f} seconds")
     return arcticdem_aoi
