@@ -5,8 +5,6 @@ from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
-logger = logging.getLogger(__name__)
-
 
 def planet_file_generator(orthotiles_dir: Path, scenes_dir: Path, output_data_dir: Path):
     """Generate a list of files and output paths from planet scenes and orthotiles.
