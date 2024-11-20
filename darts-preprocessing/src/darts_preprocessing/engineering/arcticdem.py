@@ -34,7 +34,7 @@ def calculate_topographic_position_index(
         f"{inner_radius}-{outer_radius} ({inner_radius_m}-{outer_radius_m}) cells."
     )
 
-    tpi = arcticdem_ds.dem - convolution.convolution_2d(arcticdem_ds.dem.values, kernel) / kernel.sum()
+    tpi = arcticdem_ds.dem - convolution.convolution_2d(arcticdem_ds.dem, kernel) / kernel.sum()
     tpi.attrs = {
         "long_name": "Topographic Position Index",
         "units": "m",

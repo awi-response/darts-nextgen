@@ -3,13 +3,22 @@
 import logging
 import time
 
-import rasterio
+import odc.geo.xr  # noqa: F401
 import xarray as xr
+from xrspatial.utils import has_cuda_and_cupy
 
 from darts_preprocessing.engineering.arcticdem import calculate_slope, calculate_topographic_position_index
 from darts_preprocessing.engineering.indices import calculate_ndvi
 
 logger = logging.getLogger(__name__.replace("darts_", "darts."))
+
+
+if has_cuda_and_cupy():
+    import cupy_xarray  # noqa: F401
+
+    logger.info("GPU-accelerated xrspatial functions are available.")
+else:
+    logger.info("GPU-accelerated xrspatial functions are not available.")
 
 
 def preprocess_legacy(
@@ -49,6 +58,7 @@ def preprocess_legacy_fast(
     ds_data_masks: xr.Dataset,
     tpi_outer_radius: int = 30,
     tpi_inner_radius: int = 25,
+    use_gpu: bool = True,
 ) -> xr.Dataset:
     """Preprocess optical data with legacy (DARTS v1) preprocessing steps, but with new data concepts.
 
@@ -70,6 +80,7 @@ def preprocess_legacy_fast(
             in number of cells. Defaults to 30.
         tpi_inner_radius (int, optional): The inner radius of the annulus kernel for the tpi calculation
             in number of cells. Defaults to 25.
+        use_gpu (bool, optional): Whether to use GPU-accelerated functions. Defaults to True.
 
     Returns:
         xr.Dataset: The preprocessed dataset.
@@ -86,9 +97,20 @@ def preprocess_legacy_fast(
 
     # Calculate TPI and slope from ArcticDEM
     # We need to calculate them before reprojecting, hence we cant merge the data yet
+    # Move to GPU if available
+    if use_gpu and has_cuda_and_cupy():
+        logger.debug("Moving arcticdem to GPU.")
+        # Check if dem is dask, if not persist it, since tpi and slope can't be calculated from cupy-dask arrays
+        if ds_arcticdem.chunks is not None:
+            ds_arcticdem = ds_arcticdem.persist()
+        ds_arcticdem = ds_arcticdem.cupy.as_cupy()
+
     ds_arcticdem = calculate_topographic_position_index(ds_arcticdem, tpi_outer_radius, tpi_inner_radius)
     ds_arcticdem = calculate_slope(ds_arcticdem)
-    ds_arcticdem = ds_arcticdem.rio.reproject_match(ds_optical, resampling=rasterio.enums.Resampling.cubic)
+    # Move back to CPU
+    if use_gpu and has_cuda_and_cupy():
+        ds_arcticdem = ds_arcticdem.cupy.as_numpy()
+    ds_arcticdem = ds_arcticdem.odc.reproject(ds_optical.odc.geobox, resampling="cubic")
 
     ds_merged["dem"] = ds_arcticdem.dem
     ds_merged["relative_elevation"] = ds_arcticdem.tpi

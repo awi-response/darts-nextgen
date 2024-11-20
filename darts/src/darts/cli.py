@@ -13,7 +13,7 @@ from darts.native import run_native_planet_pipeline, run_native_planet_pipeline_
 from darts.utils.config import ConfigParser
 from darts.utils.logging import add_logging_handlers, setup_logging
 
-root = Path(__name__).resolve()
+root_file = Path(__file__).resolve()
 logger = logging.getLogger(__name__)
 console = Console()
 
@@ -76,7 +76,7 @@ def launcher(  # noqa: D103
 ):
     command, bound = app.parse_args(tokens)
     add_logging_handlers(command.__name__, console, log_dir)
-    logger.debug(f"Running on Python version {sys.version} from {root}")
+    logger.debug(f"Running on Python version {sys.version} from {__name__} ({root_file})")
     return command(*bound.args, **bound.kwargs)
 
 

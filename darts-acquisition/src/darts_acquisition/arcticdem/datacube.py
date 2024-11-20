@@ -298,6 +298,7 @@ def load_arcticdem_tile(
     resolution: RESOLUTIONS,
     chunk_size: int = 6000,
     buffer: int = 0,
+    persist: bool = True,
 ) -> xr.Dataset:
     """Get the corresponding ArcticDEM tile for the given geobox.
 
@@ -308,6 +309,8 @@ def load_arcticdem_tile(
         chunk_size (int, optional): The chunk size for the datacube. Only relevant for the initial creation.
             Has no effect otherwise. Defaults to 6000.
         buffer (int, optional): The buffer around the geobox in pixels. Defaults to 0.
+        persist (bool, optional): If the data should be persisted in memory.
+            If not, this will return a Dask backed Dataset. Defaults to True.
 
     Returns:
         xr.Dataset: The ArcticDEM tile, with a buffer applied.
@@ -364,10 +367,13 @@ def load_arcticdem_tile(
     arcticdem_aoi["datamask"] = arcticdem_aoi.datamask.astype("uint8")
 
     # The following code would load the data from disk
-    tick_sload = time.perf_counter()
-    arcticdem_aoi = arcticdem_aoi.compute()
-    tick_eload = time.perf_counter()
-    logger.debug(f"ArcticDEM AOI loaded from disk in {tick_eload - tick_sload:.2f} seconds")
+    if persist:
+        tick_sload = time.perf_counter()
+        arcticdem_aoi = arcticdem_aoi.compute()
+        tick_eload = time.perf_counter()
+        logger.debug(f"ArcticDEM AOI loaded from disk in {tick_eload - tick_sload:.2f} seconds")
 
-    logger.info(f"ArcticDEM tile loaded in {time.perf_counter() - tick_fstart:.2f} seconds")
+    logger.info(
+        f"ArcticDEM tile {'loaded' if persist else 'lazy-opened'} in {time.perf_counter() - tick_fstart:.2f} seconds"
+    )
     return arcticdem_aoi
