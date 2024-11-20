@@ -1,7 +1,7 @@
 import logging
 
-from model.networks import define_net as define_net
-from model.wave_modules.diffusion import GaussianDiffusion as GaussianDiffusion
+from darts_superresolution.model.networks import define_net as define_net
+from darts_superresolution.model.wave_modules.diffusion import GaussianDiffusion as GaussianDiffusion
 
 logger = logging.getLogger(__name__)
 

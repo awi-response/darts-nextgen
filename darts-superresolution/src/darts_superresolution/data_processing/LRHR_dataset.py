@@ -6,7 +6,7 @@ import tifffile
 from PIL import Image
 from torch.utils.data import Dataset
 
-import data_processing.util as Util
+import darts_superresolution.data_processing.util as Util
 
 
 class LRHRDataset(Dataset):

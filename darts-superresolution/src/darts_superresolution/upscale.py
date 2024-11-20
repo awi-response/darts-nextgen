@@ -8,8 +8,8 @@ import numpy as np
 import torch
 import xarray as xr
 
-from data_processing.patching import create_patches_from_tile
-from model import GaussianDiffusion, define_net
+from darts_superresolution.data_processing.patching import create_patches_from_tile
+from darts_superresolution.model import GaussianDiffusion, define_net
 
 logger = logging.getLogger(__name__)
 
