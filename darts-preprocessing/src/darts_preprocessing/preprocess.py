@@ -9,6 +9,7 @@ from xrspatial.utils import has_cuda_and_cupy
 
 from darts_preprocessing.engineering.arcticdem import calculate_slope, calculate_topographic_position_index
 from darts_preprocessing.engineering.indices import calculate_ndvi
+from darts_preprocessing.utils import free_cuda
 
 logger = logging.getLogger(__name__.replace("darts_", "darts."))
 
@@ -110,6 +111,7 @@ def preprocess_legacy_fast(
     # Move back to CPU
     if use_gpu and has_cuda_and_cupy():
         ds_arcticdem = ds_arcticdem.cupy.as_numpy()
+        free_cuda()
     ds_arcticdem = ds_arcticdem.odc.reproject(ds_optical.odc.geobox, resampling="cubic")
 
     ds_merged["dem"] = ds_arcticdem.dem

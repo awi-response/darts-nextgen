@@ -9,7 +9,12 @@ import cyclopts
 from rich.console import Console
 
 from darts import __version__
-from darts.native import run_native_planet_pipeline, run_native_planet_pipeline_fast, run_native_sentinel2_pipeline
+from darts.native import (
+    run_native_planet_pipeline,
+    run_native_planet_pipeline_fast,
+    run_native_sentinel2_pipeline,
+    run_native_sentinel2_pipeline_fast,
+)
 from darts.utils.config import ConfigParser
 from darts.utils.logging import add_logging_handlers, setup_logging
 
@@ -50,6 +55,7 @@ def hello(name: str, n: int = 1):
 app.command(group=pipeline_group)(run_native_planet_pipeline)
 app.command(group=pipeline_group)(run_native_planet_pipeline_fast)
 app.command(group=pipeline_group)(run_native_sentinel2_pipeline)
+app.command(group=pipeline_group)(run_native_sentinel2_pipeline_fast)
 
 
 # Custom wrapper for the create_arcticdem_vrt function, which dodges the loading of all the heavy modules

@@ -9,7 +9,7 @@ import torch
 import torch.nn as nn
 import xarray as xr
 
-from darts_segmentation.utils import predict_in_patches
+from darts_segmentation.utils import free_cuda, predict_in_patches
 
 logger = logging.getLogger(__name__.replace("darts_", "darts."))
 
@@ -143,6 +143,11 @@ class SMPSegmenter:
             "long_name": "Probabilities",
         }
         tile["probabilities"] = tile["probabilities"].fillna(float("nan")).rio.write_nodata(float("nan"))
+
+        # Cleanup cuda memory
+        del tensor_tile, probabilities
+        free_cuda()
+
         return tile
 
     def segment_tile_batched(
@@ -187,6 +192,11 @@ class SMPSegmenter:
                 "long_name": "Probabilities",
             }
             tile["probabilities"] = tile["probabilities"].fillna(float("nan")).rio.write_nodata(float("nan"))
+
+        # Cleanup cuda memory
+        del tensor_tiles, probabilities
+        free_cuda()
+
         return tiles
 
     def __call__(

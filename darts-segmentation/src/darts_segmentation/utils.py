@@ -1,5 +1,6 @@
 """Shared utilities for the inference modules."""
 
+import gc
 import logging
 import math
 import time
@@ -183,3 +184,9 @@ def predict_in_patches(
         return prediction, weights
     else:
         return prediction
+
+
+def free_cuda():
+    """Free the CUDA memory."""
+    gc.collect()
+    torch.cuda.empty_cache()

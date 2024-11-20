@@ -93,6 +93,9 @@ def load_s2_masks(fpath: str | Path, reference_geobox: GeoBox) -> xr.Dataset:
 
     da_scl = da_scl.odc.reproject(reference_geobox, sampling="nearest")
 
+    # Match crs
+    da_scl = da_scl.rio.write_crs(reference_geobox.crs)
+
     # valid data mask: valid data = 1, no data = 0
     valid_data_mask = (
         (1 - da_scl.sel(band=1).fillna(0).isin([0, 1]))
