@@ -246,7 +246,7 @@ def run_native_planet_pipeline_fast(
     # Find all PlanetScope orthotiles
     for fpath, outpath in planet_file_generator(orthotiles_dir, scenes_dir, output_data_dir):
         optical = load_planet_scene(fpath)
-        arcticdem = load_arcticdem_tile(optical, arcticdem_dir, resolution=2, buffer=tpi_outer_radius)
+        arcticdem = load_arcticdem_tile(optical.odc.geobox, arcticdem_dir, resolution=2, buffer=tpi_outer_radius)
         tcvis = load_tcvis(optical, cache_dir)
         data_masks = load_planet_masks(fpath)
 
@@ -356,7 +356,7 @@ def run_native_sentinel2_pipeline(
         optical = load_s2_scene(fpath)
         arcticdem = load_arcticdem_from_vrt(arcticdem_slope_vrt, arcticdem_elevation_vrt, optical)
         tcvis = load_tcvis(optical, cache_dir)
-        data_masks = load_s2_masks(fpath, optical)
+        data_masks = load_s2_masks(fpath, optical.odc.geobox)
 
         tile = preprocess_legacy(optical, arcticdem, tcvis, data_masks)
 

@@ -8,10 +8,10 @@ from pathlib import Path
 from typing import Literal
 
 import geopandas as gpd
+import odc.geo
 import odc.geo.xr
 import pystac
 import requests
-import shapely
 import xarray as xr
 import zarr
 import zarr.storage
@@ -293,21 +293,21 @@ def procedural_download_datacube(storage: zarr.storage.Store, scenes: gpd.GeoDat
 
 
 def load_arcticdem_tile(
-    reference_dataset: xr.Dataset,
+    geobox: GeoBox,
     data_dir: Path,
     resolution: RESOLUTIONS,
     chunk_size: int = 6000,
-    buffer: int = 256,
+    buffer: int = 0,
 ) -> xr.Dataset:
-    """Get the corresponding ArcticDEM tile for the given reference dataset.
+    """Get the corresponding ArcticDEM tile for the given geobox.
 
     Args:
-        reference_dataset (xr.Dataset): The reference dataset.
+        geobox (GeoBox): The geobox for which the tile should be loaded.
         data_dir (Path): The directory where the ArcticDEM data is stored.
         resolution (Literal[2, 10, 32]): The resolution of the ArcticDEM data in m.
         chunk_size (int, optional): The chunk size for the datacube. Only relevant for the initial creation.
             Has no effect otherwise. Defaults to 6000.
-        buffer (int, optional): The buffer around the reference dataset in pixels. Defaults to 256.
+        buffer (int, optional): The buffer around the geobox in pixels. Defaults to 0.
 
     Returns:
         xr.Dataset: The ArcticDEM tile, with a buffer applied.
@@ -316,7 +316,7 @@ def load_arcticdem_tile(
 
     Warning:
         1. This function is not thread-safe. Thread-safety might be added in the future.
-        2. Reference dataset must be in a meter based CRS.
+        2. Geobox must be in a meter based CRS.
 
     """
     # TODO: What is a good chunk size?
@@ -330,9 +330,8 @@ def load_arcticdem_tile(
     storage = zarr.storage.FSStore(datacube_fpath)
     logger.debug(f"Getting ArcticDEM tile from {datacube_fpath.resolve()}")
 
-    # ! The reference dataset must be in a meter based CRS
-    reference_resolution = abs(int(reference_dataset.x[1] - reference_dataset.x[0]))
-    logger.debug(f"Found a reference resolution of {reference_resolution}m")
+    # ! The geobox must be in a meter based CRS
+    logger.debug(f"Found a reference resolution of {geobox.resolution.x}m")
 
     # Check if the zarr data already exists
     if not datacube_fpath.exists():
@@ -348,12 +347,9 @@ def load_arcticdem_tile(
         download_arcticdem_extent(data_dir)
     extent = gpd.read_parquet(extent_fpath)
 
-    # Add a buffer around the reference dataset to get the adjacent scenes
-    buffer_m = buffer * reference_resolution  # nbuffer pixels * the resolution of the reference dataset
-    reference_bbox = shapely.geometry.box(*reference_dataset.rio.transform_bounds("epsg:3413")).buffer(
-        buffer_m, join_style="mitre"
-    )
-    adjacent_scenes = extent[extent.intersects(reference_bbox)]
+    # Add a buffer around the geobox to get the adjacent scenes
+    reference_bbox = geobox.to_crs("epsg:3413", resolution=resolution).pad(buffer)
+    adjacent_scenes = extent[extent.intersects(reference_bbox.extent.geom)]
 
     # Download the adjacent scenes (if necessary)
     procedural_download_datacube(storage, adjacent_scenes)
@@ -361,15 +357,8 @@ def load_arcticdem_tile(
     # Load the datacube and set the spatial_ref since it is set as a coordinate within the zarr format
     arcticdem_datacube = xr.open_zarr(storage, mask_and_scale=False).set_coords("spatial_ref")
 
-    # Get an AOI slice of the datacube, since rio.reproject_match would load the whole datacube
-    # Note: The bounds are not equal to the bbox orientation, because of the change of the CRS
-    xmin, ymin, xmax, ymax = reference_bbox.bounds
-    aoi_slice = {
-        "x": slice(xmin, xmax),
-        "y": slice(ymax, ymin),
-    }
-    logger.debug(f"AOI slice: {aoi_slice}")
-    arcticdem_aoi = arcticdem_datacube.sel(aoi_slice)
+    # Get an AOI slice of the datacube
+    arcticdem_aoi = arcticdem_datacube.odc.crop(reference_bbox.extent)
 
     # Change dtype of the datamask to uint8 for later reproject_match
     arcticdem_aoi["datamask"] = arcticdem_aoi.datamask.astype("uint8")

@@ -15,6 +15,10 @@ arcticdem-elevation-vrt = "data/input/ArcticDEM/elevation.vrt"
 arcticdem-dir = "data/download/arcticdem"
 cache-dir = "data/download"
 
+[darts.preprocess]
+tpi-outer-radius = 30
+tpi-inner-radius = 25
+
 [darts.segmentation]
 patch-size = 1024
 overlap = 256
