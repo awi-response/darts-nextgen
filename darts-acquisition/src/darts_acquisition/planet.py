@@ -67,7 +67,7 @@ def load_planet_scene(fpath: str | Path) -> xr.Dataset:
     start_time = time.time()
 
     # Convert to Path object if a string is provided
-    fpath = fpath if isinstance(fpath, str) else Path(fpath)
+    fpath = fpath if isinstance(fpath, Path) else Path(fpath)
 
     # Check if the directory contains a PSOrthoTile or PSScene
     planet_type = parse_planet_type(fpath)
@@ -128,7 +128,7 @@ def load_planet_masks(fpath: str | Path) -> xr.Dataset:
     start_time = time.time()
 
     # Convert to Path object if a string is provided
-    fpath = fpath if isinstance(fpath, str) else Path(fpath)
+    fpath = fpath if isinstance(fpath, Path) else Path(fpath)
 
     logger.debug(f"Loading data masks from {fpath.resolve()}")
 

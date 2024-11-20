@@ -5,6 +5,8 @@ from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
+logger = logging.getLogger(__name__)
+
 
 def planet_file_generator(orthotiles_dir: Path, scenes_dir: Path, output_data_dir: Path):
     """Generate a list of files and output paths from planet scenes and orthotiles.
@@ -152,29 +154,33 @@ def run_native_planet_pipeline(
 
     # Find all PlanetScope orthotiles
     for fpath, outpath in planet_file_generator(orthotiles_dir, scenes_dir, output_data_dir):
-        optical = load_planet_scene(fpath)
-        arcticdem = load_arcticdem_from_vrt(arcticdem_slope_vrt, arcticdem_elevation_vrt, optical)
-        tcvis = load_tcvis(optical, cache_dir)
-        data_masks = load_planet_masks(fpath)
+        try:
+            optical = load_planet_scene(fpath)
+            arcticdem = load_arcticdem_from_vrt(arcticdem_slope_vrt, arcticdem_elevation_vrt, optical)
+            tcvis = load_tcvis(optical, cache_dir)
+            data_masks = load_planet_masks(fpath)
 
-        tile = preprocess_legacy(optical, arcticdem, tcvis, data_masks)
+            tile = preprocess_legacy(optical, arcticdem, tcvis, data_masks)
 
-        ensemble = EnsembleV1(model_dir / tcvis_model_name, model_dir / notcvis_model_name)
-        tile = ensemble.segment_tile(
-            tile,
-            patch_size=patch_size,
-            overlap=overlap,
-            batch_size=batch_size,
-            reflection=reflection,
-            keep_inputs=write_model_outputs,
-        )
-        tile = prepare_export(tile)
+            ensemble = EnsembleV1(model_dir / tcvis_model_name, model_dir / notcvis_model_name)
+            tile = ensemble.segment_tile(
+                tile,
+                patch_size=patch_size,
+                overlap=overlap,
+                batch_size=batch_size,
+                reflection=reflection,
+                keep_inputs=write_model_outputs,
+            )
+            tile = prepare_export(tile)
 
-        outpath.mkdir(parents=True, exist_ok=True)
-        writer = InferenceResultWriter(tile)
-        writer.export_probabilities(outpath)
-        writer.export_binarized(outpath)
-        writer.export_polygonized(outpath)
+            outpath.mkdir(parents=True, exist_ok=True)
+            writer = InferenceResultWriter(tile)
+            writer.export_probabilities(outpath)
+            writer.export_binarized(outpath)
+            writer.export_polygonized(outpath)
+        except Exception as e:
+            logger.warning(f"Could not process folder '{fpath.resolve()}':")
+            logger.exception(e)
 
 
 def run_native_planet_pipeline_fast(
@@ -245,29 +251,33 @@ def run_native_planet_pipeline_fast(
 
     # Find all PlanetScope orthotiles
     for fpath, outpath in planet_file_generator(orthotiles_dir, scenes_dir, output_data_dir):
-        optical = load_planet_scene(fpath)
-        arcticdem = load_arcticdem_tile(optical.odc.geobox, arcticdem_dir, resolution=2, buffer=tpi_outer_radius)
-        tcvis = load_tcvis(optical, cache_dir)
-        data_masks = load_planet_masks(fpath)
+        try:
+            optical = load_planet_scene(fpath)
+            arcticdem = load_arcticdem_tile(optical.odc.geobox, arcticdem_dir, resolution=2, buffer=tpi_outer_radius)
+            tcvis = load_tcvis(optical, cache_dir)
+            data_masks = load_planet_masks(fpath)
 
-        tile = preprocess_legacy_fast(optical, arcticdem, tcvis, data_masks, tpi_outer_radius, tpi_inner_radius)
+            tile = preprocess_legacy_fast(optical, arcticdem, tcvis, data_masks, tpi_outer_radius, tpi_inner_radius)
 
-        ensemble = EnsembleV1(model_dir / tcvis_model_name, model_dir / notcvis_model_name)
-        tile = ensemble.segment_tile(
-            tile,
-            patch_size=patch_size,
-            overlap=overlap,
-            batch_size=batch_size,
-            reflection=reflection,
-            keep_inputs=write_model_outputs,
-        )
-        tile = prepare_export(tile)
+            ensemble = EnsembleV1(model_dir / tcvis_model_name, model_dir / notcvis_model_name)
+            tile = ensemble.segment_tile(
+                tile,
+                patch_size=patch_size,
+                overlap=overlap,
+                batch_size=batch_size,
+                reflection=reflection,
+                keep_inputs=write_model_outputs,
+            )
+            tile = prepare_export(tile)
 
-        outpath.mkdir(parents=True, exist_ok=True)
-        writer = InferenceResultWriter(tile)
-        writer.export_probabilities(outpath)
-        writer.export_binarized(outpath)
-        writer.export_polygonized(outpath)
+            outpath.mkdir(parents=True, exist_ok=True)
+            writer = InferenceResultWriter(tile)
+            writer.export_probabilities(outpath)
+            writer.export_binarized(outpath)
+            writer.export_polygonized(outpath)
+        except Exception as e:
+            logger.warning(f"Could not process folder '{fpath.relative()}'")
+            logger.exception(e)
 
 
 def run_native_sentinel2_pipeline(
@@ -350,32 +360,36 @@ def run_native_sentinel2_pipeline(
 
     # Find all Sentinel 2 scenes
     for fpath in sentinel2_dir.glob("*/"):
-        scene_id = fpath.name
-        outpath = output_data_dir / scene_id
+        try:
+            scene_id = fpath.name
+            outpath = output_data_dir / scene_id
 
-        optical = load_s2_scene(fpath)
-        arcticdem = load_arcticdem_from_vrt(arcticdem_slope_vrt, arcticdem_elevation_vrt, optical)
-        tcvis = load_tcvis(optical, cache_dir)
-        data_masks = load_s2_masks(fpath, optical.odc.geobox)
+            optical = load_s2_scene(fpath)
+            arcticdem = load_arcticdem_from_vrt(arcticdem_slope_vrt, arcticdem_elevation_vrt, optical)
+            tcvis = load_tcvis(optical, cache_dir)
+            data_masks = load_s2_masks(fpath, optical.odc.geobox)
 
-        tile = preprocess_legacy(optical, arcticdem, tcvis, data_masks)
+            tile = preprocess_legacy(optical, arcticdem, tcvis, data_masks)
 
-        ensemble = EnsembleV1(model_dir / tcvis_model_name, model_dir / notcvis_model_name)
-        tile = ensemble.segment_tile(
-            tile,
-            patch_size=patch_size,
-            overlap=overlap,
-            batch_size=batch_size,
-            reflection=reflection,
-            keep_inputs=write_model_outputs,
-        )
-        tile = prepare_export(tile)
+            ensemble = EnsembleV1(model_dir / tcvis_model_name, model_dir / notcvis_model_name)
+            tile = ensemble.segment_tile(
+                tile,
+                patch_size=patch_size,
+                overlap=overlap,
+                batch_size=batch_size,
+                reflection=reflection,
+                keep_inputs=write_model_outputs,
+            )
+            tile = prepare_export(tile)
 
-        outpath.mkdir(parents=True, exist_ok=True)
-        writer = InferenceResultWriter(tile)
-        writer.export_probabilities(outpath)
-        writer.export_binarized(outpath)
-        writer.export_polygonized(outpath)
+            outpath.mkdir(parents=True, exist_ok=True)
+            writer = InferenceResultWriter(tile)
+            writer.export_probabilities(outpath)
+            writer.export_binarized(outpath)
+            writer.export_polygonized(outpath)
+        except Exception as e:
+            logger.warning(f"Could not process folder '{fpath.relative()}'")
+            logger.exception(e)
 
 
 def run_native_sentinel2_pipeline_fast(
@@ -445,29 +459,34 @@ def run_native_sentinel2_pipeline_fast(
 
     # Find all Sentinel 2 scenes
     for fpath in sentinel2_dir.glob("*/"):
-        scene_id = fpath.name
-        outpath = output_data_dir / scene_id
+        try:
+            scene_id = fpath.name
+            outpath = output_data_dir / scene_id
 
-        optical = load_s2_scene(fpath)
-        arcticdem = load_arcticdem_tile(optical.odc.geobox, arcticdem_dir, resolution=2, buffer=tpi_outer_radius)
-        tcvis = load_tcvis(optical, cache_dir)
-        data_masks = load_s2_masks(fpath, optical.odc.geobox)
+            optical = load_s2_scene(fpath)
+            arcticdem = load_arcticdem_tile(optical.odc.geobox, arcticdem_dir, resolution=2, buffer=tpi_outer_radius)
+            tcvis = load_tcvis(optical, cache_dir)
+            data_masks = load_s2_masks(fpath, optical.odc.geobox)
 
-        tile = preprocess_legacy_fast(optical, arcticdem, tcvis, data_masks, tpi_outer_radius, tpi_inner_radius)
+            tile = preprocess_legacy_fast(optical, arcticdem, tcvis, data_masks, tpi_outer_radius, tpi_inner_radius)
 
-        ensemble = EnsembleV1(model_dir / tcvis_model_name, model_dir / notcvis_model_name)
-        tile = ensemble.segment_tile(
-            tile,
-            patch_size=patch_size,
-            overlap=overlap,
-            batch_size=batch_size,
-            reflection=reflection,
-            keep_inputs=write_model_outputs,
-        )
-        tile = prepare_export(tile)
+            ensemble = EnsembleV1(model_dir / tcvis_model_name, model_dir / notcvis_model_name)
+            tile = ensemble.segment_tile(
+                tile,
+                patch_size=patch_size,
+                overlap=overlap,
+                batch_size=batch_size,
+                reflection=reflection,
+                keep_inputs=write_model_outputs,
+            )
+            tile = prepare_export(tile)
 
-        outpath.mkdir(parents=True, exist_ok=True)
-        writer = InferenceResultWriter(tile)
-        writer.export_probabilities(outpath)
-        writer.export_binarized(outpath)
-        writer.export_polygonized(outpath)
+            outpath.mkdir(parents=True, exist_ok=True)
+            writer = InferenceResultWriter(tile)
+            writer.export_probabilities(outpath)
+            writer.export_binarized(outpath)
+            writer.export_polygonized(outpath)
+
+        except Exception as e:
+            logger.warning(f"Could not process folder '{fpath.relative()}'")
+            logger.exception(e)

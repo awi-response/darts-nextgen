@@ -65,21 +65,21 @@ class ConfigParser:
         Args:
             file_path (str | Path): The path to the config file.
 
-        Raises:
-            FileNotFoundError: If the file does not exist.
-
         """
         if isinstance(file_path, str):
             file_path = Path(file_path)
 
         if not file_path.exists():
-            raise FileNotFoundError(f"Config file '{file_path.resolve()}' not found.")
+            logger.info(f"no config at {file_path.absolute().resolve()}")
+            self._config = {}
+            return
 
         with file_path.open("rb") as f:
             config = tomllib.load(f)["darts"]
 
         # Flatten the config data ()
         self._config = flatten_dict(config)
+        logger.info(f"loaded config from '{Path(file_path).absolute().resolve()}'")
 
     def apply_config(self, mapping: dict[str, cyclopts.config.Unset | list[str]]):
         """Apply the loaded config to the cyclopts mapping.

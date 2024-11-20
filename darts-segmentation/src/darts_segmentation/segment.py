@@ -67,6 +67,11 @@ class SMPSegmenter:
         self.model.load_state_dict(ckpt["statedict"])
         self.model.eval()
 
+        logger.debug(
+            f"successfully loaded model from {Path(model_checkpoint).absolute()}:\n"
+            f"\tinputs: {self.config['input_combination']}"
+        )
+
     def tile2tensor(self, tile: xr.Dataset) -> torch.Tensor:
         """Take a tile and convert it to a pytorch tensor.
 
