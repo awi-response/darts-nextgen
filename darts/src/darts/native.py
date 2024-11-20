@@ -179,7 +179,7 @@ def run_native_planet_pipeline(
             writer.export_binarized(outpath)
             writer.export_polygonized(outpath)
         except Exception as e:
-            logger.warning(f"Could not process folder '{fpath.resolve()}':")
+            logger.warning(f"Could not process folder '{fpath.resolve()}'.\nSkipping...")
             logger.exception(e)
 
 
@@ -276,7 +276,7 @@ def run_native_planet_pipeline_fast(
             writer.export_binarized(outpath)
             writer.export_polygonized(outpath)
         except Exception as e:
-            logger.warning(f"Could not process folder '{fpath.relative()}'")
+            logger.warning(f"Could not process folder '{fpath.resolve()}'.\nSkipping...")
             logger.exception(e)
 
 
@@ -388,7 +388,7 @@ def run_native_sentinel2_pipeline(
             writer.export_binarized(outpath)
             writer.export_polygonized(outpath)
         except Exception as e:
-            logger.warning(f"Could not process folder '{fpath.relative()}'")
+            logger.warning(f"Could not process folder '{fpath.resolve()}'.\nSkipping...")
             logger.exception(e)
 
 
@@ -488,5 +488,5 @@ def run_native_sentinel2_pipeline_fast(
             writer.export_polygonized(outpath)
 
         except Exception as e:
-            logger.warning(f"Could not process folder '{fpath.relative()}'")
+            logger.warning(f"Could not process folder '{fpath.resolve()}'.\nSkipping...")
             logger.exception(e)

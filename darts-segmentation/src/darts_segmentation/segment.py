@@ -59,6 +59,7 @@ class SMPSegmenter:
             model_checkpoint (Path): The path to the model checkpoint.
 
         """
+        model_checkpoint = model_checkpoint if isinstance(model_checkpoint, Path) else Path(model_checkpoint)
         self.device = torch.device("cpu") if not torch.cuda.is_available() else torch.device("cuda")
         ckpt = torch.load(model_checkpoint, map_location=self.device)
         self.config = validate_config(ckpt["config"])
@@ -68,8 +69,8 @@ class SMPSegmenter:
         self.model.eval()
 
         logger.debug(
-            f"successfully loaded model from {Path(model_checkpoint).absolute()}:\n"
-            f"\tinputs: {self.config['input_combination']}"
+            f"Successfully loaded model from {model_checkpoint.resolve()} with inputs: "
+            f"{self.config['input_combination']}"
         )
 
     def tile2tensor(self, tile: xr.Dataset) -> torch.Tensor:

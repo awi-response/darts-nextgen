@@ -13,18 +13,27 @@ import xarray as xr
 logger = logging.getLogger(__name__.replace("darts_", "darts."))
 
 
-def create_arcticdem_vrt(dem_data_dir: Path, vrt_target_dir: Path):
+def create_arcticdem_vrt(dem_data_dir: Path, vrt_target_dir: Path):  # noqa: C901
     """Create a VRT file from ArcticDEM data.
 
+    This command expects the tiles for slope and relative elevation in the subfolders `relative_elevation` and `slope`
+    of `dem_data_dir`. The tool requires the python gdal bindings to be installed.
+
     Args:
-        dem_data_dir (Path): The directory containing the ArcticDEM data (.tif).
+        dem_data_dir (Path): The directory containing subfolders `relative_elevation` and `slope` with
+            ArcticDEM data (.tif).
         vrt_target_dir (Path): The output directory.
 
     Raises:
         OSError: If the target directory is not writable.
+        ValueError: If the command parameters are invalid
 
     """
     start_time = time.time()
+
+    if not dem_data_dir.exists():
+        raise ValueError(f"The DEM data dir does not exist: {dem_data_dir.resolve().absolute()}")
+
     logger.debug(f"Creating ArcticDEM VRT file at {vrt_target_dir.resolve()} based on {dem_data_dir.resolve()}")
 
     try:
@@ -57,17 +66,33 @@ def create_arcticdem_vrt(dem_data_dir: Path, vrt_target_dir: Path):
     if len(non_writable_files) > 0:
         raise OSError(f"cannot write to {', '.join([f.name for f in non_writable_files])}")
 
+    # memorize if any files weren't written
+    file_written = dict.fromkeys(subdirs.keys(), False)
+
     for name, subdir in subdirs.items():
         output_file_path = vrt_target_dir / f"{name}.vrt"
         # check the file first if we can write to it
 
         ds_path = dem_data_dir / subdir
+        if not ds_path.exists():
+            logger.warning(f"{ds_path.absolute()} does NOT exist!")
+            continue
+
         filelist = [str(f.resolve()) for f in ds_path.glob("*.tif")]
+        if len(filelist) < 1:
+            logger.warning(f"NO files found in {ds_path.absolute()}")
+            continue
+
         logger.debug(f"Found {len(filelist)} files for {name} at {ds_path}.")
         logger.debug(f"Writing VRT to '{output_file_path.resolve()}'")
         src_nodata = "nan" if name == "slope" else 0
         opt = gdal.BuildVRTOptions(srcNodata=src_nodata, VRTNodata=0)
         gdal.BuildVRT(str(output_file_path.resolve()), filelist, options=opt)
+        file_written[name] = True
+
+    for name, is_written in file_written.items():
+        if not is_written:
+            logger.warning(f"VRT file for {name} was NOT created.")
 
     logger.debug(f"Creation of VRT took {time.time() - start_time:.2f}s")
 

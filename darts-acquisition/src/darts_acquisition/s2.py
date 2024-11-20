@@ -70,10 +70,9 @@ def load_s2_masks(fpath: str | Path, reference_geobox: GeoBox) -> xr.Dataset:
 
 
     Returns:
-        xr.Dataset | None: A merged xarray Dataset containing two data masks:
+        xr.Dataset: A merged xarray Dataset containing two data masks:
             - 'valid_data_mask': A mask indicating valid (1) and no data (0).
             - 'quality_data_mask': A mask indicating high quality (1) and low quality (0).
-            or None if no masking data could be found
 
     """
     start_time = time.time()
@@ -86,18 +85,17 @@ def load_s2_masks(fpath: str | Path, reference_geobox: GeoBox) -> xr.Dataset:
     # TODO: SCL band in SR file
     try:
         scl_path = next(fpath.glob("*_SCL*.tif"))
-        # See scene classes here: https://custom-scripts.sentinel-hub.com/custom-scripts/sentinel-2/scene-classification/
-        da_scl = xr.open_dataarray(scl_path)
-
     except StopIteration:
         logger.warning("Found no data quality mask (SCL). No masking will occur.")
-        # TODO: Return a dummy dataset with all ones
         valid_data_mask = (odc.geo.xr.xr_zeros(reference_geobox, dtype="uint8") + 1).to_dataset(name="valid_data_mask")
         valid_data_mask.attrs = {"data_source": "s2", "long_name": "Valid Data Mask"}
         quality_data_mask = odc.geo.xr.xr_zeros(reference_geobox, dtype="uint8").to_dataset(name="quality_data_mask")
         quality_data_mask.attrs = {"data_source": "s2", "long_name": "Quality Data Mask"}
         qa_ds = xr.merge([valid_data_mask, quality_data_mask])
         return qa_ds
+
+    # See scene classes here: https://custom-scripts.sentinel-hub.com/custom-scripts/sentinel-2/scene-classification/
+    da_scl = xr.open_dataarray(scl_path)
 
     da_scl = da_scl.odc.reproject(reference_geobox, sampling="nearest")
 
