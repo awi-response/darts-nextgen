@@ -8,8 +8,6 @@ from pathlib import Path
 from typing import Literal
 
 import geopandas as gpd
-import odc.geo
-import odc.geo.xr
 import pystac
 import requests
 import xarray as xr
@@ -17,13 +15,18 @@ import zarr
 import zarr.storage
 from odc.geo.geobox import GeoBox
 
-from darts_acquisition.utils.storage import optimize_coord_encoding
+from darts_acquisition.utils.storage import create_empty_datacube
 
 logger = logging.getLogger(__name__.replace("darts_", "darts."))
 
 
 RESOLUTIONS = Literal[2, 10, 32]
 # https://www.pgc.umn.edu/guides/stereo-derived-elevation-models/pgc-dem-products-arcticdem-rema-and-earthdem
+DATA_EXTENT = {
+    2: GeoBox.from_bbox((-3314693.24, -3314693.24, 3314693.24, 3314693.24), "epsg:3413", resolution=2),
+    10: GeoBox.from_bbox((-3314693.24, -3314693.24, 3314693.24, 3314693.24), "epsg:3413", resolution=10),
+    32: GeoBox.from_bbox((-3314693.24, -3314693.24, 3314693.24, 3314693.24), "epsg:3413", resolution=32),
+}
 DATA_VARS = ["dem", "datamask"]  # ["dem", "count", "mad", "maxdate", "mindate", "datamask"]
 DATA_VARS_META = {
     "dem": {
@@ -126,55 +129,6 @@ def download_arcticdem_extent(dem_data_dir: Path):
     )
 
 
-def create_empty_datacube(storage: zarr.storage.Store, resolution: int, chunk_size: int):
-    """Create an empty datacube from a GeoBox covering the complete extent of the EPSG:3413.
-
-    Args:
-        storage (zarr.storage.Store): The zarr storage object where the datacube will be saved.
-        resolution (int): The resolution of a single pixel in meters.
-        chunk_size (int): The size of a single chunk in pixels.
-
-    """
-    tick_fstart = time.perf_counter()
-    logger.info(
-        f"Creating an empty zarr datacube with the variables"
-        f"{DATA_VARS} at a {resolution=}m and {chunk_size=} to {storage=}"
-    )
-    geobox = GeoBox.from_bbox((-3314693.24, -3314693.24, 3314693.24, 3314693.24), "epsg:3413", resolution=resolution)
-
-    ds = xr.Dataset(
-        {name: odc.geo.xr.xr_zeros(geobox, chunks=-1, dtype="float32") for name in DATA_VARS},
-        attrs={"title": "ArcticDEM Data Cube", "loaded_scenes": []},
-    )
-
-    # Add metadata
-    for name, meta in DATA_VARS_META.items():
-        ds[name].attrs.update(meta)
-
-    coords_encoding = {
-        "x": {"chunks": ds.x.shape, **optimize_coord_encoding(ds.x.values, resolution)},
-        "y": {"chunks": ds.y.shape, **optimize_coord_encoding(ds.y.values, -resolution)},
-    }
-    var_encoding = {
-        name: {"chunks": (chunk_size, chunk_size), "compressor": zarr.Blosc(cname="zstd"), **DATA_VARS_ENCODING[name]}
-        for name in DATA_VARS
-    }
-    encoding = {
-        "spatial_ref": {"chunks": None, "dtype": "int32"},
-        **coords_encoding,
-        **var_encoding,
-    }
-    logger.debug(f"Datacube {encoding=}")
-
-    ds.to_zarr(
-        storage,
-        encoding=encoding,
-        compute=False,
-    )
-    tick_fend = time.perf_counter()
-    logger.info(f"Empty datacube created in {tick_fend - tick_fstart:.2f} seconds")
-
-
 def convert_s3url_to_stac(s3url: str) -> str:
     """Convert an ArcticDEM S3 URL to a STAC URL.
 
@@ -198,12 +152,12 @@ def convert_s3url_to_stac(s3url: str) -> str:
     return "https://" + "/".join(s3url.split("#")[1].split("/")[2:])
 
 
-def procedural_download_datacube(storage: zarr.storage.Store, scenes: gpd.GeoDataFrame):
-    """Download the ArcticDEM data for the specified scenes and add it to the datacube.
+def procedural_download_datacube(storage: zarr.storage.Store, tiles: gpd.GeoDataFrame):
+    """Download the ArcticDEM data for the specified tiles and add it to the datacube.
 
     Args:
         storage (zarr.storage.Store): The zarr storage object where the datacube will be saved.
-        scenes (gpd.GeoDataFrame): The GeoDataFrame containing the scene information from the mosaic extent dataframe.
+        tiles (gpd.GeoDataFrame): The GeoDataFrame containing the tile information from the mosaic extent dataframe.
 
     References:
         - https://earthmover.io/blog/serverless-datacube-pipeline
@@ -217,26 +171,26 @@ def procedural_download_datacube(storage: zarr.storage.Store, scenes: gpd.GeoDat
     # Check if zarr data already contains the data via the attrs
     arcticdem_datacube = xr.open_zarr(storage, mask_and_scale=False)
 
-    loaded_scenes: list[str] = arcticdem_datacube.attrs.get("loaded_scenes", []).copy()
-    # TODO: Add another attribute called "loading_scenes" to keep track of the scenes that are currently being loaded
+    loaded_tiles: list[str] = arcticdem_datacube.attrs.get("loaded_tiles", []).copy()
+    # TODO: Add another attribute called "loading_tiles" to keep track of the tiles that are currently being loaded
     # This is necessary for parallel loading of the data
     # Maybe it would be better to turn this into a class which is meant to be used as singleton and can store
-    # the loaded scenes as state
+    # the loaded tiles as state
 
-    # Collect all scenes which should be downloaded
-    new_scenes = scenes[~scenes.dem_id.isin(loaded_scenes)]
+    # Collect all tiles which should be downloaded
+    new_tiles = tiles[~tiles.dem_id.isin(loaded_tiles)]
 
-    if not len(new_scenes):
-        logger.debug("No new scenes to download")
+    if not len(new_tiles):
+        logger.debug("No new tiles to download")
         return
-    logger.debug(f"Found {len(new_scenes)} new scenes: {new_scenes.dem_id.to_list()}")
+    logger.debug(f"Found {len(new_tiles)} new tiles: {new_tiles.dem_id.to_list()}")
 
     # Collect the stac items
-    new_scenes["stacurl"] = new_scenes.s3url.apply(convert_s3url_to_stac)
-    items = pystac.ItemCollection([pystac.Item.from_file(scene.stacurl) for scene in new_scenes.itertuples()])
+    new_tiles["stacurl"] = new_tiles.s3url.apply(convert_s3url_to_stac)
+    items = pystac.ItemCollection([pystac.Item.from_file(tile.stacurl) for tile in new_tiles.itertuples()])
 
     # Parse the resolution from the first item
-    resolution = int(new_scenes.stacurl.iloc[0].split("/")[-3].replace("m", ""))
+    resolution = int(new_tiles.stacurl.iloc[0].split("/")[-3].replace("m", ""))
     assert resolution in [2, 10, 32], f"Resolution {resolution} not supported, only 2m, 10m and 32m are supported"
 
     # Read the metadata and calculate the target slice
@@ -247,7 +201,7 @@ def procedural_download_datacube(storage: zarr.storage.Store, scenes: gpd.GeoDat
     # We need the coordinate information to calculate the target slice and the needed chunking for the real loading
     ds = xr.open_dataset(items, bands=DATA_VARS, engine="stac", resolution=resolution, crs="3413", chunks=-1)
 
-    # Get the slice of the datacube where the scene will be written
+    # Get the slice of the datacube where the tile will be written
     x_start_idx = int((ds.x[0] - arcticdem_datacube.x[0]) // ds.x.attrs["resolution"])
     y_start_idx = int((ds.y[0] - arcticdem_datacube.y[0]) // ds.y.attrs["resolution"])
     target_slice = {
@@ -281,15 +235,15 @@ def procedural_download_datacube(storage: zarr.storage.Store, scenes: gpd.GeoDat
     tick_downloade = time.perf_counter()
     logger.debug(f"Downloaded and written data to datacube in {tick_downloade - tick_downloads:.2f}s")
 
-    # Update loaded_scenes (with native zarr, since xarray does not support this yet)
-    loaded_scenes.extend(new_scenes.dem_id)
+    # Update loaded_tiles (with native zarr, since xarray does not support this yet)
+    loaded_tiles.extend(new_tiles.dem_id)
     za = zarr.open(storage)
-    za.attrs["loaded_scenes"] = loaded_scenes
+    za.attrs["loaded_tiles"] = loaded_tiles
     # Xarray default behaviour is to read the consolidated metadata, hence, we must update it
     zarr.consolidate_metadata(storage)
 
     tick_fend = time.perf_counter()
-    logger.info(f"Procedural download of {len(new_scenes)} scenes completed in {tick_fend - tick_fstart:.2f} seconds")
+    logger.info(f"Procedural download of {len(new_tiles)} tiles completed in {tick_fend - tick_fstart:.2f} seconds")
 
 
 def load_arcticdem_tile(
@@ -324,7 +278,7 @@ def load_arcticdem_tile(
     """
     # TODO: What is a good chunk size?
     # TODO: Thread-safety concers:
-    # - How can we ensure that the same arcticdem scene is not downloaded twice at the same time?
+    # - How can we ensure that the same arcticdem tile is not downloaded twice at the same time?
     # - How can we ensure that the extent is not downloaded twice at the same time?
 
     tick_fstart = time.perf_counter()
@@ -339,9 +293,17 @@ def load_arcticdem_tile(
     # Check if the zarr data already exists
     if not datacube_fpath.exists():
         logger.debug(f"Creating a new zarr datacube at {datacube_fpath.resolve()} with {storage=}")
-        create_empty_datacube(storage, resolution, chunk_size)
+        create_empty_datacube(
+            "ArcticDEM Data Cube",
+            storage,
+            DATA_EXTENT[resolution],
+            chunk_size,
+            DATA_VARS,
+            DATA_VARS_META,
+            DATA_VARS_ENCODING,
+        )
 
-    # Get the adjacent arcticdem scenes
+    # Get the adjacent arcticdem tiles
     # Note: We could also use pystac here, but this would result in a slight performance decrease
     # because of the network overhead, hence we use the extent file
     # Download the extent, download if the file does not exist
@@ -350,12 +312,12 @@ def load_arcticdem_tile(
         download_arcticdem_extent(data_dir)
     extent = gpd.read_parquet(extent_fpath)
 
-    # Add a buffer around the geobox to get the adjacent scenes
+    # Add a buffer around the geobox to get the adjacent tiles
     reference_bbox = geobox.to_crs("epsg:3413", resolution=resolution).pad(buffer)
-    adjacent_scenes = extent[extent.intersects(reference_bbox.extent.geom)]
+    adjacent_tiles = extent[extent.intersects(reference_bbox.extent.geom)]
 
-    # Download the adjacent scenes (if necessary)
-    procedural_download_datacube(storage, adjacent_scenes)
+    # Download the adjacent tiles (if necessary)
+    procedural_download_datacube(storage, adjacent_tiles)
 
     # Load the datacube and set the spatial_ref since it is set as a coordinate within the zarr format
     arcticdem_datacube = xr.open_zarr(storage, mask_and_scale=False).set_coords("spatial_ref")
