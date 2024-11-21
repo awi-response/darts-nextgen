@@ -16,8 +16,8 @@ arcticdem-dir = "data/download/arcticdem"
 cache-dir = "data/download"
 
 [darts.preprocess]
-tpi-outer-radius = 30
-tpi-inner-radius = 25
+tpi-outer-radius = 32 # px. Original implementation was 100m (100 / 3.125 = 32)
+tpi-inner-radius = 0
 
 [darts.segmentation]
 patch-size = 1024

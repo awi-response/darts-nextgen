@@ -10,14 +10,14 @@ logger = logging.getLogger(__name__.replace("darts_", "darts."))
 
 
 def calculate_topographic_position_index(
-    arcticdem_ds: xr.Dataset, outer_radius: int = 30, inner_radius: int = 25
+    arcticdem_ds: xr.Dataset, outer_radius: int = 30, inner_radius: int = 0
 ) -> xr.Dataset:
     """Calculate the Topographic Position Index (TPI) from an ArcticDEM Dataset.
 
     Args:
         arcticdem_ds (xr.Dataset): The ArcticDEM Dataset containing the 'dem' variable.
         outer_radius (int, optional): The outer radius of the annulus kernel in number of cells. Defaults to 30.
-        inner_radius (int, optional): The inner radius of the annulus kernel in number of cells. Defaults to 25.
+        inner_radius (int, optional): The inner radius of the annulus kernel in number of cells. Defaults to 0.
 
     Returns:
         xr.Dataset: The input Dataset with the calculated TPI added as a new variable 'tpi'.
