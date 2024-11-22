@@ -2,6 +2,7 @@
 
 import logging
 from pathlib import Path
+from typing import Literal
 
 logger = logging.getLogger(__name__)
 
@@ -42,6 +43,7 @@ def run_native_planet_pipeline(
     model_dir: Path,
     tcvis_model_name: str = "RTS_v6_tcvis.pt",
     notcvis_model_name: str = "RTS_v6_notcvis.pt",
+    device: Literal["cuda", "cpu", "auto"] | int | None = None,
     ee_project: str | None = None,
     patch_size: int = 1024,
     overlap: int = 16,
@@ -61,6 +63,10 @@ def run_native_planet_pipeline(
         model_dir (Path): The path to the models to use for segmentation.
         tcvis_model_name (str, optional): The name of the model to use for TCVis. Defaults to "RTS_v6_tcvis.pt".
         notcvis_model_name (str, optional): The name of the model to use for not TCVis. Defaults to "RTS_v6_notcvis.pt".
+        device (Literal["cuda", "cpu"] | int, optional): The device to run the model on.
+            If "cuda" take the first device (0), if int take the specified device.
+            If "auto" try to automatically select a free GPU (<50% memory usage).
+            Defaults to "cuda" if available, else "cpu".
         ee_project (str, optional): The Earth Engine project ID or number to use. May be omitted if
             project is defined within persistent API credentials obtained via `earthengine authenticate`.
         patch_size (int, optional): The patch size to use for inference. Defaults to 1024.
@@ -138,6 +144,7 @@ def run_native_planet_pipeline(
 
     """
     # Import here to avoid long loading times when running other commands
+    import torch
     from darts_acquisition.arcticdem import load_arcticdem_from_vrt
     from darts_acquisition.planet import load_planet_masks, load_planet_scene
     from darts_acquisition.tcvis import load_tcvis
@@ -146,8 +153,10 @@ def run_native_planet_pipeline(
     from darts_postprocessing import prepare_export
     from darts_preprocessing import preprocess_legacy
 
+    from darts.utils.cuda import decide_device
     from darts.utils.earthengine import init_ee
 
+    device = decide_device(device)
     init_ee(ee_project)
 
     # Find all PlanetScope orthotiles
@@ -160,7 +169,11 @@ def run_native_planet_pipeline(
 
             tile = preprocess_legacy(optical, arcticdem, tcvis, data_masks)
 
-            ensemble = EnsembleV1(model_dir / tcvis_model_name, model_dir / notcvis_model_name)
+            ensemble = EnsembleV1(
+                model_dir / tcvis_model_name,
+                model_dir / notcvis_model_name,
+                device=torch.device(device),
+            )
             tile = ensemble.segment_tile(
                 tile,
                 patch_size=patch_size,
@@ -190,6 +203,7 @@ def run_native_planet_pipeline_fast(
     model_dir: Path,
     tcvis_model_name: str = "RTS_v6_tcvis.pt",
     notcvis_model_name: str = "RTS_v6_notcvis.pt",
+    device: Literal["cuda", "cpu", "auto"] | int | None = None,
     ee_project: str | None = None,
     tpi_outer_radius: int = 30,
     tpi_inner_radius: int = 25,
@@ -213,6 +227,10 @@ def run_native_planet_pipeline_fast(
         model_dir (Path): The path to the models to use for segmentation.
         tcvis_model_name (str, optional): The name of the model to use for TCVis. Defaults to "RTS_v6_tcvis.pt".
         notcvis_model_name (str, optional): The name of the model to use for not TCVis. Defaults to "RTS_v6_notcvis.pt".
+        device (Literal["cuda", "cpu"] | int, optional): The device to run the model on.
+            If "cuda" take the first device (0), if int take the specified device.
+            If "auto" try to automatically select a free GPU (<50% memory usage).
+            Defaults to "cuda" if available, else "cpu".
         ee_project (str, optional): The Earth Engine project ID or number to use. May be omitted if
             project is defined within persistent API credentials obtained via `earthengine authenticate`.
         tpi_outer_radius (int, optional): The outer radius of the annulus kernel for the tpi calculation
@@ -228,6 +246,7 @@ def run_native_planet_pipeline_fast(
 
     """
     # Import here to avoid long loading times when running other commands
+    import torch
     from darts_acquisition.arcticdem import load_arcticdem_tile
     from darts_acquisition.planet import load_planet_masks, load_planet_scene
     from darts_acquisition.tcvis import load_tcvis
@@ -238,8 +257,10 @@ def run_native_planet_pipeline_fast(
     from dask.distributed import Client
     from odc.stac import configure_rio
 
+    from darts.utils.cuda import decide_device
     from darts.utils.earthengine import init_ee
 
+    device = decide_device(device)
     init_ee(ee_project)
 
     client = Client()
@@ -255,9 +276,21 @@ def run_native_planet_pipeline_fast(
             tcvis = load_tcvis(optical.odc.geobox, tcvis_dir)
             data_masks = load_planet_masks(fpath)
 
-            tile = preprocess_legacy_fast(optical, arcticdem, tcvis, data_masks, tpi_outer_radius, tpi_inner_radius)
+            tile = preprocess_legacy_fast(
+                optical,
+                arcticdem,
+                tcvis,
+                data_masks,
+                tpi_outer_radius,
+                tpi_inner_radius,
+                device,
+            )
 
-            ensemble = EnsembleV1(model_dir / tcvis_model_name, model_dir / notcvis_model_name)
+            ensemble = EnsembleV1(
+                model_dir / tcvis_model_name,
+                model_dir / notcvis_model_name,
+                device=torch.device(device),
+            )
             tile = ensemble.segment_tile(
                 tile,
                 patch_size=patch_size,
@@ -287,6 +320,7 @@ def run_native_sentinel2_pipeline(
     model_dir: Path,
     tcvis_model_name: str = "RTS_v6_tcvis_s2native.pt",
     notcvis_model_name: str = "RTS_v6_notcvis_s2native.pt",
+    device: Literal["cuda", "cpu", "auto"] | int | None = None,
     ee_project: str | None = None,
     patch_size: int = 1024,
     overlap: int = 16,
@@ -305,6 +339,10 @@ def run_native_sentinel2_pipeline(
         model_dir (Path): The path to the models to use for segmentation.
         tcvis_model_name (str, optional): The name of the model to use for TCVis. Defaults to "RTS_v6_tcvis.pt".
         notcvis_model_name (str, optional): The name of the model to use for not TCVis. Defaults to "RTS_v6_notcvis.pt".
+        device (Literal["cuda", "cpu"] | int, optional): The device to run the model on.
+            If "cuda" take the first device (0), if int take the specified device.
+            If "auto" try to automatically select a free GPU (<50% memory usage).
+            Defaults to "cuda" if available, else "cpu".
         ee_project (str, optional): The Earth Engine project ID or number to use. May be omitted if
             project is defined within persistent API credentials obtained via `earthengine authenticate`.
         patch_size (int, optional): The patch size to use for inference. Defaults to 1024.
@@ -344,6 +382,7 @@ def run_native_sentinel2_pipeline(
 
     """
     # Import here to avoid long loading times when running other commands
+    import torch
     from darts_acquisition.arcticdem import load_arcticdem_from_vrt
     from darts_acquisition.s2 import load_s2_masks, load_s2_scene
     from darts_acquisition.tcvis import load_tcvis
@@ -352,8 +391,10 @@ def run_native_sentinel2_pipeline(
     from darts_postprocessing import prepare_export
     from darts_preprocessing import preprocess_legacy
 
+    from darts.utils.cuda import decide_device
     from darts.utils.earthengine import init_ee
 
+    device = decide_device(device)
     init_ee(ee_project)
 
     # Find all Sentinel 2 scenes
@@ -369,7 +410,11 @@ def run_native_sentinel2_pipeline(
 
             tile = preprocess_legacy(optical, arcticdem, tcvis, data_masks)
 
-            ensemble = EnsembleV1(model_dir / tcvis_model_name, model_dir / notcvis_model_name)
+            ensemble = EnsembleV1(
+                model_dir / tcvis_model_name,
+                model_dir / notcvis_model_name,
+                device=torch.device(device),
+            )
             tile = ensemble.segment_tile(
                 tile,
                 patch_size=patch_size,
@@ -398,6 +443,7 @@ def run_native_sentinel2_pipeline_fast(
     model_dir: Path,
     tcvis_model_name: str = "RTS_v6_tcvis_s2native.pt",
     notcvis_model_name: str = "RTS_v6_notcvis_s2native.pt",
+    device: Literal["cuda", "cpu", "auto"] | int | None = None,
     ee_project: str | None = None,
     tpi_outer_radius: int = 30,
     tpi_inner_radius: int = 25,
@@ -421,6 +467,10 @@ def run_native_sentinel2_pipeline_fast(
         model_dir (Path): The path to the models to use for segmentation.
         tcvis_model_name (str, optional): The name of the model to use for TCVis. Defaults to "RTS_v6_tcvis.pt".
         notcvis_model_name (str, optional): The name of the model to use for not TCVis. Defaults to "RTS_v6_notcvis.pt".
+        device (Literal["cuda", "cpu"] | int, optional): The device to run the model on.
+            If "cuda" take the first device (0), if int take the specified device.
+            If "auto" try to automatically select a free GPU (<50% memory usage).
+            Defaults to "cuda" if available, else "cpu".
         ee_project (str, optional): The Earth Engine project ID or number to use. May be omitted if
             project is defined within persistent API credentials obtained via `earthengine authenticate`.
         tpi_outer_radius (int, optional): The outer radius of the annulus kernel for the tpi calculation
@@ -436,6 +486,7 @@ def run_native_sentinel2_pipeline_fast(
 
     """
     # Import here to avoid long loading times when running other commands
+    import torch
     from darts_acquisition.arcticdem import load_arcticdem_tile
     from darts_acquisition.s2 import load_s2_masks, load_s2_scene
     from darts_acquisition.tcvis import load_tcvis
@@ -446,8 +497,10 @@ def run_native_sentinel2_pipeline_fast(
     from dask.distributed import Client
     from odc.stac import configure_rio
 
+    from darts.utils.cuda import decide_device
     from darts.utils.earthengine import init_ee
 
+    device = decide_device(device)
     init_ee(ee_project)
 
     client = Client()
@@ -466,9 +519,21 @@ def run_native_sentinel2_pipeline_fast(
             tcvis = load_tcvis(optical.odc.geobox, tcvis_dir)
             data_masks = load_s2_masks(fpath, optical.odc.geobox)
 
-            tile = preprocess_legacy_fast(optical, arcticdem, tcvis, data_masks, tpi_outer_radius, tpi_inner_radius)
+            tile = preprocess_legacy_fast(
+                optical,
+                arcticdem,
+                tcvis,
+                data_masks,
+                tpi_outer_radius,
+                tpi_inner_radius,
+                device,
+            )
 
-            ensemble = EnsembleV1(model_dir / tcvis_model_name, model_dir / notcvis_model_name)
+            ensemble = EnsembleV1(
+                model_dir / tcvis_model_name,
+                model_dir / notcvis_model_name,
+                device=torch.device(device),
+            )
             tile = ensemble.segment_tile(
                 tile,
                 patch_size=patch_size,

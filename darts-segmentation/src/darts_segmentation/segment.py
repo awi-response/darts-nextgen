@@ -13,6 +13,8 @@ from darts_segmentation.utils import free_cuda, predict_in_patches
 
 logger = logging.getLogger(__name__.replace("darts_", "darts."))
 
+DEFAULT_DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
 
 class SMPSegmenterConfig(TypedDict):
     """Configuration for the segmentor."""
@@ -52,15 +54,17 @@ class SMPSegmenter:
     model: nn.Module
     device: torch.device
 
-    def __init__(self, model_checkpoint: Path | str):
+    def __init__(self, model_checkpoint: Path | str, device: torch.device = DEFAULT_DEVICE):
         """Initialize the segmenter.
 
         Args:
             model_checkpoint (Path): The path to the model checkpoint.
+            device (torch.device): The device to run the model on.
+                Defaults to torch.device("cuda") if cuda is available, else torch.device("cpu").
 
         """
         model_checkpoint = model_checkpoint if isinstance(model_checkpoint, Path) else Path(model_checkpoint)
-        self.device = torch.device("cpu") if not torch.cuda.is_available() else torch.device("cuda")
+        self.device = device
         ckpt = torch.load(model_checkpoint, map_location=self.device)
         self.config = validate_config(ckpt["config"])
         self.model = smp.create_model(**self.config["model"], encoder_weights=None)

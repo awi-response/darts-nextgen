@@ -2,6 +2,7 @@
 
 import logging
 import time
+from typing import Literal
 
 import odc.geo.xr  # noqa: F401
 import xarray as xr
@@ -15,11 +16,14 @@ logger = logging.getLogger(__name__.replace("darts_", "darts."))
 
 
 if has_cuda_and_cupy():
+    import cupy as cp
     import cupy_xarray  # noqa: F401
 
-    logger.info("GPU-accelerated xrspatial functions are available.")
+    DEFAULT_DEVICE = "cuda"
+    logger.debug("GPU-accelerated xrspatial functions are available.")
 else:
-    logger.info("GPU-accelerated xrspatial functions are not available.")
+    DEFAULT_DEVICE = "cpu"
+    logger.debug("GPU-accelerated xrspatial functions are not available.")
 
 
 def preprocess_legacy(
@@ -59,6 +63,56 @@ def preprocess_legacy(
     return ds_merged
 
 
+def preprocess_legacy_arcticdem_fast(
+    ds_arcticdem: xr.Dataset, tpi_outer_radius: int, tpi_inner_radius: int, device: Literal["cuda", "cpu"] | int
+):
+    """Preprocess the ArcticDEM data with legacy (DARTS v1) preprocessing steps.
+
+    Args:
+        ds_arcticdem (xr.Dataset): The ArcticDEM dataset.
+        tpi_outer_radius (int): The outer radius of the annulus kernel for the tpi calculation in number of cells.
+        tpi_inner_radius (int): The inner radius of the annulus kernel for the tpi calculation in number of cells.
+        device (Literal["cuda", "cpu"] | int): The device to run the tpi and slope calculations on.
+            If "cuda" take the first device (0), if int take the specified device.
+
+    Returns:
+        xr.Dataset: The preprocessed ArcticDEM dataset.
+
+    """
+    use_gpu = device == "cuda" or isinstance(device, int)
+
+    # Warn user if use_gpu is set but no GPU is available
+    if use_gpu and not has_cuda_and_cupy():
+        logger.warning(
+            f"Device was set to {device}, but GPU acceleration is not available. Calculating TPI and slope on CPU."
+        )
+        use_gpu = False
+
+    # Calculate TPI and slope from ArcticDEM on GPU
+    if use_gpu:
+        device_nr = device if isinstance(device, int) else 0
+        logger.debug(f"Moving arcticdem to GPU:{device}.")
+        # Check if dem is dask, if not persist it, since tpi and slope can't be calculated from cupy-dask arrays
+        if ds_arcticdem.chunks is not None:
+            ds_arcticdem = ds_arcticdem.persist()
+        # Move and calculate on specified device
+        with cp.cuda.Device(device_nr):
+            ds_arcticdem = ds_arcticdem.cupy.as_cupy()
+            ds_arcticdem = calculate_topographic_position_index(ds_arcticdem, tpi_outer_radius, tpi_inner_radius)
+            ds_arcticdem = calculate_slope(ds_arcticdem)
+            ds_arcticdem = ds_arcticdem.cupy.as_numpy()
+            free_cuda()
+
+    # Calculate TPI and slope from ArcticDEM on CPU
+    else:
+        ds_arcticdem = calculate_topographic_position_index(ds_arcticdem, tpi_outer_radius, tpi_inner_radius)
+        ds_arcticdem = calculate_slope(ds_arcticdem)
+
+    # Apply legacy scaling to tpi
+    ds_arcticdem["tpi"] = (ds_arcticdem.tpi + 50) * 300
+    return ds_arcticdem
+
+
 def preprocess_legacy_fast(
     ds_optical: xr.Dataset,
     ds_arcticdem: xr.Dataset,
@@ -66,7 +120,7 @@ def preprocess_legacy_fast(
     ds_data_masks: xr.Dataset,
     tpi_outer_radius: int = 30,
     tpi_inner_radius: int = 0,
-    use_gpu: bool = True,
+    device: Literal["cuda", "cpu"] | int = DEFAULT_DEVICE,
 ) -> xr.Dataset:
     """Preprocess optical data with legacy (DARTS v1) preprocessing steps, but with new data concepts.
 
@@ -80,15 +134,17 @@ def preprocess_legacy_fast(
     arcticdem data and calculates slope and relative elevation on the fly.
 
     Args:
-        ds_optical (xr.Dataset): The Planet scene optical data or Sentinel 2 scene optical data.
-        ds_arcticdem (xr.Dataset): The ArcticDEM data.
-        ds_tcvis (xr.Dataset): The TCVIS data.
+        ds_optical (xr.Dataset): The Planet scene optical data or Sentinel 2 scene optical dataset.
+        ds_arcticdem (xr.Dataset): The ArcticDEM dataset.
+        ds_tcvis (xr.Dataset): The TCVIS dataset.
         ds_data_masks (xr.Dataset): The data masks, based on the optical data.
         tpi_outer_radius (int, optional): The outer radius of the annulus kernel for the tpi calculation
             in number of cells. Defaults to 30.
         tpi_inner_radius (int, optional): The inner radius of the annulus kernel for the tpi calculation
             in number of cells. Defaults to 0.
-        use_gpu (bool, optional): Whether to use GPU-accelerated functions. Defaults to True.
+        device (Literal["cuda", "cpu"] | int, optional): The device to run the tpi and slope calculations on.
+            If "cuda" take the first device (0), if int take the specified device.
+            Defaults to "cuda" if cuda is available, else "cpu".
 
     Returns:
         xr.Dataset: The preprocessed dataset.
@@ -111,26 +167,8 @@ def preprocess_legacy_fast(
 
     # Calculate TPI and slope from ArcticDEM
     # We need to calculate them before reprojecting, hence we cant merge the data yet
-    # Move to GPU if available
-    if use_gpu and has_cuda_and_cupy():
-        logger.debug("Moving arcticdem to GPU.")
-        # Check if dem is dask, if not persist it, since tpi and slope can't be calculated from cupy-dask arrays
-        if ds_arcticdem.chunks is not None:
-            ds_arcticdem = ds_arcticdem.persist()
-        ds_arcticdem = ds_arcticdem.cupy.as_cupy()
-
-    ds_arcticdem = calculate_topographic_position_index(ds_arcticdem, tpi_outer_radius, tpi_inner_radius)
-    ds_arcticdem = calculate_slope(ds_arcticdem)
-    # Move back to CPU
-    if use_gpu and has_cuda_and_cupy():
-        ds_arcticdem = ds_arcticdem.cupy.as_numpy()
-        free_cuda()
+    ds_arcticdem = preprocess_legacy_arcticdem_fast(ds_arcticdem, tpi_outer_radius, tpi_inner_radius, device)
     ds_arcticdem = ds_arcticdem.odc.reproject(ds_optical.odc.geobox, resampling="cubic")
-
-    # Apply legacy scaling to tpi
-    ds_arcticdem["tpi"] = (ds_arcticdem.tpi + 50) * 300
-
-    # Merge everything
     ds_merged["dem"] = ds_arcticdem.dem
     ds_merged["relative_elevation"] = ds_arcticdem.tpi
     ds_merged["slope"] = ds_arcticdem.slope

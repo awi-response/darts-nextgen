@@ -61,6 +61,7 @@ cuda11 = [
     "cupy>=13.3.0",
     "cupy-xarray>=0.1.4",
     "cuda-python>=12.6.2.post1",
+    "pynvml==11.4.1",
 ]
 cuda12 = [
     "torch==2.2.0+cu121",
@@ -69,6 +70,7 @@ cuda12 = [
     "cupy>=13.3.0",
     "cupy-xarray>=0.1.4",
     "cuda-python>=12.6.2.post1",
+    "pynvml==11.4.1",
 ]
 gdal393 = ["gdal==3.9.3"]
 gdal39 = ["gdal==3.9.2"]

@@ -3,10 +3,13 @@
 import logging
 from pathlib import Path
 
+import torch
 import xarray as xr
 from darts_segmentation.segment import SMPSegmenter
 
 logger = logging.getLogger(__name__.replace("darts_", "darts."))
+
+DEFAULT_DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
 class EnsembleV1:
@@ -16,12 +19,15 @@ class EnsembleV1:
         self,
         rts_v6_tcvis_model_path: str | Path,
         rts_v6_notcvis_model_path: str | Path,
+        device: torch.device = DEFAULT_DEVICE,
     ):
         """Initialize the ensemble.
 
         Args:
             rts_v6_tcvis_model_path (str | Path): Path to the model trained with TCVIS data.
             rts_v6_notcvis_model_path (str | Path): Path to the model trained without TCVIS data.
+            device (torch.device): The device to run the model on.
+                Defaults to torch.device("cuda") if cuda is available, else torch.device("cpu").
 
         """
         logger.debug(
@@ -30,8 +36,8 @@ class EnsembleV1:
             f"\tNOTCVIS Model: {rts_v6_notcvis_model_path.absolute()}"
         )
 
-        self.rts_v6_tcvis_model = SMPSegmenter(rts_v6_tcvis_model_path)
-        self.rts_v6_notcvis_model = SMPSegmenter(rts_v6_notcvis_model_path)
+        self.rts_v6_tcvis_model = SMPSegmenter(rts_v6_tcvis_model_path, device=device)
+        self.rts_v6_notcvis_model = SMPSegmenter(rts_v6_notcvis_model_path, device=device)
 
     def segment_tile(
         self,
