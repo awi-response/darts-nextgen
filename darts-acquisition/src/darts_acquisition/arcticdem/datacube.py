@@ -21,6 +21,7 @@ logger = logging.getLogger(__name__.replace("darts_", "darts."))
 
 
 RESOLUTIONS = Literal[2, 10, 32]
+CHUNK_SIZE = 3600
 # https://www.pgc.umn.edu/guides/stereo-derived-elevation-models/pgc-dem-products-arcticdem-rema-and-earthdem
 DATA_EXTENT = {
     2: GeoBox.from_bbox((-3314693.24, -3314693.24, 3314693.24, 3314693.24), "epsg:3413", resolution=2),
@@ -250,7 +251,6 @@ def load_arcticdem_tile(
     geobox: GeoBox,
     data_dir: Path,
     resolution: RESOLUTIONS,
-    chunk_size: int = 6000,
     buffer: int = 0,
     persist: bool = True,
 ) -> xr.Dataset:
@@ -260,8 +260,6 @@ def load_arcticdem_tile(
         geobox (GeoBox): The geobox for which the tile should be loaded.
         data_dir (Path): The directory where the ArcticDEM data is stored.
         resolution (Literal[2, 10, 32]): The resolution of the ArcticDEM data in m.
-        chunk_size (int, optional): The chunk size for the datacube. Only relevant for the initial creation.
-            Has no effect otherwise. Defaults to 6000.
         buffer (int, optional): The buffer around the geobox in pixels. Defaults to 0.
         persist (bool, optional): If the data should be persisted in memory.
             If not, this will return a Dask backed Dataset. Defaults to True.
@@ -276,7 +274,6 @@ def load_arcticdem_tile(
         2. Geobox must be in a meter based CRS.
 
     """
-    # TODO: What is a good chunk size?
     # TODO: Thread-safety concers:
     # - How can we ensure that the same arcticdem tile is not downloaded twice at the same time?
     # - How can we ensure that the extent is not downloaded twice at the same time?
@@ -297,7 +294,7 @@ def load_arcticdem_tile(
             "ArcticDEM Data Cube",
             storage,
             DATA_EXTENT[resolution],
-            chunk_size,
+            CHUNK_SIZE,
             DATA_VARS,
             DATA_VARS_META,
             DATA_VARS_ENCODING,

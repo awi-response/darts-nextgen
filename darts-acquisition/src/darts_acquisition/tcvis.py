@@ -19,6 +19,7 @@ logger = logging.getLogger(__name__.replace("darts_", "darts."))
 
 EE_WARN_MSG = "Unable to retrieve 'system:time_start' values from an ImageCollection due to: No 'system:time_start' values found in the 'ImageCollection'."  # noqa: E501
 
+CHUNK_SIZE = 3600
 DATA_EXTENT = GeoBox.from_bbox((-180, 60, 180, 90), "epsg:4326", resolution=0.00026949)
 DATA_VARS = ["tc_brightness", "tc_greenness", "tc_wetness"]
 DATA_VARS_META = {
@@ -44,6 +45,19 @@ DATA_VARS_ENCODING = {
 
 
 def procedural_download_datacube(storage: zarr.storage.Store, geobox: GeoBox):
+    """Download the TCVIS data procedurally and add it to the datacube.
+
+    Args:
+        storage (zarr.storage.Store): The zarr storage object where the datacube will be saved.
+        geobox (GeoBox): The geobox to download the data for.
+
+    References:
+        - https://earthmover.io/blog/serverless-datacube-pipeline
+
+    Warning:
+        This function is not thread-safe. Thread-safety might be added in the future.
+
+    """
     tick_fstart = time.perf_counter()
 
     # Check if data already exists
@@ -145,7 +159,6 @@ def procedural_download_datacube(storage: zarr.storage.Store, geobox: GeoBox):
 def load_tcvis(
     geobox: GeoBox,
     data_dir: Path,
-    chunk_size: int = 6000,
     buffer: int = 0,
     persist: bool = True,
 ) -> xr.Dataset:
@@ -153,6 +166,10 @@ def load_tcvis(
 
     Args:
         geobox (GeoBox): The geobox to load the data for.
+        data_dir (Path): The directory to store the downloaded data for faster access for consecutive calls.
+        buffer (int, optional): The buffer around the geobox in pixels. Defaults to 0.
+        persist (bool, optional): If the data should be persisted in memory.
+            If not, this will return a Dask backed Dataset. Defaults to True.
 
     Returns:
         xr.Dataset: The TCVIS dataset.
@@ -170,14 +187,14 @@ def load_tcvis(
             title="Landsat Trends TCVIS 2000-2019",
             storage=storage,
             geobox=DATA_EXTENT,
-            chunk_size=chunk_size,
+            chunk_size=CHUNK_SIZE,
             data_vars=DATA_VARS,
             meta=DATA_VARS_META,
             var_encoding=DATA_VARS_ENCODING,
         )
 
     # Download the adjacent tiles (if necessary)
-    reference_geobox = geobox.to_crs("epsg:4326").pad(buffer)
+    reference_geobox = geobox.to_crs("epsg:4326", resolution=DATA_EXTENT.resolution.x).pad(buffer)
     procedural_download_datacube(storage, reference_geobox)
 
     # Load the datacube and set the spatial_ref since it is set as a coordinate within the zarr format
