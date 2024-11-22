@@ -13,7 +13,7 @@ notcvis-model-name = "RTS_v6_notcvis.pt"
 arcticdem-slope-vrt = "data/input/ArcticDEM/slope.vrt"
 arcticdem-elevation-vrt = "data/input/ArcticDEM/elevation.vrt"
 arcticdem-dir = "data/download/arcticdem"
-cache-dir = "data/download"
+tcvis-dir = "data/download/tcvis"
 
 [darts.preprocess]
 tpi-outer-radius = 32 # px. Original implementation was 100m (100 / 3.125 = 32)

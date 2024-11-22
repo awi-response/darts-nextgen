@@ -44,7 +44,14 @@ def preprocess_legacy(
         xr.Dataset: The preprocessed dataset.
 
     """
+    # Calculate NDVI
     ds_ndvi = calculate_ndvi(ds_optical)
+
+    # Reproject TCVIS to optical data
+    ds_tcvis = ds_tcvis.odc.reproject(ds_optical.odc.geobox, resampling="cubic")
+
+    # Since this function expects the arcticdem to be loaded from a VRT, which already contains slope and tpi,
+    # we dont need to calculate them here
 
     # merge to final dataset
     ds_merged = xr.merge([ds_optical, ds_ndvi, ds_arcticdem, ds_tcvis, ds_data_masks])
@@ -58,7 +65,7 @@ def preprocess_legacy_fast(
     ds_tcvis: xr.Dataset,
     ds_data_masks: xr.Dataset,
     tpi_outer_radius: int = 30,
-    tpi_inner_radius: int = 25,
+    tpi_inner_radius: int = 0,
     use_gpu: bool = True,
 ) -> xr.Dataset:
     """Preprocess optical data with legacy (DARTS v1) preprocessing steps, but with new data concepts.
@@ -80,7 +87,7 @@ def preprocess_legacy_fast(
         tpi_outer_radius (int, optional): The outer radius of the annulus kernel for the tpi calculation
             in number of cells. Defaults to 30.
         tpi_inner_radius (int, optional): The inner radius of the annulus kernel for the tpi calculation
-            in number of cells. Defaults to 25.
+            in number of cells. Defaults to 0.
         use_gpu (bool, optional): Whether to use GPU-accelerated functions. Defaults to True.
 
     Returns:
@@ -91,10 +98,16 @@ def preprocess_legacy_fast(
     logger.info("Starting fast v1 preprocessing.")
 
     # merge to final dataset
-    ds_merged = xr.merge([ds_optical, ds_tcvis, ds_data_masks])
+    ds_merged = xr.merge([ds_optical, ds_data_masks])
 
     # Calculate NDVI
     ds_merged["ndvi"] = calculate_ndvi(ds_merged).ndvi
+
+    # Reproject TCVIS to optical data
+    ds_tcvis = ds_tcvis.odc.reproject(ds_optical.odc.geobox, resampling="cubic")
+    ds_merged["tc_brightness"] = ds_tcvis.tc_brightness
+    ds_merged["tc_greenness"] = ds_tcvis.tc_greenness
+    ds_merged["tc_wetness"] = ds_tcvis.tc_wetness
 
     # Calculate TPI and slope from ArcticDEM
     # We need to calculate them before reprojecting, hence we cant merge the data yet
@@ -114,10 +127,15 @@ def preprocess_legacy_fast(
         free_cuda()
     ds_arcticdem = ds_arcticdem.odc.reproject(ds_optical.odc.geobox, resampling="cubic")
 
+    # Apply legacy scaling to tpi
+    ds_arcticdem["tpi"] = (ds_arcticdem.tpi + 50) * 300
+
+    # Merge everything
     ds_merged["dem"] = ds_arcticdem.dem
     ds_merged["relative_elevation"] = ds_arcticdem.tpi
     ds_merged["slope"] = ds_arcticdem.slope
 
+    # Update datamask with arcticdem mask
     ds_merged["valid_data_mask"] = ds_data_masks.valid_data_mask * ds_arcticdem.datamask
     ds_merged.valid_data_mask.attrs = {
         "long_name": "Valid Data Mask",

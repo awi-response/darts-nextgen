@@ -38,10 +38,10 @@ def run_native_planet_pipeline(
     output_data_dir: Path,
     arcticdem_slope_vrt: Path,
     arcticdem_elevation_vrt: Path,
+    tcvis_dir: Path,
     model_dir: Path,
     tcvis_model_name: str = "RTS_v6_tcvis.pt",
     notcvis_model_name: str = "RTS_v6_notcvis.pt",
-    cache_dir: Path | None = None,
     ee_project: str | None = None,
     patch_size: int = 1024,
     overlap: int = 16,
@@ -57,10 +57,10 @@ def run_native_planet_pipeline(
         output_data_dir (Path): The "output" directory.
         arcticdem_slope_vrt (Path): The path to the ArcticDEM slope VRT file.
         arcticdem_elevation_vrt (Path): The path to the ArcticDEM elevation VRT file.
+        tcvis_dir (Path): The directory containing the TCVis data.
         model_dir (Path): The path to the models to use for segmentation.
         tcvis_model_name (str, optional): The name of the model to use for TCVis. Defaults to "RTS_v6_tcvis.pt".
         notcvis_model_name (str, optional): The name of the model to use for not TCVis. Defaults to "RTS_v6_notcvis.pt".
-        cache_dir (Path | None, optional): The cache directory. If None, no caching will be used. Defaults to None.
         ee_project (str, optional): The Earth Engine project ID or number to use. May be omitted if
             project is defined within persistent API credentials obtained via `earthengine authenticate`.
         patch_size (int, optional): The patch size to use for inference. Defaults to 1024.
@@ -155,7 +155,7 @@ def run_native_planet_pipeline(
         try:
             optical = load_planet_scene(fpath)
             arcticdem = load_arcticdem_from_vrt(arcticdem_slope_vrt, arcticdem_elevation_vrt, optical)
-            tcvis = load_tcvis(optical, cache_dir)
+            tcvis = load_tcvis(optical.odc.geobox, tcvis_dir)
             data_masks = load_planet_masks(fpath)
 
             tile = preprocess_legacy(optical, arcticdem, tcvis, data_masks)
@@ -186,10 +186,10 @@ def run_native_planet_pipeline_fast(
     scenes_dir: Path,
     output_data_dir: Path,
     arcticdem_dir: Path,
+    tcvis_dir: Path,
     model_dir: Path,
     tcvis_model_name: str = "RTS_v6_tcvis.pt",
     notcvis_model_name: str = "RTS_v6_notcvis.pt",
-    cache_dir: Path | None = None,
     ee_project: str | None = None,
     tpi_outer_radius: int = 30,
     tpi_inner_radius: int = 25,
@@ -209,10 +209,10 @@ def run_native_planet_pipeline_fast(
         output_data_dir (Path): The "output" directory.
         arcticdem_dir (Path): The directory containing the ArcticDEM data (the datacube and the extent files).
             Will be created and downloaded if it does not exist.
+        tcvis_dir (Path): The directory containing the TCVis data.
         model_dir (Path): The path to the models to use for segmentation.
         tcvis_model_name (str, optional): The name of the model to use for TCVis. Defaults to "RTS_v6_tcvis.pt".
         notcvis_model_name (str, optional): The name of the model to use for not TCVis. Defaults to "RTS_v6_notcvis.pt".
-        cache_dir (Path | None, optional): The cache directory. If None, no caching will be used. Defaults to None.
         ee_project (str, optional): The Earth Engine project ID or number to use. May be omitted if
             project is defined within persistent API credentials obtained via `earthengine authenticate`.
         tpi_outer_radius (int, optional): The outer radius of the annulus kernel for the tpi calculation
@@ -252,7 +252,7 @@ def run_native_planet_pipeline_fast(
         try:
             optical = load_planet_scene(fpath)
             arcticdem = load_arcticdem_tile(optical.odc.geobox, arcticdem_dir, resolution=2, buffer=tpi_outer_radius)
-            tcvis = load_tcvis(optical, cache_dir)
+            tcvis = load_tcvis(optical.odc.geobox, tcvis_dir)
             data_masks = load_planet_masks(fpath)
 
             tile = preprocess_legacy_fast(optical, arcticdem, tcvis, data_masks, tpi_outer_radius, tpi_inner_radius)
@@ -283,10 +283,10 @@ def run_native_sentinel2_pipeline(
     output_data_dir: Path,
     arcticdem_slope_vrt: Path,
     arcticdem_elevation_vrt: Path,
+    tcvis_dir: Path,
     model_dir: Path,
     tcvis_model_name: str = "RTS_v6_tcvis_s2native.pt",
     notcvis_model_name: str = "RTS_v6_notcvis_s2native.pt",
-    cache_dir: Path | None = None,
     ee_project: str | None = None,
     patch_size: int = 1024,
     overlap: int = 16,
@@ -301,10 +301,10 @@ def run_native_sentinel2_pipeline(
         output_data_dir (Path): The "output" directory.
         arcticdem_slope_vrt (Path): The path to the ArcticDEM slope VRT file.
         arcticdem_elevation_vrt (Path): The path to the ArcticDEM elevation VRT file.
+        tcvis_dir (Path): The directory containing the TCVis data.
         model_dir (Path): The path to the models to use for segmentation.
         tcvis_model_name (str, optional): The name of the model to use for TCVis. Defaults to "RTS_v6_tcvis.pt".
         notcvis_model_name (str, optional): The name of the model to use for not TCVis. Defaults to "RTS_v6_notcvis.pt".
-        cache_dir (Path | None, optional): The cache directory. If None, no caching will be used. Defaults to None.
         ee_project (str, optional): The Earth Engine project ID or number to use. May be omitted if
             project is defined within persistent API credentials obtained via `earthengine authenticate`.
         patch_size (int, optional): The patch size to use for inference. Defaults to 1024.
@@ -364,7 +364,7 @@ def run_native_sentinel2_pipeline(
 
             optical = load_s2_scene(fpath)
             arcticdem = load_arcticdem_from_vrt(arcticdem_slope_vrt, arcticdem_elevation_vrt, optical)
-            tcvis = load_tcvis(optical, cache_dir)
+            tcvis = load_tcvis(optical.odc.geobox, tcvis_dir)
             data_masks = load_s2_masks(fpath, optical.odc.geobox)
 
             tile = preprocess_legacy(optical, arcticdem, tcvis, data_masks)
@@ -394,10 +394,10 @@ def run_native_sentinel2_pipeline_fast(
     sentinel2_dir: Path,
     output_data_dir: Path,
     arcticdem_dir: Path,
+    tcvis_dir: Path,
     model_dir: Path,
     tcvis_model_name: str = "RTS_v6_tcvis_s2native.pt",
     notcvis_model_name: str = "RTS_v6_notcvis_s2native.pt",
-    cache_dir: Path | None = None,
     ee_project: str | None = None,
     tpi_outer_radius: int = 30,
     tpi_inner_radius: int = 25,
@@ -417,10 +417,10 @@ def run_native_sentinel2_pipeline_fast(
         output_data_dir (Path): The "output" directory.
         arcticdem_dir (Path): The directory containing the ArcticDEM data (the datacube and the extent files).
             Will be created and downloaded if it does not exist.
+        tcvis_dir (Path): The directory containing the TCVis data.
         model_dir (Path): The path to the models to use for segmentation.
         tcvis_model_name (str, optional): The name of the model to use for TCVis. Defaults to "RTS_v6_tcvis.pt".
         notcvis_model_name (str, optional): The name of the model to use for not TCVis. Defaults to "RTS_v6_notcvis.pt".
-        cache_dir (Path | None, optional): The cache directory. If None, no caching will be used. Defaults to None.
         ee_project (str, optional): The Earth Engine project ID or number to use. May be omitted if
             project is defined within persistent API credentials obtained via `earthengine authenticate`.
         tpi_outer_radius (int, optional): The outer radius of the annulus kernel for the tpi calculation
@@ -463,7 +463,7 @@ def run_native_sentinel2_pipeline_fast(
 
             optical = load_s2_scene(fpath)
             arcticdem = load_arcticdem_tile(optical.odc.geobox, arcticdem_dir, resolution=2, buffer=tpi_outer_radius)
-            tcvis = load_tcvis(optical, cache_dir)
+            tcvis = load_tcvis(optical.odc.geobox, tcvis_dir)
             data_masks = load_s2_masks(fpath, optical.odc.geobox)
 
             tile = preprocess_legacy_fast(optical, arcticdem, tcvis, data_masks, tpi_outer_radius, tpi_inner_radius)

@@ -87,18 +87,26 @@ def create_empty_datacube(
     )
 
     ds = xr.Dataset(
-        {name: odc.geo.xr.xr_zeros(geobox, chunks=-1, dtype="float32") for name in data_vars},
-        attrs={"title": title, "loaded_scenes": []},
+        {
+            name: odc.geo.xr.xr_zeros(geobox, chunks=-1, dtype=var_encoding[name].get("dtype", "float32"))
+            for name in data_vars
+        },
+        attrs={"title": title, "loaded_tiles": []},
     )
 
     # Add metadata
     for name, meta in meta.items():
         ds[name].attrs.update(meta)
 
+    # Check if x-y or latitute-longitude coordinates
+    if geobox.crs.epsg == 4326:
+        nmap = {"longitude": "x", "latitude": "y"}
+        ds = ds.rename(nmap)
     coords_encoding = {
         "x": {"chunks": ds.x.shape, **optimize_coord_encoding(ds.x.values, geobox.resolution.x)},
         "y": {"chunks": ds.y.shape, **optimize_coord_encoding(ds.y.values, geobox.resolution.y)},
     }
+
     var_encoding = {
         name: {"chunks": (chunk_size, chunk_size), "compressor": zarr.Blosc(cname="zstd"), **var_encoding[name]}
         for name in data_vars

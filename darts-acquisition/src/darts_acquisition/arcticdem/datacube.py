@@ -313,8 +313,8 @@ def load_arcticdem_tile(
     extent = gpd.read_parquet(extent_fpath)
 
     # Add a buffer around the geobox to get the adjacent tiles
-    reference_bbox = geobox.to_crs("epsg:3413", resolution=resolution).pad(buffer)
-    adjacent_tiles = extent[extent.intersects(reference_bbox.extent.geom)]
+    reference_geobox = geobox.to_crs("epsg:3413", resolution=resolution).pad(buffer)
+    adjacent_tiles = extent[extent.intersects(reference_geobox.extent.geom)]
 
     # Download the adjacent tiles (if necessary)
     procedural_download_datacube(storage, adjacent_tiles)
@@ -323,7 +323,7 @@ def load_arcticdem_tile(
     arcticdem_datacube = xr.open_zarr(storage, mask_and_scale=False).set_coords("spatial_ref")
 
     # Get an AOI slice of the datacube
-    arcticdem_aoi = arcticdem_datacube.odc.crop(reference_bbox.extent)
+    arcticdem_aoi = arcticdem_datacube.odc.crop(reference_geobox.extent)
 
     # Change dtype of the datamask to uint8 for later reproject_match
     arcticdem_aoi["datamask"] = arcticdem_aoi.datamask.astype("uint8")
