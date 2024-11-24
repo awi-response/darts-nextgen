@@ -52,6 +52,14 @@ def hello(name: str, n: int = 1):
         logger.info(f"Hello {name}")
 
 
+@app.command
+def env_info():
+    """Print debug information about the environment."""
+    from darts.utils.cuda import debug_info
+
+    debug_info()
+
+
 app.command(group=pipeline_group)(run_native_planet_pipeline)
 app.command(group=pipeline_group)(run_native_planet_pipeline_fast)
 app.command(group=pipeline_group)(run_native_sentinel2_pipeline)

@@ -153,9 +153,10 @@ def run_native_planet_pipeline(
     from darts_postprocessing import prepare_export
     from darts_preprocessing import preprocess_legacy
 
-    from darts.utils.cuda import decide_device
+    from darts.utils.cuda import debug_info, decide_device
     from darts.utils.earthengine import init_ee
 
+    debug_info()
     device = decide_device(device)
     init_ee(ee_project)
 
@@ -257,9 +258,10 @@ def run_native_planet_pipeline_fast(
     from dask.distributed import Client
     from odc.stac import configure_rio
 
-    from darts.utils.cuda import decide_device
+    from darts.utils.cuda import debug_info, decide_device
     from darts.utils.earthengine import init_ee
 
+    debug_info()
     device = decide_device(device)
     init_ee(ee_project)
 
@@ -391,9 +393,10 @@ def run_native_sentinel2_pipeline(
     from darts_postprocessing import prepare_export
     from darts_preprocessing import preprocess_legacy
 
-    from darts.utils.cuda import decide_device
+    from darts.utils.cuda import debug_info, decide_device
     from darts.utils.earthengine import init_ee
 
+    debug_info()
     device = decide_device(device)
     init_ee(ee_project)
 
@@ -497,9 +500,10 @@ def run_native_sentinel2_pipeline_fast(
     from dask.distributed import Client
     from odc.stac import configure_rio
 
-    from darts.utils.cuda import decide_device
+    from darts.utils.cuda import debug_info, decide_device
     from darts.utils.earthengine import init_ee
 
+    debug_info()
     device = decide_device(device)
     init_ee(ee_project)
 
