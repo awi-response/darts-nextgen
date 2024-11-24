@@ -27,6 +27,8 @@ app = cyclopts.App(
     version=__version__,
     console=console,
     config=config_parser,
+    help_format="rich",
+    version_format="rich",
 )
 
 pipeline_group = cyclopts.Group.create_ordered("Pipeline Commands")
@@ -88,7 +90,7 @@ def launcher(  # noqa: D103
     log_dir: Path = Path("logs"),
     config_file: Path = Path("config.toml"),
 ):
-    command, bound = app.parse_args(tokens)
+    command, bound, _ = app.parse_args(tokens)
     add_logging_handlers(command.__name__, console, log_dir)
     logger.debug(f"Running on Python version {sys.version} from {__name__} ({root_file})")
     return command(*bound.args, **bound.kwargs)

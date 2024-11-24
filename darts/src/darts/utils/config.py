@@ -2,7 +2,6 @@
 
 import logging
 import tomllib
-from contextlib import suppress
 from pathlib import Path
 
 import cyclopts
@@ -33,7 +32,7 @@ def flatten_dict(d: dict, parent_key: str = "", sep: str = ".") -> dict[str, dic
     >>> print(flatten_dict(d))
     {
         "a": {"value": 1, "key": "a"},
-        "b.c": {"value": 2, "key": "b.c"},
+        "c": {"value": 2, "key": "b.c"},
     }
     ```
 
@@ -80,28 +79,48 @@ class ConfigParser:
         self._config = flatten_dict(config)
         logger.info(f"loaded config from '{file_path.resolve()}'")
 
-    def apply_config(self, mapping: dict[str, cyclopts.config.Unset | list[str]]):
+    def apply_config(self, arguments: cyclopts.ArgumentCollection):
         """Apply the loaded config to the cyclopts mapping.
 
         Args:
-            mapping (dict[str, cyclopts.config.Unset  |  list[str]]): The mapping of the arguments.
+            arguments (cyclopts.ArgumentCollection): The arguments to apply the config to.
 
         """
-        for key, value in mapping.items():
-            if not isinstance(value, cyclopts.config.Unset) or value.related_set(mapping):
+        to_add = []
+        for k in self._config.keys():
+            value = self._config[k]["value"]
+
+            try:
+                argument, remaining_keys, _ = arguments.match(f"--{k}")
+            except ValueError:
+                # Config key not found in arguments - ignore
                 continue
 
-            with suppress(KeyError):
-                new_value = self._config[key]["value"]
-                parent_key = self._config[key]["key"]
-                if not isinstance(new_value, list):
-                    new_value = [new_value]
-                mapping[key] = [str(x) for x in new_value]
-                logger.debug(f"Set cyclopts parameter '{key}' to {new_value} from 'config:{parent_key}' ")
+            # Skip if the argument is not bound to a parameter
+            if argument.tokens or argument.field_info.kind is argument.field_info.VAR_KEYWORD:
+                continue
 
-    def __call__(
-        self, apps: list[cyclopts.App], commands: tuple[str, ...], mapping: dict[str, cyclopts.config.Unset | list[str]]
-    ):
+            # Skip if the argument is from the config file
+            if any(x.source != "config-file" for x in argument.tokens):
+                continue
+
+            # Parse value to tuple of strings
+            if not isinstance(value, list):
+                value = (value,)
+            value = tuple(str(x) for x in value)
+            # Add the new tokens to the list
+            for i, v in enumerate(value):
+                to_add.append(
+                    (
+                        argument,
+                        cyclopts.Token(keyword=k, value=v, source="config-file", index=i, keys=remaining_keys),
+                    )
+                )
+        # Add here after all "arguments.match" calls, to avoid changing the list while iterating
+        for argument, token in to_add:
+            argument.append(token)
+
+    def __call__(self, apps: list[cyclopts.App], commands: tuple[str, ...], arguments: cyclopts.ArgumentCollection):
         """Parser for cyclopts config. An own implementation is needed to select our own toml structure.
 
         First, the configuration file at "config.toml" is loaded.
@@ -111,7 +130,7 @@ class ConfigParser:
         Args:
             apps (list[cyclopts.App]): The cyclopts apps. Unused, but must be provided for the cyclopts hook.
             commands (tuple[str, ...]): The commands. Unused, but must be provided for the cyclopts hook.
-            mapping (dict[str, cyclopts.config.Unset | list[str]]): The mapping of the arguments.
+            arguments (cyclopts.ArgumentCollection): The arguments to apply the config to.
 
         Examples:
             ### Setup the cyclopts App
@@ -130,7 +149,7 @@ class ConfigParser:
                 log_dir: Path = Path("logs"),
                 config_file: Path = Path("config.toml"),
             ):
-                command, bound = app.parse_args(tokens)
+                command, bound, _ = app.parse_args(tokens)
                 add_logging_handlers(command.__name__, console, log_dir)
                 return command(*bound.args, **bound.kwargs)
 
@@ -167,19 +186,14 @@ class ConfigParser:
             Hello Max
             ```
 
-        Raises:
-            ValueError: If no config file is specified. Should not occur if the cyclopts App is setup correctly.
-
         """
         if self._config is None:
-            config_param = mapping.get("config-file", None)
-            if not config_param:
-                raise ValueError("No config file (--config-file) specified.")
-            if isinstance(config_param, list):
-                config_file = config_param[0]
-            elif isinstance(config_param, cyclopts.config.Unset):
-                config_file = config_param.iparam.default
+            config_arg, _, _ = arguments.match("--config-file")
+            config_file = config_arg.convert_and_validate()
+            # Use default config file if not specified
+            if not config_file:
+                config_file = config_arg.field_info.default
             # else never happens
             self.open_config(config_file)
 
-        self.apply_config(mapping)
+        self.apply_config(arguments)
