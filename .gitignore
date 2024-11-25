@@ -30,3 +30,7 @@ requirements-dev.lock
 
 # Editor files
 .vscode/
+
+# Config files
+config.toml
+.env

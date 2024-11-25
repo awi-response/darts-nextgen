@@ -1,41 +1,16 @@
-"""ArcticDEM related data loading."""
+"""Legacy code for creating and handling VRT files from precomputed ArcticDEM data."""
 
-import io
 import logging
 import os
 import time
-import zipfile
 from pathlib import Path
 
-import requests
+import rasterio
+import rasterio.mask
+import rioxarray  # noqa: F401
+import xarray as xr
 
 logger = logging.getLogger(__name__.replace("darts_", "darts."))
-
-
-def download_arcticdem_extend(dem_data_dir: Path):
-    """Download the gdal ArcticDEM extend data from the provided URL and extracts it to the specified directory.
-
-    Args:
-        dem_data_dir (Path): The directory where the extracted data will be saved.
-
-    """
-    start = time.time()
-    url = "https://data.pgc.umn.edu/elev/dem/setsm/ArcticDEM/indexes/ArcticDEM_Mosaic_Index_latest_gpqt.zip"
-    logger.info(f"Downloading the gdal arcticdem extend from {url} to {dem_data_dir.resolve()}")
-    response = requests.get(url)
-
-    # Get the downloaded data as a byte string
-    data = response.content
-
-    # Create a bytesIO object
-    buffer = io.BytesIO(data)
-
-    # Create a zipfile.ZipFile object and extract the files to a directory
-    dem_data_dir.mkdir(parents=True, exist_ok=True)
-    with zipfile.ZipFile(buffer, "r") as zip_ref:
-        zip_ref.extractall(dem_data_dir)
-
-    logger.info(f"Download completed in {time.time() - start:.2f} seconds")
 
 
 def create_arcticdem_vrt(dem_data_dir: Path, vrt_target_dir: Path):  # noqa: C901
@@ -120,3 +95,76 @@ def create_arcticdem_vrt(dem_data_dir: Path, vrt_target_dir: Path):  # noqa: C90
             logger.warning(f"VRT file for {name} was NOT created.")
 
     logger.debug(f"Creation of VRT took {time.time() - start_time:.2f}s")
+
+
+def load_vrt(vrt_path: Path, reference_dataset: xr.Dataset) -> xr.DataArray:
+    """Load a VRT file and reproject it to match the reference dataset.
+
+    Args:
+        vrt_path (Path): Path to the vrt file.
+        reference_dataset (xr.Dataset): The reference dataset.
+
+    Raises:
+        FileNotFoundError: If the VRT file is not found.
+
+    Returns:
+        xr.DataArray: The VRT data reprojected to match the reference dataarray.
+
+    """
+    if not vrt_path.exists():
+        raise FileNotFoundError(f"Could not find the VRT file at {vrt_path.resolve()}")
+
+    start_time = time.time()
+
+    with rasterio.open(vrt_path) as src:
+        with rasterio.vrt.WarpedVRT(
+            src, crs=reference_dataset.rio.crs, resampling=rasterio.enums.Resampling.cubic
+        ) as vrt:
+            bounds = reference_dataset.rio.bounds()
+            windows = vrt.window(*bounds)
+            shape = (1, len(reference_dataset.y), len(reference_dataset.x))
+            data = vrt.read(window=windows, out_shape=shape)[0]  # This is the most time consuming part of the function
+            da = xr.DataArray(data, dims=["y", "x"], coords={"y": reference_dataset.y, "x": reference_dataset.x})
+            da.rio.write_crs(reference_dataset.rio.crs, inplace=True)
+            da.rio.write_transform(reference_dataset.rio.transform(), inplace=True)
+
+    logger.debug(f"Loaded VRT data from {vrt_path.resolve()} in {time.time() - start_time} seconds.")
+    return da
+
+
+def load_arcticdem_from_vrt(slope_vrt: Path, elevation_vrt: Path, reference_dataset: xr.Dataset) -> xr.Dataset:
+    """Load ArcticDEM data and reproject it to match the reference dataset.
+
+    Args:
+        slope_vrt (Path): Path to the ArcticDEM slope VRT file.
+        elevation_vrt (Path): Path to the ArcticDEM elevation VRT file.
+        reference_dataset (xr.Dataset): The reference dataset to reproject, resampled and cropped the ArcticDEM data to.
+
+    Returns:
+        xr.Dataset: The ArcticDEM data reprojected, resampled and cropped to match the reference dataset.
+
+
+    """
+    start_time = time.time()
+    logger.debug(f"Loading ArcticDEM slope from {slope_vrt.resolve()} and elevation from {elevation_vrt.resolve()}")
+
+    slope = load_vrt(slope_vrt, reference_dataset)
+    slope: xr.Dataset = (
+        slope.assign_attrs({"data_source": "arcticdem", "long_name": "Slope"})
+        .rio.write_nodata(float("nan"))
+        .astype("float32")
+        .to_dataset(name="slope")
+    )
+
+    relative_elevation = load_vrt(elevation_vrt, reference_dataset)
+    relative_elevation: xr.Dataset = (
+        relative_elevation.assign_attrs({"data_source": "arcticdem", "long_name": "Relative Elevation", "units": "m"})
+        .fillna(0)
+        .rio.write_nodata(0)
+        .astype("int16")
+        .to_dataset(name="relative_elevation")
+    )
+
+    articdem_ds = xr.merge([relative_elevation, slope])
+    logger.debug(f"Loaded ArcticDEM data in {time.time() - start_time} seconds.")
+    return articdem_ds

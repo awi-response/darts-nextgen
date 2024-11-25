@@ -12,7 +12,12 @@ tcvis-model-name = "RTS_v6_tcvis.pt"
 notcvis-model-name = "RTS_v6_notcvis.pt"
 arcticdem-slope-vrt = "data/input/ArcticDEM/slope.vrt"
 arcticdem-elevation-vrt = "data/input/ArcticDEM/elevation.vrt"
-cache-dir = "data/download"
+arcticdem-dir = "data/download/arcticdem"
+tcvis-dir = "data/download/tcvis"
+
+[darts.preprocess]
+tpi-outer-radius = 32 # px. Original implementation was 100m (100 / 3.125 = 32)
+tpi-inner-radius = 0
 
 [darts.segmentation]
 patch-size = 1024

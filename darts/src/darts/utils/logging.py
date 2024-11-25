@@ -5,8 +5,6 @@ import time
 from pathlib import Path
 
 import cyclopts
-import xarray as xr
-from lovely_tensors import monkey_patch
 from rich.console import Console
 from rich.logging import RichHandler
 
@@ -15,12 +13,23 @@ from rich.logging import RichHandler
 DARTS_LEVEL = logging.DEBUG
 
 
-def setup_logging():
-    """Set up logging for the application."""
-    # Disable data prints in xarray for better tracebacks
-    xr.set_options(display_expand_data=False)
-    # Disable data prints in pytorch, instead show a summary of these
-    monkey_patch()
+def setup_logging(monkey_patch: bool = False):
+    """Set up logging for the application.
+
+    Args:
+        monkey_patch (bool): Whether to monkey patch the logging of pytorch and disable xarray data expansion.
+            This is useful to avoid printing large tensors and arrays to the console.
+
+    """
+    if monkey_patch:
+        # Import here to avoid heavy imports in other modules if not needed
+        import lovely_tensors
+        import xarray as xr
+
+        # Disable data prints in xarray for better tracebacks
+        xr.set_options(display_expand_data=False)
+        # Disable data prints in pytorch, instead show a summary of these
+        lovely_tensors.monkey_patch()
 
     # Set up logging for our own modules
     logging.getLogger("darts").setLevel(DARTS_LEVEL)

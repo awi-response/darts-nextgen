@@ -4,10 +4,10 @@ import logging
 import time
 from pathlib import Path
 
-import rasterio
-import rasterio.enums
+import odc.geo.xr
 import rioxarray  # noqa: F401
 import xarray as xr
+from odc.geo.geobox import GeoBox
 
 logger = logging.getLogger(__name__.replace("darts_", "darts."))
 
@@ -61,19 +61,18 @@ def load_s2_scene(fpath: str | Path) -> xr.Dataset:
     return ds_s2
 
 
-def load_s2_masks(fpath: str | Path, reference_dataset: xr.Dataset) -> xr.Dataset | None:
+def load_s2_masks(fpath: str | Path, reference_geobox: GeoBox) -> xr.Dataset:
     """Load the valid and quality data masks from a Sentinel 2 scene.
 
     Args:
         fpath (str | Path): The path to the directory containing the TIFF files.
-        reference_dataset (xr.Dataset): The reference dataset to reproject, resampled and cropped the masks data to.
+        reference_geobox (GeoBox): The reference geobox to reproject, resample and crop the masks data to.
 
 
     Returns:
-        xr.Dataset | None: A merged xarray Dataset containing two data masks:
+        xr.Dataset: A merged xarray Dataset containing two data masks:
             - 'valid_data_mask': A mask indicating valid (1) and no data (0).
             - 'quality_data_mask': A mask indicating high quality (1) and low quality (0).
-            or None if no masking data could be found
 
     """
     start_time = time.time()
@@ -86,30 +85,39 @@ def load_s2_masks(fpath: str | Path, reference_dataset: xr.Dataset) -> xr.Datase
     # TODO: SCL band in SR file
     try:
         scl_path = next(fpath.glob("*_SCL*.tif"))
-        # See scene classes here: https://custom-scripts.sentinel-hub.com/custom-scripts/sentinel-2/scene-classification/
-        da_scl = xr.open_dataarray(scl_path)
-
-        da_scl = da_scl.rio.reproject_match(reference_dataset, sampling=rasterio.enums.Resampling.nearest)
-
-        # valid data mask: valid data = 1, no data = 0
-        valid_data_mask = (
-            (1 - da_scl.sel(band=1).fillna(0).isin([0, 1]))
-            .assign_attrs({"data_source": "s2", "long_name": "Valid Data Mask"})
-            .to_dataset(name="valid_data_mask")
-            .drop_vars("band")
-        )
-
-        # quality data mask: high quality = 1, low quality = 0
-        quality_data_mask = (
-            da_scl.sel(band=1)
-            .isin([4, 5, 6])
-            .assign_attrs({"data_source": "s2", "long_name": "Quality Data Mask"})
-            .to_dataset(name="quality_data_mask")
-            .drop_vars("band")
-        )
     except StopIteration:
         logger.warning("Found no data quality mask (SCL). No masking will occur.")
-        return None
+        valid_data_mask = (odc.geo.xr.xr_zeros(reference_geobox, dtype="uint8") + 1).to_dataset(name="valid_data_mask")
+        valid_data_mask.attrs = {"data_source": "s2", "long_name": "Valid Data Mask"}
+        quality_data_mask = odc.geo.xr.xr_zeros(reference_geobox, dtype="uint8").to_dataset(name="quality_data_mask")
+        quality_data_mask.attrs = {"data_source": "s2", "long_name": "Quality Data Mask"}
+        qa_ds = xr.merge([valid_data_mask, quality_data_mask])
+        return qa_ds
+
+    # See scene classes here: https://custom-scripts.sentinel-hub.com/custom-scripts/sentinel-2/scene-classification/
+    da_scl = xr.open_dataarray(scl_path)
+
+    da_scl = da_scl.odc.reproject(reference_geobox, sampling="nearest")
+
+    # Match crs
+    da_scl = da_scl.rio.write_crs(reference_geobox.crs)
+
+    # valid data mask: valid data = 1, no data = 0
+    valid_data_mask = (
+        (1 - da_scl.sel(band=1).fillna(0).isin([0, 1]))
+        .assign_attrs({"data_source": "s2", "long_name": "Valid Data Mask"})
+        .to_dataset(name="valid_data_mask")
+        .drop_vars("band")
+    )
+
+    # quality data mask: high quality = 1, low quality = 0
+    quality_data_mask = (
+        da_scl.sel(band=1)
+        .isin([4, 5, 6])
+        .assign_attrs({"data_source": "s2", "long_name": "Quality Data Mask"})
+        .to_dataset(name="quality_data_mask")
+        .drop_vars("band")
+    )
 
     qa_ds = xr.merge([valid_data_mask, quality_data_mask])
     logger.debug(f"Loaded data masks in {time.time() - start_time} seconds.")

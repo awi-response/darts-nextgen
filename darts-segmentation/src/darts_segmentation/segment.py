@@ -9,9 +9,11 @@ import torch
 import torch.nn as nn
 import xarray as xr
 
-from darts_segmentation.utils import predict_in_patches
+from darts_segmentation.utils import free_cuda, predict_in_patches
 
 logger = logging.getLogger(__name__.replace("darts_", "darts."))
+
+DEFAULT_DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
 class SMPSegmenterConfig(TypedDict):
@@ -52,14 +54,17 @@ class SMPSegmenter:
     model: nn.Module
     device: torch.device
 
-    def __init__(self, model_checkpoint: Path | str):
+    def __init__(self, model_checkpoint: Path | str, device: torch.device = DEFAULT_DEVICE):
         """Initialize the segmenter.
 
         Args:
             model_checkpoint (Path): The path to the model checkpoint.
+            device (torch.device): The device to run the model on.
+                Defaults to torch.device("cuda") if cuda is available, else torch.device("cpu").
 
         """
-        self.device = torch.device("cpu") if not torch.cuda.is_available() else torch.device("cuda")
+        model_checkpoint = model_checkpoint if isinstance(model_checkpoint, Path) else Path(model_checkpoint)
+        self.device = device
         ckpt = torch.load(model_checkpoint, map_location=self.device)
         self.config = validate_config(ckpt["config"])
         self.model = smp.create_model(**self.config["model"], encoder_weights=None)
@@ -68,8 +73,8 @@ class SMPSegmenter:
         self.model.eval()
 
         logger.debug(
-            f"successfully loaded model from {Path(model_checkpoint).absolute()}:\n"
-            f"\tinputs: {self.config['input_combination']}"
+            f"Successfully loaded model from {model_checkpoint.resolve()} with inputs: "
+            f"{self.config['input_combination']}"
         )
 
     def tile2tensor(self, tile: xr.Dataset) -> torch.Tensor:
@@ -148,6 +153,11 @@ class SMPSegmenter:
             "long_name": "Probabilities",
         }
         tile["probabilities"] = tile["probabilities"].fillna(float("nan")).rio.write_nodata(float("nan"))
+
+        # Cleanup cuda memory
+        del tensor_tile, probabilities
+        free_cuda()
+
         return tile
 
     def segment_tile_batched(
@@ -192,6 +202,11 @@ class SMPSegmenter:
                 "long_name": "Probabilities",
             }
             tile["probabilities"] = tile["probabilities"].fillna(float("nan")).rio.write_nodata(float("nan"))
+
+        # Cleanup cuda memory
+        del tensor_tiles, probabilities
+        free_cuda()
+
         return tiles
 
     def __call__(
