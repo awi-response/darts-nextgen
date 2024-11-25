@@ -59,7 +59,9 @@ class SMPSegmenter:
             model_checkpoint (Path): The path to the model checkpoint.
 
         """
+        # TODO better way to check device here
         self.device = torch.device("cpu") if not torch.cuda.is_available() else torch.device("cuda")
+        self.device = torch.device("cpu") if not torch.backends.mps.is_available() else torch.device("mps")
         ckpt = torch.load(model_checkpoint, map_location=self.device)
         self.config = validate_config(ckpt["config"])
         self.model = smp.create_model(**self.config["model"], encoder_weights=None)
