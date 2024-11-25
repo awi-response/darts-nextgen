@@ -17,6 +17,14 @@ At the first start, VSCode should ask you if you want to install the recommended
 The settings should be automaticly used by VSCode.
 Both should provide the developers with a better experience and enforce code-style.
 
+
+## Conda Environment setup
+
+Prereq:
+ - [Conda] (https://docs.anaconda.com/miniconda/): Link to miniconda. Can use any other conda
+ - Begin by creating a conda environment
+
+
 ## Environment setup
 
 Prereq:
