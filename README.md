@@ -24,7 +24,7 @@ Prereq:
  - [Conda] (https://docs.anaconda.com/miniconda/): Link to miniconda. Can use any other conda
  - Begin by creating a conda environment `conda create -n darts-nextgen python=3.11`
  - Install dependencies from project.toml `pip install '.[dev]'`
-
+ - Do the same in other packages.
 
 
 ## Environment setup
