@@ -1,7 +1,7 @@
 """Pipeline without any other framework."""
 
 import logging
-from math import ceil
+from math import ceil, sqrt
 from pathlib import Path
 from typing import Literal
 
@@ -276,7 +276,7 @@ def run_native_planet_pipeline_fast(
         try:
             optical = load_planet_scene(fpath)
             arcticdem = load_arcticdem_tile(
-                optical.odc.geobox, arcticdem_dir, resolution=2, buffer=ceil(tpi_outer_radius / 2)
+                optical.odc.geobox, arcticdem_dir, resolution=2, buffer=ceil(tpi_outer_radius / 2 * sqrt(2))
             )
             tcvis = load_tcvis(optical.odc.geobox, tcvis_dir)
             data_masks = load_planet_masks(fpath)
@@ -523,7 +523,7 @@ def run_native_sentinel2_pipeline_fast(
 
             optical = load_s2_scene(fpath)
             arcticdem = load_arcticdem_tile(
-                optical.odc.geobox, arcticdem_dir, resolution=10, buffer=ceil(tpi_outer_radius / 10)
+                optical.odc.geobox, arcticdem_dir, resolution=10, buffer=ceil(tpi_outer_radius / 10 * sqrt(2))
             )
             tcvis = load_tcvis(optical.odc.geobox, tcvis_dir)
             data_masks = load_s2_masks(fpath, optical.odc.geobox)

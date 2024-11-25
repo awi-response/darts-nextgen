@@ -109,7 +109,8 @@ def preprocess_legacy_arcticdem_fast(
         ds_arcticdem = calculate_slope(ds_arcticdem)
 
     # Apply legacy scaling to tpi
-    ds_arcticdem["tpi"] = (ds_arcticdem.tpi + 50) * 300
+    with xr.set_options(keep_attrs=True):
+        ds_arcticdem["tpi"] = (ds_arcticdem.tpi + 50) * 300
     return ds_arcticdem
 
 
@@ -174,12 +175,9 @@ def preprocess_legacy_fast(
     ds_merged["slope"] = ds_arcticdem.slope
 
     # Update datamask with arcticdem mask
-    ds_merged["valid_data_mask"] = ds_data_masks.valid_data_mask * ds_arcticdem.datamask
-    ds_merged.valid_data_mask.attrs = {
-        "long_name": "Valid Data Mask",
-        "description": "A mask indicating where valid data is available.",
-        "data_source": "planet + arcticdem",
-    }
+    with xr.set_options(keep_attrs=True):
+        ds_merged["quality_data_mask"] = ds_data_masks.quality_data_mask * ds_arcticdem.datamask
+    ds_merged.quality_data_mask.attrs["data_source"] += " + ArcticDEM"
 
     tick_fend = time.perf_counter()
     logger.info(f"Preprocessing done in {tick_fend - tick_fstart:.2f} seconds.")
