@@ -260,7 +260,7 @@ def load_arcticdem_tile(
         geobox (GeoBox): The geobox for which the tile should be loaded.
         data_dir (Path): The directory where the ArcticDEM data is stored.
         resolution (Literal[2, 10, 32]): The resolution of the ArcticDEM data in m.
-        buffer (int, optional): The buffer around the geobox in pixels. Defaults to 0.
+        buffer (int, optional): The buffer around the projected (epsg:3413) geobox in pixels. Defaults to 0.
         persist (bool, optional): If the data should be persisted in memory.
             If not, this will return a Dask backed Dataset. Defaults to True.
 

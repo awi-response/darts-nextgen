@@ -1,6 +1,7 @@
 """Pipeline without any other framework."""
 
 import logging
+from math import ceil
 from pathlib import Path
 from typing import Literal
 
@@ -206,8 +207,8 @@ def run_native_planet_pipeline_fast(
     notcvis_model_name: str = "RTS_v6_notcvis.pt",
     device: Literal["cuda", "cpu", "auto"] | int | None = None,
     ee_project: str | None = None,
-    tpi_outer_radius: int = 30,
-    tpi_inner_radius: int = 25,
+    tpi_outer_radius: int = 100,
+    tpi_inner_radius: int = 0,
     patch_size: int = 1024,
     overlap: int = 16,
     batch_size: int = 8,
@@ -235,9 +236,9 @@ def run_native_planet_pipeline_fast(
         ee_project (str, optional): The Earth Engine project ID or number to use. May be omitted if
             project is defined within persistent API credentials obtained via `earthengine authenticate`.
         tpi_outer_radius (int, optional): The outer radius of the annulus kernel for the tpi calculation
-            in number of cells. Defaults to 30.
+            in m. Defaults 100m.
         tpi_inner_radius (int, optional): The inner radius of the annulus kernel for the tpi calculation
-            in number of cells. Defaults to 25.
+            in m. Defaults to 0.
         patch_size (int, optional): The patch size to use for inference. Defaults to 1024.
         overlap (int, optional): The overlap to use for inference. Defaults to 16.
         batch_size (int, optional): The batch size to use for inference. Defaults to 8.
@@ -274,7 +275,9 @@ def run_native_planet_pipeline_fast(
     for fpath, outpath in planet_file_generator(orthotiles_dir, scenes_dir, output_data_dir):
         try:
             optical = load_planet_scene(fpath)
-            arcticdem = load_arcticdem_tile(optical.odc.geobox, arcticdem_dir, resolution=2, buffer=tpi_outer_radius)
+            arcticdem = load_arcticdem_tile(
+                optical.odc.geobox, arcticdem_dir, resolution=2, buffer=ceil(tpi_outer_radius / 2)
+            )
             tcvis = load_tcvis(optical.odc.geobox, tcvis_dir)
             data_masks = load_planet_masks(fpath)
 
@@ -448,8 +451,8 @@ def run_native_sentinel2_pipeline_fast(
     notcvis_model_name: str = "RTS_v6_notcvis_s2native.pt",
     device: Literal["cuda", "cpu", "auto"] | int | None = None,
     ee_project: str | None = None,
-    tpi_outer_radius: int = 30,
-    tpi_inner_radius: int = 25,
+    tpi_outer_radius: int = 100,
+    tpi_inner_radius: int = 0,
     patch_size: int = 1024,
     overlap: int = 16,
     batch_size: int = 8,
@@ -477,9 +480,9 @@ def run_native_sentinel2_pipeline_fast(
         ee_project (str, optional): The Earth Engine project ID or number to use. May be omitted if
             project is defined within persistent API credentials obtained via `earthengine authenticate`.
         tpi_outer_radius (int, optional): The outer radius of the annulus kernel for the tpi calculation
-            in number of cells. Defaults to 30.
+            in m. Defaults to 100m.
         tpi_inner_radius (int, optional): The inner radius of the annulus kernel for the tpi calculation
-            in number of cells. Defaults to 25.
+            in m. Defaults to 0.
         patch_size (int, optional): The patch size to use for inference. Defaults to 1024.
         overlap (int, optional): The overlap to use for inference. Defaults to 16.
         batch_size (int, optional): The batch size to use for inference. Defaults to 8.
@@ -519,7 +522,9 @@ def run_native_sentinel2_pipeline_fast(
             outpath = output_data_dir / scene_id
 
             optical = load_s2_scene(fpath)
-            arcticdem = load_arcticdem_tile(optical.odc.geobox, arcticdem_dir, resolution=2, buffer=tpi_outer_radius)
+            arcticdem = load_arcticdem_tile(
+                optical.odc.geobox, arcticdem_dir, resolution=10, buffer=ceil(tpi_outer_radius / 10)
+            )
             tcvis = load_tcvis(optical.odc.geobox, tcvis_dir)
             data_masks = load_s2_masks(fpath, optical.odc.geobox)
 

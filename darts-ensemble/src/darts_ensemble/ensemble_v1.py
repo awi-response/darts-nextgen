@@ -30,10 +30,18 @@ class EnsembleV1:
                 Defaults to torch.device("cuda") if cuda is available, else torch.device("cpu").
 
         """
+        rts_v6_tcvis_model_path = (
+            rts_v6_tcvis_model_path if isinstance(rts_v6_tcvis_model_path, Path) else Path(rts_v6_tcvis_model_path)
+        )
+        rts_v6_notcvis_model_path = (
+            rts_v6_notcvis_model_path
+            if isinstance(rts_v6_notcvis_model_path, Path)
+            else Path(rts_v6_notcvis_model_path)
+        )
         logger.debug(
             "Loading models:\n"
-            f"\tTCVIS Model: {rts_v6_tcvis_model_path.absolute()}\n"
-            f"\tNOTCVIS Model: {rts_v6_notcvis_model_path.absolute()}"
+            f"\tTCVIS Model: {rts_v6_tcvis_model_path.resolve()}\n"
+            f"\tNOTCVIS Model: {rts_v6_notcvis_model_path.resolve()}"
         )
 
         self.rts_v6_tcvis_model = SMPSegmenter(rts_v6_tcvis_model_path, device=device)

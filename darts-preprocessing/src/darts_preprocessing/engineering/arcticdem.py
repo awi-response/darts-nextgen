@@ -2,6 +2,7 @@
 
 import logging
 import time
+from math import ceil
 
 import xarray as xr
 from xrspatial import convolution, slope
@@ -14,8 +15,8 @@ def calculate_topographic_position_index(arcticdem_ds: xr.Dataset, outer_radius:
 
     Args:
         arcticdem_ds (xr.Dataset): The ArcticDEM Dataset containing the 'dem' variable.
-        outer_radius (int, optional): The outer radius of the annulus kernel in number of cells.
-        inner_radius (int, optional): The inner radius of the annulus kernel in number of cells.
+        outer_radius (int, optional): The outer radius of the annulus kernel in m.
+        inner_radius (int, optional): The inner radius of the annulus kernel in m.
 
     Returns:
         xr.Dataset: The input Dataset with the calculated TPI added as a new variable 'tpi'.
@@ -24,18 +25,27 @@ def calculate_topographic_position_index(arcticdem_ds: xr.Dataset, outer_radius:
     tick_fstart = time.perf_counter()
     cellsize_x, cellsize_y = convolution.calc_cellsize(arcticdem_ds.dem)  # Should be equal to the resolution of the DEM
     # Use an annulus kernel if inner_radius is greater than 0
-    outer_radius_m = str(cellsize_x * outer_radius) + "m"
+    outer_radius_m = f"{outer_radius}m"
+    outer_radius_px = f"{ceil(outer_radius / cellsize_x)}px"
     if inner_radius > 0:
-        inner_radius_m = str(cellsize_x * inner_radius) + "m"
+        inner_radius_m = f"{inner_radius}m"
+        inner_radius_px = f"{ceil(inner_radius / cellsize_x)}px"
         kernel = convolution.annulus_kernel(cellsize_x, cellsize_y, outer_radius_m, inner_radius_m)
+        attr_cell_description = (
+            f"within a ring at a distance of {inner_radius_px}-{outer_radius_px} cells "
+            f"({inner_radius_m}-{outer_radius_m}) away from the focal cell."
+        )
         logger.debug(
             f"Calculating Topographic Position Index with annulus kernel of "
-            f"{inner_radius}-{outer_radius} ({inner_radius_m}-{outer_radius_m}) cells."
+            f"{inner_radius_px}-{outer_radius_px} ({inner_radius_m}-{outer_radius_m}) cells."
         )
     else:
         kernel = convolution.circle_kernel(cellsize_x, cellsize_y, outer_radius_m)
+        attr_cell_description = (
+            f"within a circle at a distance of {outer_radius_px} cells ({outer_radius_m}) away from the focal cell."
+        )
         logger.debug(
-            f"Calculating Topographic Position Index with circle kernel of {outer_radius} ({outer_radius_m}) cells."
+            f"Calculating Topographic Position Index with circle kernel of {outer_radius_px} ({outer_radius_m}) cells."
         )
 
     tpi = arcticdem_ds.dem - convolution.convolution_2d(arcticdem_ds.dem, kernel) / kernel.sum()
@@ -43,8 +53,7 @@ def calculate_topographic_position_index(arcticdem_ds: xr.Dataset, outer_radius:
         "long_name": "Topographic Position Index",
         "units": "m",
         "description": "The difference between the elevation of a cell and the mean elevation of the surrounding"
-        f"cells within a ring at a distance of {inner_radius}-{outer_radius} cells away from the"
-        "focal cell.",
+        f"cells {attr_cell_description}",
         "source": "ArcticDEM",
         "_FillValue": float("nan"),
     }

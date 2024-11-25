@@ -16,7 +16,7 @@ arcticdem-dir = "data/download/arcticdem"
 tcvis-dir = "data/download/tcvis"
 
 [darts.preprocess]
-tpi-outer-radius = 32 # px. Original implementation was 100m (100 / 3.125 = 32)
+tpi-outer-radius = 100
 tpi-inner-radius = 0
 
 [darts.segmentation]

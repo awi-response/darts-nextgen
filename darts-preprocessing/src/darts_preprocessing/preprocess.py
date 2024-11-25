@@ -118,7 +118,7 @@ def preprocess_legacy_fast(
     ds_arcticdem: xr.Dataset,
     ds_tcvis: xr.Dataset,
     ds_data_masks: xr.Dataset,
-    tpi_outer_radius: int = 30,
+    tpi_outer_radius: int = 100,
     tpi_inner_radius: int = 0,
     device: Literal["cuda", "cpu"] | int = DEFAULT_DEVICE,
 ) -> xr.Dataset:
@@ -139,9 +139,9 @@ def preprocess_legacy_fast(
         ds_tcvis (xr.Dataset): The TCVIS dataset.
         ds_data_masks (xr.Dataset): The data masks, based on the optical data.
         tpi_outer_radius (int, optional): The outer radius of the annulus kernel for the tpi calculation
-            in number of cells. Defaults to 30.
+            in m. Defaults to 100m.
         tpi_inner_radius (int, optional): The inner radius of the annulus kernel for the tpi calculation
-            in number of cells. Defaults to 0.
+            in m. Defaults to 0.
         device (Literal["cuda", "cpu"] | int, optional): The device to run the tpi and slope calculations on.
             If "cuda" take the first device (0), if int take the specified device.
             Defaults to "cuda" if cuda is available, else "cpu".
@@ -166,9 +166,9 @@ def preprocess_legacy_fast(
     ds_merged["tc_wetness"] = ds_tcvis.tc_wetness
 
     # Calculate TPI and slope from ArcticDEM
-    # We need to calculate them before reprojecting, hence we cant merge the data yet
+    ds_arcticdem = ds_arcticdem.odc.reproject(ds_optical.odc.geobox.buffered(tpi_outer_radius), resampling="cubic")
     ds_arcticdem = preprocess_legacy_arcticdem_fast(ds_arcticdem, tpi_outer_radius, tpi_inner_radius, device)
-    ds_arcticdem = ds_arcticdem.odc.reproject(ds_optical.odc.geobox, resampling="cubic")
+    ds_arcticdem = ds_arcticdem.odc.crop(ds_optical.odc.geobox.extent)
     ds_merged["dem"] = ds_arcticdem.dem
     ds_merged["relative_elevation"] = ds_arcticdem.tpi
     ds_merged["slope"] = ds_arcticdem.slope
