@@ -50,6 +50,10 @@ def run_native_planet_pipeline(
     overlap: int = 16,
     batch_size: int = 8,
     reflection: int = 0,
+    binarization_threshold: float = 0.5,
+    mask_erosion_size: int = 10,
+    min_object_size: int = 32,
+    use_quality_mask: bool = False,
     write_model_outputs: bool = False,
 ):
     """Search for all PlanetScope scenes in the given directory and runs the segmentation pipeline on them.
@@ -74,6 +78,12 @@ def run_native_planet_pipeline(
         overlap (int, optional): The overlap to use for inference. Defaults to 16.
         batch_size (int, optional): The batch size to use for inference. Defaults to 8.
         reflection (int, optional): The reflection padding to use for inference. Defaults to 0.
+        binarization_threshold (float, optional): The threshold to binarize the probabilities. Defaults to 0.5.
+        mask_erosion_size (int, optional): The size of the disk to use for mask erosion and the edge-cropping.
+            Defaults to 10.
+        min_object_size (int, optional): The minimum object size to keep in pixel. Defaults to 32.
+        use_quality_mask (bool, optional): Whether to use the "quality" mask instead of the "valid" mask
+            to mask the output.
         write_model_outputs (bool, optional): Also save the model outputs, not only the ensemble result.
             Defaults to False.
 
@@ -184,7 +194,9 @@ def run_native_planet_pipeline(
                 reflection=reflection,
                 keep_inputs=write_model_outputs,
             )
-            tile = prepare_export(tile)
+            tile = prepare_export(
+                tile, binarization_threshold, mask_erosion_size, min_object_size, use_quality_mask, device
+            )
 
             outpath.mkdir(parents=True, exist_ok=True)
             writer = InferenceResultWriter(tile)
@@ -213,6 +225,10 @@ def run_native_planet_pipeline_fast(
     overlap: int = 16,
     batch_size: int = 8,
     reflection: int = 0,
+    binarization_threshold: float = 0.5,
+    mask_erosion_size: int = 10,
+    min_object_size: int = 32,
+    use_quality_mask: bool = False,
     write_model_outputs: bool = False,
 ):
     """Search for all PlanetScope scenes in the given directory and runs the segmentation pipeline on them.
@@ -243,6 +259,12 @@ def run_native_planet_pipeline_fast(
         overlap (int, optional): The overlap to use for inference. Defaults to 16.
         batch_size (int, optional): The batch size to use for inference. Defaults to 8.
         reflection (int, optional): The reflection padding to use for inference. Defaults to 0.
+        binarization_threshold (float, optional): The threshold to binarize the probabilities. Defaults to 0.5.
+        mask_erosion_size (int, optional): The size of the disk to use for mask erosion and the edge-cropping.
+            Defaults to 10.
+        min_object_size (int, optional): The minimum object size to keep in pixel. Defaults to 32.
+        use_quality_mask (bool, optional): Whether to use the "quality" mask instead of the "valid" mask
+            to mask the output.
         write_model_outputs (bool, optional): Also save the model outputs, not only the ensemble result.
             Defaults to False.
 
@@ -304,7 +326,9 @@ def run_native_planet_pipeline_fast(
                 reflection=reflection,
                 keep_inputs=write_model_outputs,
             )
-            tile = prepare_export(tile)
+            tile = prepare_export(
+                tile, binarization_threshold, mask_erosion_size, min_object_size, use_quality_mask, device
+            )
 
             outpath.mkdir(parents=True, exist_ok=True)
             writer = InferenceResultWriter(tile)
@@ -331,6 +355,10 @@ def run_native_sentinel2_pipeline(
     overlap: int = 16,
     batch_size: int = 8,
     reflection: int = 0,
+    binarization_threshold: float = 0.5,
+    mask_erosion_size: int = 10,
+    min_object_size: int = 32,
+    use_quality_mask: bool = False,
     write_model_outputs: bool = False,
 ):
     """Search for all Sentinel scenes in the given directory and runs the segmentation pipeline on them.
@@ -354,6 +382,12 @@ def run_native_sentinel2_pipeline(
         overlap (int, optional): The overlap to use for inference. Defaults to 16.
         batch_size (int, optional): The batch size to use for inference. Defaults to 8.
         reflection (int, optional): The reflection padding to use for inference. Defaults to 0.
+        binarization_threshold (float, optional): The threshold to binarize the probabilities. Defaults to 0.5.
+        mask_erosion_size (int, optional): The size of the disk to use for mask erosion and the edge-cropping.
+            Defaults to 10.
+        min_object_size (int, optional): The minimum object size to keep in pixel. Defaults to 32.
+        use_quality_mask (bool, optional): Whether to use the "quality" mask instead of the "valid" mask
+            to mask the output.
         write_model_outputs (bool, optional): Also save the model outputs, not only the ensemble result.
             Defaults to False.
 
@@ -429,7 +463,9 @@ def run_native_sentinel2_pipeline(
                 reflection=reflection,
                 keep_inputs=write_model_outputs,
             )
-            tile = prepare_export(tile)
+            tile = prepare_export(
+                tile, binarization_threshold, mask_erosion_size, min_object_size, use_quality_mask, device
+            )
 
             outpath.mkdir(parents=True, exist_ok=True)
             writer = InferenceResultWriter(tile)
@@ -457,6 +493,10 @@ def run_native_sentinel2_pipeline_fast(
     overlap: int = 16,
     batch_size: int = 8,
     reflection: int = 0,
+    binarization_threshold: float = 0.5,
+    mask_erosion_size: int = 10,
+    min_object_size: int = 32,
+    use_quality_mask: bool = False,
     write_model_outputs: bool = False,
 ):
     """Search for all Sentinel 2 scenes in the given directory and runs the segmentation pipeline on them.
@@ -487,6 +527,12 @@ def run_native_sentinel2_pipeline_fast(
         overlap (int, optional): The overlap to use for inference. Defaults to 16.
         batch_size (int, optional): The batch size to use for inference. Defaults to 8.
         reflection (int, optional): The reflection padding to use for inference. Defaults to 0.
+        binarization_threshold (float, optional): The threshold to binarize the probabilities. Defaults to 0.5.
+        mask_erosion_size (int, optional): The size of the disk to use for mask erosion and the edge-cropping.
+            Defaults to 10.
+        min_object_size (int, optional): The minimum object size to keep in pixel. Defaults to 32.
+        use_quality_mask (bool, optional): Whether to use the "quality" mask instead of the "valid" mask
+            to mask the output.
         write_model_outputs (bool, optional): Also save the model outputs, not only the ensemble result.
             Defaults to False.
 
@@ -551,7 +597,9 @@ def run_native_sentinel2_pipeline_fast(
                 reflection=reflection,
                 keep_inputs=write_model_outputs,
             )
-            tile = prepare_export(tile)
+            tile = prepare_export(
+                tile, binarization_threshold, mask_erosion_size, min_object_size, use_quality_mask, device
+            )
 
             outpath.mkdir(parents=True, exist_ok=True)
             writer = InferenceResultWriter(tile)
