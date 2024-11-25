@@ -23,14 +23,7 @@ Both should provide the developers with a better experience and enforce code-sty
 Prereq:
  - [Conda] (https://docs.anaconda.com/miniconda/): Link to miniconda. Can use any other conda
  - Begin by creating a conda environment `conda create -n darts-nextgen python=3.11`
- - Install dependencies from project.toml `pip install pyproject.toml`
- - Install dependencies for darts-acquisition `cd darts-acquisition` then `pip install pyproject.toml`
- - Install dependencies for darts-ensemble `cd darts-ensemble` then `pip install pyproject.toml`
- - Install dependencies for darts-export `cd darts-export` then `pip install pyproject.toml`
- - Install dependencies for darts-postprocessing `cd darts-postprocessing` then `pip install pyproject.toml`
- - Install dependencies for darts-preprocessing `cd darts-preprocessing` then `pip install pyproject.toml`
- - Install dependencies for darts-superresolution `cd darts-superresolution` then `pip install pyproject.toml`
- - Install dependencies for darts-segmentation `cd darts-segmentation` then `pip install pyproject.toml`
+ - Install dependencies from project.toml `pip install '.[dev]'`
 
 
 
