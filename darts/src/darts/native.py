@@ -34,6 +34,60 @@ def planet_file_generator(orthotiles_dir: Path, scenes_dir: Path, output_data_di
         yield fpath, outpath
 
 
+def _process_initializations(device: str, ee_project: str):
+    from darts.utils.cuda import debug_info, decide_device
+    from darts.utils.earthengine import init_ee
+
+    debug_info()
+    device = decide_device(device)
+    init_ee(ee_project)
+    return device
+
+
+def _segmentation_main(
+    tile,
+    device,
+    model_dir: Path,
+    outpath: Path,
+    tcvis_model_name: str,
+    notcvis_model_name: str,
+    patch_size: int = 1024,
+    overlap: int = 16,
+    batch_size: int = 8,
+    reflection: int = 0,
+    binarization_threshold: float = 0.5,
+    mask_erosion_size: int = 10,
+    min_object_size: int = 32,
+    use_quality_mask: bool = False,
+    write_model_outputs: bool = False,
+):
+    import torch
+    from darts_ensemble.ensemble_v1 import EnsembleV1
+    from darts_export.inference import InferenceResultWriter
+    from darts_postprocessing import prepare_export
+
+    ensemble = EnsembleV1(
+        model_dir / tcvis_model_name,
+        model_dir / notcvis_model_name,
+        device=torch.device(device),
+    )
+    tile = ensemble.segment_tile(
+        tile,
+        patch_size=patch_size,
+        overlap=overlap,
+        batch_size=batch_size,
+        reflection=reflection,
+        keep_inputs=write_model_outputs,
+    )
+    tile = prepare_export(tile, binarization_threshold, mask_erosion_size, min_object_size, use_quality_mask, device)
+
+    outpath.mkdir(parents=True, exist_ok=True)
+    writer = InferenceResultWriter(tile)
+    writer.export_probabilities(outpath)
+    writer.export_binarized(outpath)
+    writer.export_polygonized(outpath)
+
+
 def run_native_planet_pipeline(
     orthotiles_dir: Path,
     scenes_dir: Path,
@@ -155,21 +209,12 @@ def run_native_planet_pipeline(
 
     """
     # Import here to avoid long loading times when running other commands
-    import torch
     from darts_acquisition.arcticdem import load_arcticdem_from_vrt
     from darts_acquisition.planet import load_planet_masks, load_planet_scene
     from darts_acquisition.tcvis import load_tcvis
-    from darts_ensemble.ensemble_v1 import EnsembleV1
-    from darts_export.inference import InferenceResultWriter
-    from darts_postprocessing import prepare_export
     from darts_preprocessing import preprocess_legacy
 
-    from darts.utils.cuda import debug_info, decide_device
-    from darts.utils.earthengine import init_ee
-
-    debug_info()
-    device = decide_device(device)
-    init_ee(ee_project)
+    _process_initializations(device, ee_project)
 
     # Find all PlanetScope orthotiles
     for fpath, outpath in planet_file_generator(orthotiles_dir, scenes_dir, output_data_dir):
@@ -181,28 +226,23 @@ def run_native_planet_pipeline(
 
             tile = preprocess_legacy(optical, arcticdem, tcvis, data_masks)
 
-            ensemble = EnsembleV1(
-                model_dir / tcvis_model_name,
-                model_dir / notcvis_model_name,
-                device=torch.device(device),
-            )
-            tile = ensemble.segment_tile(
+            _segmentation_main(
                 tile,
-                patch_size=patch_size,
-                overlap=overlap,
-                batch_size=batch_size,
-                reflection=reflection,
-                keep_inputs=write_model_outputs,
+                device,
+                model_dir,
+                outpath,
+                tcvis_model_name,
+                notcvis_model_name,
+                patch_size,
+                overlap,
+                batch_size,
+                reflection,
+                binarization_threshold,
+                mask_erosion_size,
+                min_object_size,
+                use_quality_mask,
+                write_model_outputs,
             )
-            tile = prepare_export(
-                tile, binarization_threshold, mask_erosion_size, min_object_size, use_quality_mask, device
-            )
-
-            outpath.mkdir(parents=True, exist_ok=True)
-            writer = InferenceResultWriter(tile)
-            writer.export_probabilities(outpath)
-            writer.export_binarized(outpath)
-            writer.export_polygonized(outpath)
         except Exception as e:
             logger.warning(f"Could not process folder '{fpath.resolve()}'.\nSkipping...")
             logger.exception(e)
@@ -271,23 +311,15 @@ def run_native_planet_pipeline_fast(
 
     """
     # Import here to avoid long loading times when running other commands
-    import torch
+
     from darts_acquisition.arcticdem import load_arcticdem_tile
     from darts_acquisition.planet import load_planet_masks, load_planet_scene
     from darts_acquisition.tcvis import load_tcvis
-    from darts_ensemble.ensemble_v1 import EnsembleV1
-    from darts_export.inference import InferenceResultWriter
-    from darts_postprocessing import prepare_export
     from darts_preprocessing import preprocess_legacy_fast
     from dask.distributed import Client
     from odc.stac import configure_rio
 
-    from darts.utils.cuda import debug_info, decide_device
-    from darts.utils.earthengine import init_ee
-
-    debug_info()
-    device = decide_device(device)
-    init_ee(ee_project)
+    device = _process_initializations(device, ee_project)
 
     client = Client()
     logger.info(f"Using Dask client: {client}")
@@ -314,28 +346,23 @@ def run_native_planet_pipeline_fast(
                 device,
             )
 
-            ensemble = EnsembleV1(
-                model_dir / tcvis_model_name,
-                model_dir / notcvis_model_name,
-                device=torch.device(device),
-            )
-            tile = ensemble.segment_tile(
+            _segmentation_main(
                 tile,
-                patch_size=patch_size,
-                overlap=overlap,
-                batch_size=batch_size,
-                reflection=reflection,
-                keep_inputs=write_model_outputs,
+                device,
+                model_dir,
+                outpath,
+                tcvis_model_name,
+                notcvis_model_name,
+                patch_size,
+                overlap,
+                batch_size,
+                reflection,
+                binarization_threshold,
+                mask_erosion_size,
+                min_object_size,
+                use_quality_mask,
+                write_model_outputs,
             )
-            tile = prepare_export(
-                tile, binarization_threshold, mask_erosion_size, min_object_size, use_quality_mask, device
-            )
-
-            outpath.mkdir(parents=True, exist_ok=True)
-            writer = InferenceResultWriter(tile)
-            writer.export_probabilities(outpath)
-            writer.export_binarized(outpath)
-            writer.export_polygonized(outpath)
         except Exception as e:
             logger.warning(f"Could not process folder '{fpath.resolve()}'.\nSkipping...")
             logger.exception(e)
@@ -422,21 +449,12 @@ def run_native_sentinel2_pipeline(
 
     """
     # Import here to avoid long loading times when running other commands
-    import torch
     from darts_acquisition.arcticdem import load_arcticdem_from_vrt
     from darts_acquisition.s2 import load_s2_masks, load_s2_scene
     from darts_acquisition.tcvis import load_tcvis
-    from darts_ensemble.ensemble_v1 import EnsembleV1
-    from darts_export.inference import InferenceResultWriter
-    from darts_postprocessing import prepare_export
     from darts_preprocessing import preprocess_legacy
 
-    from darts.utils.cuda import debug_info, decide_device
-    from darts.utils.earthengine import init_ee
-
-    debug_info()
-    device = decide_device(device)
-    init_ee(ee_project)
+    device = _process_initializations(device, ee_project)
 
     # Find all Sentinel 2 scenes
     for fpath in sentinel2_dir.glob("*/"):
@@ -451,28 +469,23 @@ def run_native_sentinel2_pipeline(
 
             tile = preprocess_legacy(optical, arcticdem, tcvis, data_masks)
 
-            ensemble = EnsembleV1(
-                model_dir / tcvis_model_name,
-                model_dir / notcvis_model_name,
-                device=torch.device(device),
-            )
-            tile = ensemble.segment_tile(
+            _segmentation_main(
                 tile,
-                patch_size=patch_size,
-                overlap=overlap,
-                batch_size=batch_size,
-                reflection=reflection,
-                keep_inputs=write_model_outputs,
+                device,
+                model_dir,
+                outpath,
+                tcvis_model_name,
+                notcvis_model_name,
+                patch_size,
+                overlap,
+                batch_size,
+                reflection,
+                binarization_threshold,
+                mask_erosion_size,
+                min_object_size,
+                use_quality_mask,
+                write_model_outputs,
             )
-            tile = prepare_export(
-                tile, binarization_threshold, mask_erosion_size, min_object_size, use_quality_mask, device
-            )
-
-            outpath.mkdir(parents=True, exist_ok=True)
-            writer = InferenceResultWriter(tile)
-            writer.export_probabilities(outpath)
-            writer.export_binarized(outpath)
-            writer.export_polygonized(outpath)
         except Exception as e:
             logger.warning(f"Could not process folder '{fpath.resolve()}'.\nSkipping...")
             logger.exception(e)
@@ -540,23 +553,14 @@ def run_native_sentinel2_pipeline_fast(
 
     """
     # Import here to avoid long loading times when running other commands
-    import torch
     from darts_acquisition.arcticdem import load_arcticdem_tile
     from darts_acquisition.s2 import load_s2_masks, load_s2_scene
     from darts_acquisition.tcvis import load_tcvis
-    from darts_ensemble.ensemble_v1 import EnsembleV1
-    from darts_export.inference import InferenceResultWriter
-    from darts_postprocessing import prepare_export
     from darts_preprocessing import preprocess_legacy_fast
     from dask.distributed import Client
     from odc.stac import configure_rio
 
-    from darts.utils.cuda import debug_info, decide_device
-    from darts.utils.earthengine import init_ee
-
-    debug_info()
-    device = decide_device(device)
-    init_ee(ee_project)
+    device = _process_initializations(device, ee_project)
 
     client = Client()
     logger.info(f"Using Dask client: {client}")
@@ -586,28 +590,23 @@ def run_native_sentinel2_pipeline_fast(
                 device,
             )
 
-            ensemble = EnsembleV1(
-                model_dir / tcvis_model_name,
-                model_dir / notcvis_model_name,
-                device=torch.device(device),
-            )
-            tile = ensemble.segment_tile(
+            _segmentation_main(
                 tile,
-                patch_size=patch_size,
-                overlap=overlap,
-                batch_size=batch_size,
-                reflection=reflection,
-                keep_inputs=write_model_outputs,
+                device,
+                model_dir,
+                outpath,
+                tcvis_model_name,
+                notcvis_model_name,
+                patch_size,
+                overlap,
+                batch_size,
+                reflection,
+                binarization_threshold,
+                mask_erosion_size,
+                min_object_size,
+                use_quality_mask,
+                write_model_outputs,
             )
-            tile = prepare_export(
-                tile, binarization_threshold, mask_erosion_size, min_object_size, use_quality_mask, device
-            )
-
-            outpath.mkdir(parents=True, exist_ok=True)
-            writer = InferenceResultWriter(tile)
-            writer.export_probabilities(outpath)
-            writer.export_binarized(outpath)
-            writer.export_polygonized(outpath)
 
         except Exception as e:
             logger.warning(f"Could not process folder '{fpath.resolve()}'.\nSkipping...")
