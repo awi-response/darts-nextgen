@@ -6,11 +6,11 @@ from typing import Literal
 
 import odc.geo.xr  # noqa: F401
 import xarray as xr
+from darts_utils.cuda import free_cupy
 from xrspatial.utils import has_cuda_and_cupy
 
 from darts_preprocessing.engineering.arcticdem import calculate_slope, calculate_topographic_position_index
 from darts_preprocessing.engineering.indices import calculate_ndvi
-from darts_preprocessing.utils import free_cuda
 
 logger = logging.getLogger(__name__.replace("darts_", "darts."))
 
@@ -101,7 +101,7 @@ def preprocess_legacy_arcticdem_fast(
             ds_arcticdem = calculate_topographic_position_index(ds_arcticdem, tpi_outer_radius, tpi_inner_radius)
             ds_arcticdem = calculate_slope(ds_arcticdem)
             ds_arcticdem = ds_arcticdem.cupy.as_numpy()
-            free_cuda()
+            free_cupy()
 
     # Calculate TPI and slope from ArcticDEM on CPU
     else:

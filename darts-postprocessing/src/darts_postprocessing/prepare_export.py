@@ -5,9 +5,8 @@ from typing import Literal
 
 import numpy as np
 import xarray as xr
+from darts_utils.cuda import free_cupy
 from skimage.morphology import binary_erosion, disk, label, remove_small_objects
-
-from darts_postprocessing.utils import free_cuda
 
 logger = logging.getLogger(__name__.replace("darts_", "darts."))
 
@@ -64,7 +63,7 @@ def erode_mask(mask: xr.DataArray, size: int, device: Literal["cuda", "cpu"] | i
             mask = mask.cupy.as_cupy()
             mask.values = binary_erosion_gpu(mask.data, disk_gpu(size))
             mask = mask.cupy.as_numpy()
-            free_cuda()
+            free_cupy()
     else:
         mask.values = binary_erosion(mask.values, disk(size))
 
@@ -135,7 +134,7 @@ def binarize(
                 binarized.astype(bool).expand_dims("batch", 0).data, min_size=min_object_size
             )[0]
             binarized = binarized.cupy.as_numpy()
-            free_cuda()
+            free_cupy()
     else:
         binarized.values = remove_small_objects(
             binarized.astype(bool).expand_dims("batch", 0).values, min_size=min_object_size

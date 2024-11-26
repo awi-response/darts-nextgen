@@ -8,8 +8,9 @@ import segmentation_models_pytorch as smp
 import torch
 import torch.nn as nn
 import xarray as xr
+from darts_utils.cuda import free_torch
 
-from darts_segmentation.utils import free_cuda, predict_in_patches
+from darts_segmentation.utils import predict_in_patches
 
 logger = logging.getLogger(__name__.replace("darts_", "darts."))
 
@@ -156,7 +157,7 @@ class SMPSegmenter:
 
         # Cleanup cuda memory
         del tensor_tile, probabilities
-        free_cuda()
+        free_torch()
 
         return tile
 
@@ -205,7 +206,7 @@ class SMPSegmenter:
 
         # Cleanup cuda memory
         del tensor_tiles, probabilities
-        free_cuda()
+        free_torch()
 
         return tiles
 
