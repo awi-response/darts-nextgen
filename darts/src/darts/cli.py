@@ -9,7 +9,7 @@ import cyclopts
 from rich.console import Console
 
 from darts import __version__
-from darts.native import (
+from darts.legacy_pipeline import (
     run_native_planet_pipeline,
     run_native_planet_pipeline_fast,
     run_native_sentinel2_pipeline,
@@ -27,8 +27,8 @@ app = cyclopts.App(
     version=__version__,
     console=console,
     config=config_parser,
-    help_format="rich",
-    version_format="rich",
+    help_format="plaintext",
+    version_format="plaintext",
 )
 
 pipeline_group = cyclopts.Group.create_ordered("Pipeline Commands")
