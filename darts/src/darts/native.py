@@ -242,6 +242,7 @@ def run_native_planet_pipeline_fast(
         arcticdem_dir (Path): The directory containing the ArcticDEM data (the datacube and the extent files).
             Will be created and downloaded if it does not exist.
         tcvis_dir (Path): The directory containing the TCVis data.
+            Will be created and downloaded if it does not exist.
         model_dir (Path): The path to the models to use for segmentation.
         tcvis_model_name (str, optional): The name of the model to use for TCVis. Defaults to "RTS_v6_tcvis.pt".
         notcvis_model_name (str, optional): The name of the model to use for not TCVis. Defaults to "RTS_v6_notcvis.pt".
@@ -510,6 +511,7 @@ def run_native_sentinel2_pipeline_fast(
         arcticdem_dir (Path): The directory containing the ArcticDEM data (the datacube and the extent files).
             Will be created and downloaded if it does not exist.
         tcvis_dir (Path): The directory containing the TCVis data.
+            Will be created and downloaded if it does not exist.
         model_dir (Path): The path to the models to use for segmentation.
         tcvis_model_name (str, optional): The name of the model to use for TCVis. Defaults to "RTS_v6_tcvis.pt".
         notcvis_model_name (str, optional): The name of the model to use for not TCVis. Defaults to "RTS_v6_notcvis.pt".
