@@ -89,7 +89,6 @@ Please see these issues:
 - [Rye: Can't specify per-dependency package index / can't specify uv behavior in config file](https://github.com/astral-sh/rye/issues/1210#issuecomment-2263761535)
 - [UV: Add support for pinning a package to a specific index](https://github.com/astral-sh/uv/issues/171)
 
-
 ## Recommended Notebook header
 
 The following code snipped can be put in the very first cell of a notebook to already to add logging and initialize earth engine.
