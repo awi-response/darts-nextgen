@@ -45,6 +45,58 @@ def _process_initializations(device: str, ee_project: str):
     return device
 
 
+# ### Data Loading: -------------------------------------------------
+def _get_source_loaders(sourcetype):
+    if sourcetype == "planet":
+        from darts_acquisition.planet import load_planet_masks, load_planet_scene
+
+        return load_planet_scene, load_planet_masks
+    elif sourcetype == "s2":
+        from darts_acquisition.s2 import load_s2_masks, load_s2_scene
+
+        return load_s2_scene, load_s2_masks
+    else:
+        raise ValueError(f"unknown source {sourcetype}")
+
+
+def _load_data_fast(sourcetype: str, fpath: Path, arcticdem_dir: Path, tcvis_dir: Path, arcticdem_tile_padding: int):
+    from darts_acquisition.arcticdem import load_arcticdem_tile
+    from darts_acquisition.tcvis import load_tcvis
+
+    # load the surface reflectance data depending on the sourcetype, i.e. PLANET or Sentinel 2
+    sr_loader, mask_loader = _get_source_loaders(sourcetype)
+    optical = sr_loader(fpath)
+    data_masks = mask_loader(fpath)
+
+    # load ArcticDEM (fast, datacube) and TCVIS
+    arcticdem = load_arcticdem_tile(optical.odc.geobox, arcticdem_dir, resolution=2, buffer=arcticdem_tile_padding)
+    tcvis = load_tcvis(optical.odc.geobox, tcvis_dir)
+
+    return optical, data_masks, arcticdem, tcvis
+
+
+def _load_data_classic(
+    sourcetype: str,
+    fpath: Path,
+    arcticdem_slope_vrt: Path,
+    arcticdem_elevation_vrt: Path,
+    tcvis_dir: Path,
+):
+    from darts_acquisition.arcticdem import load_arcticdem_from_vrt
+    from darts_acquisition.tcvis import load_tcvis
+
+    # load the surface reflectance data depending on the sourcetype, i.e. PLANET or Sentinel 2
+    sr_loader, mask_loader = _get_source_loaders(sourcetype)
+    optical = sr_loader(fpath)
+    data_masks = mask_loader(fpath)
+
+    # load ArcticDEM (VRT based, slow) and TCVIS
+    arcticdem = load_arcticdem_from_vrt(arcticdem_slope_vrt, arcticdem_elevation_vrt, optical)
+    tcvis = load_tcvis(optical.odc.geobox, tcvis_dir)
+
+    return optical, data_masks, arcticdem, tcvis
+
+
 # ### Segmentation:  -------------------------------------------------
 def _segmentation_main(
     tile,
@@ -214,9 +266,6 @@ def run_native_planet_pipeline(
 
     """
     # Import here to avoid long loading times when running other commands
-    from darts_acquisition.arcticdem import load_arcticdem_from_vrt
-    from darts_acquisition.planet import load_planet_masks, load_planet_scene
-    from darts_acquisition.tcvis import load_tcvis
     from darts_preprocessing import preprocess_legacy
 
     _process_initializations(device, ee_project)
@@ -224,10 +273,9 @@ def run_native_planet_pipeline(
     # Find all PlanetScope orthotiles
     for fpath, outpath in planet_file_generator(orthotiles_dir, scenes_dir, output_data_dir):
         try:
-            optical = load_planet_scene(fpath)
-            arcticdem = load_arcticdem_from_vrt(arcticdem_slope_vrt, arcticdem_elevation_vrt, optical)
-            tcvis = load_tcvis(optical.odc.geobox, tcvis_dir)
-            data_masks = load_planet_masks(fpath)
+            optical, data_masks, arcticdem, tcvis = _load_data_classic(
+                "planet", fpath, arcticdem_slope_vrt, arcticdem_elevation_vrt, tcvis_dir
+            )
 
             tile = preprocess_legacy(optical, arcticdem, tcvis, data_masks)
 
@@ -317,9 +365,6 @@ def run_native_planet_pipeline_fast(
     """
     # Import here to avoid long loading times when running other commands
 
-    from darts_acquisition.arcticdem import load_arcticdem_tile
-    from darts_acquisition.planet import load_planet_masks, load_planet_scene
-    from darts_acquisition.tcvis import load_tcvis
     from darts_preprocessing import preprocess_legacy_fast
     from dask.distributed import Client
     from odc.stac import configure_rio
@@ -334,12 +379,9 @@ def run_native_planet_pipeline_fast(
     # Find all PlanetScope orthotiles
     for fpath, outpath in planet_file_generator(orthotiles_dir, scenes_dir, output_data_dir):
         try:
-            optical = load_planet_scene(fpath)
-            arcticdem = load_arcticdem_tile(
-                optical.odc.geobox, arcticdem_dir, resolution=2, buffer=ceil(tpi_outer_radius / 2 * sqrt(2))
+            optical, data_masks, arcticdem, tcvis = _load_data_fast(
+                "planet", fpath, arcticdem_dir, tcvis_dir, arcticdem_tile_padding=ceil(tpi_outer_radius / 2 * sqrt(2))
             )
-            tcvis = load_tcvis(optical.odc.geobox, tcvis_dir)
-            data_masks = load_planet_masks(fpath)
 
             tile = preprocess_legacy_fast(
                 optical,
@@ -454,9 +496,6 @@ def run_native_sentinel2_pipeline(
 
     """
     # Import here to avoid long loading times when running other commands
-    from darts_acquisition.arcticdem import load_arcticdem_from_vrt
-    from darts_acquisition.s2 import load_s2_masks, load_s2_scene
-    from darts_acquisition.tcvis import load_tcvis
     from darts_preprocessing import preprocess_legacy
 
     device = _process_initializations(device, ee_project)
@@ -467,10 +506,9 @@ def run_native_sentinel2_pipeline(
             scene_id = fpath.name
             outpath = output_data_dir / scene_id
 
-            optical = load_s2_scene(fpath)
-            arcticdem = load_arcticdem_from_vrt(arcticdem_slope_vrt, arcticdem_elevation_vrt, optical)
-            tcvis = load_tcvis(optical.odc.geobox, tcvis_dir)
-            data_masks = load_s2_masks(fpath, optical.odc.geobox)
+            optical, data_masks, arcticdem, tcvis = _load_data_classic(
+                "s2", fpath, arcticdem_slope_vrt, arcticdem_elevation_vrt, tcvis_dir
+            )
 
             tile = preprocess_legacy(optical, arcticdem, tcvis, data_masks)
 
@@ -558,9 +596,6 @@ def run_native_sentinel2_pipeline_fast(
 
     """
     # Import here to avoid long loading times when running other commands
-    from darts_acquisition.arcticdem import load_arcticdem_tile
-    from darts_acquisition.s2 import load_s2_masks, load_s2_scene
-    from darts_acquisition.tcvis import load_tcvis
     from darts_preprocessing import preprocess_legacy_fast
     from dask.distributed import Client
     from odc.stac import configure_rio
@@ -578,12 +613,9 @@ def run_native_sentinel2_pipeline_fast(
             scene_id = fpath.name
             outpath = output_data_dir / scene_id
 
-            optical = load_s2_scene(fpath)
-            arcticdem = load_arcticdem_tile(
-                optical.odc.geobox, arcticdem_dir, resolution=10, buffer=ceil(tpi_outer_radius / 10 * sqrt(2))
+            optical, data_masks, arcticdem, tcvis = _load_data_fast(
+                "s2", fpath, arcticdem_dir, tcvis_dir, arcticdem_tile_padding=ceil(tpi_outer_radius / 2 * sqrt(2))
             )
-            tcvis = load_tcvis(optical.odc.geobox, tcvis_dir)
-            data_masks = load_s2_masks(fpath, optical.odc.geobox)
 
             tile = preprocess_legacy_fast(
                 optical,
