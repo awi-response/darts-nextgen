@@ -34,6 +34,7 @@ def planet_file_generator(orthotiles_dir: Path, scenes_dir: Path, output_data_di
         yield fpath, outpath
 
 
+# ## COMMON PROCESSING STEPS: =======================================
 def _process_initializations(device: str, ee_project: str):
     from darts.utils.cuda import debug_info, decide_device
     from darts.utils.earthengine import init_ee
@@ -44,6 +45,7 @@ def _process_initializations(device: str, ee_project: str):
     return device
 
 
+# ### Segmentation:  -------------------------------------------------
 def _segmentation_main(
     tile,
     device,
@@ -86,6 +88,9 @@ def _segmentation_main(
     writer.export_probabilities(outpath)
     writer.export_binarized(outpath)
     writer.export_polygonized(outpath)
+
+
+# ## COMMANDS: =====================================================
 
 
 def run_native_planet_pipeline(
