@@ -46,6 +46,7 @@ def run_native_planet_pipeline(
     notcvis_model_name: str = "RTS_v6_notcvis.pt",
     device: Literal["cuda", "cpu", "auto"] | int | None = None,
     ee_project: str | None = None,
+    ee_use_highvolume: bool = True,
     patch_size: int = 1024,
     overlap: int = 16,
     batch_size: int = 8,
@@ -74,6 +75,7 @@ def run_native_planet_pipeline(
             Defaults to "cuda" if available, else "cpu".
         ee_project (str, optional): The Earth Engine project ID or number to use. May be omitted if
             project is defined within persistent API credentials obtained via `earthengine authenticate`.
+        ee_use_highvolume (bool, optional): Whether to use the high volume server (https://earthengine-highvolume.googleapis.com).
         patch_size (int, optional): The patch size to use for inference. Defaults to 1024.
         overlap (int, optional): The overlap to use for inference. Defaults to 16.
         batch_size (int, optional): The batch size to use for inference. Defaults to 8.
@@ -169,7 +171,7 @@ def run_native_planet_pipeline(
 
     debug_info()
     device = decide_device(device)
-    init_ee(ee_project)
+    init_ee(ee_project, ee_use_highvolume)
 
     # Find all PlanetScope orthotiles
     for fpath, outpath in planet_file_generator(orthotiles_dir, scenes_dir, output_data_dir):
@@ -219,6 +221,7 @@ def run_native_planet_pipeline_fast(
     notcvis_model_name: str = "RTS_v6_notcvis.pt",
     device: Literal["cuda", "cpu", "auto"] | int | None = None,
     ee_project: str | None = None,
+    ee_use_highvolume: bool = True,
     tpi_outer_radius: int = 100,
     tpi_inner_radius: int = 0,
     patch_size: int = 1024,
@@ -251,6 +254,7 @@ def run_native_planet_pipeline_fast(
             Defaults to "cuda" if available, else "cpu".
         ee_project (str, optional): The Earth Engine project ID or number to use. May be omitted if
             project is defined within persistent API credentials obtained via `earthengine authenticate`.
+        ee_use_highvolume (bool, optional): Whether to use the high volume server (https://earthengine-highvolume.googleapis.com).
         tpi_outer_radius (int, optional): The outer radius of the annulus kernel for the tpi calculation
             in m. Defaults 100m.
         tpi_inner_radius (int, optional): The inner radius of the annulus kernel for the tpi calculation
@@ -286,7 +290,7 @@ def run_native_planet_pipeline_fast(
 
     debug_info()
     device = decide_device(device)
-    init_ee(ee_project)
+    init_ee(ee_project, ee_use_highvolume)
 
     client = Client()
     logger.info(f"Using Dask client: {client}")
@@ -351,6 +355,7 @@ def run_native_sentinel2_pipeline(
     notcvis_model_name: str = "RTS_v6_notcvis_s2native.pt",
     device: Literal["cuda", "cpu", "auto"] | int | None = None,
     ee_project: str | None = None,
+    ee_use_highvolume: bool = True,
     patch_size: int = 1024,
     overlap: int = 16,
     batch_size: int = 8,
@@ -378,6 +383,7 @@ def run_native_sentinel2_pipeline(
             Defaults to "cuda" if available, else "cpu".
         ee_project (str, optional): The Earth Engine project ID or number to use. May be omitted if
             project is defined within persistent API credentials obtained via `earthengine authenticate`.
+        ee_use_highvolume (bool, optional): Whether to use the high volume server (https://earthengine-highvolume.googleapis.com).
         patch_size (int, optional): The patch size to use for inference. Defaults to 1024.
         overlap (int, optional): The overlap to use for inference. Defaults to 16.
         batch_size (int, optional): The batch size to use for inference. Defaults to 8.
@@ -435,7 +441,7 @@ def run_native_sentinel2_pipeline(
 
     debug_info()
     device = decide_device(device)
-    init_ee(ee_project)
+    init_ee(ee_project, ee_use_highvolume)
 
     # Find all Sentinel 2 scenes
     for fpath in sentinel2_dir.glob("*/"):
@@ -487,6 +493,7 @@ def run_native_sentinel2_pipeline_fast(
     notcvis_model_name: str = "RTS_v6_notcvis_s2native.pt",
     device: Literal["cuda", "cpu", "auto"] | int | None = None,
     ee_project: str | None = None,
+    ee_use_highvolume: bool = True,
     tpi_outer_radius: int = 100,
     tpi_inner_radius: int = 0,
     patch_size: int = 1024,
@@ -519,6 +526,7 @@ def run_native_sentinel2_pipeline_fast(
             Defaults to "cuda" if available, else "cpu".
         ee_project (str, optional): The Earth Engine project ID or number to use. May be omitted if
             project is defined within persistent API credentials obtained via `earthengine authenticate`.
+        ee_use_highvolume (bool, optional): Whether to use the high volume server (https://earthengine-highvolume.googleapis.com).
         tpi_outer_radius (int, optional): The outer radius of the annulus kernel for the tpi calculation
             in m. Defaults to 100m.
         tpi_inner_radius (int, optional): The inner radius of the annulus kernel for the tpi calculation
@@ -554,7 +562,7 @@ def run_native_sentinel2_pipeline_fast(
 
     debug_info()
     device = decide_device(device)
-    init_ee(ee_project)
+    init_ee(ee_project, ee_use_highvolume)
 
     client = Client()
     logger.info(f"Using Dask client: {client}")
