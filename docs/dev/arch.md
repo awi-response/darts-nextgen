@@ -3,7 +3,7 @@
 
 This repository is a workspace repository, managed by [Rye](https://rye.astral.sh/).
 Read more about workspaces at the [Rye docs](https://rye.astral.sh/guide/workspaces/).
-Each workspace-member starts with `darts-*` and can be seen as an own package or module, except the `darts-nextgen` directory which is the top-level package.
+Each workspace-member starts with `darts-*` and can be seen as an own package or module, except the `darts` directory which is the top-level package.
 Each package has it's own internal functions and it's public facing API.
 The public facing API of each package MUST follow the following section [API paradigms](#api-paradigms).
 
@@ -13,30 +13,30 @@ The public facing API of each package MUST follow the following section [API par
 
 | Package Name            | Type     | Description                                                                           | (Major) Dependencies - all need Xarray |
 | ----------------------- | -------- | ------------------------------------------------------------------------------------- | -------------------------------------- |
-| `darts-preprocessing`   | Data     | Loads data and combines the features to a Xarray Dataset                              | GDAL                                   |
+| `darts-acquisition`     | Data     | Fetches data from the data sources                                                    | GEE, rasterio, ODC-Geo                 |
+| `darts-preprocessing`   | Data     | Loads data and combines the features to a Xarray Dataset                              | Cupy, Xarray-Spatial                   |
 | `darts-superresolution` | Train    | Trains a supper resolution model to scale Sentinel 2 images from 10m to 3m resolution | PyTorch                                |
 | `darts-segmentation`    | Train    | Trains an segmentation model                                                          | PyTorch, segmentation_models_pytorch   |
 | `darts-ensemble`        | Ensemble | Ensembles the different models and run the multi-stage inference pipeline.            | PyTorch                                |
-| `darts-postprocessing`  | Data     | Further refines the output from an ensemble or segmentaion and binarizes the probs    | PyTorch                                |
-| `darts-export`          | Data     | Saves the results from inference and combines the result to the final DARTS dataset   | GeoPandas, Scipy, Cucim                |
+| `darts-postprocessing`  | Data     | Further refines the output from an ensemble or segmentaion and binarizes the probs    | Scipy, Cucim                           |
+| `darts-export`          | Data     | Saves the results from inference and combines the result to the final DARTS dataset   | GeoPandas                              |
+| `darts-utils`           | Data     | Shared utilities for data processing                                                  |                                        |
 
 The following modules are planned or potential ideas for future expansion of the project:
 
 | Package Name        | Type  | Description                                                             | (Major) Dependencies - all need Xarray |
 | ------------------- | ----- | ----------------------------------------------------------------------- | -------------------------------------- |
-| `darts-acquisition` | Data  | Fetches data from the data sources                                      | GEE, rasterio, ?                       |
 | `darts-detection`   | Train | Trains an object detection model                                        | PyTorch                                |
 | `darts-?`           | Train | Trains a ? model for more complex multi-stage ensembles                 | ?                                      |
 | `darts-evaluation`  | Test  | Evaluates the end-to-end process on a test dataset and external dataset | GeoPandas                              |
-| `darts-utils`       | Data  | Shared utilities for data processing                                    | Scipy, Cucim, GeoPandas                |
 | `darts-train-utils` | Train | Shared utilities for training                                           | PyTorch                                |
 
 The packages should follow this architecture:
 ![DARTS nextgen architecture](../assets/darts_nextgen_architecture.png)
 
-The `darts-nextgen` utilizes [Ray](https://docs.ray.io/en/latest/index.html) to automaticly parallize the different computations.
+The `darts-nextgen` is planned to utilize [Ray](https://docs.ray.io/en/latest/index.html) to automaticly parallize the different computations.
 However, each package should be designed so that one could build their own pipeline without Ray.
-Hence, all Ray-related functions / transformations etc. should be defined in the `darts-nextgen` sub-directory.
+Hence, all Ray-related functions / transformations etc. should be defined in the toplevel `darts` sub-directory.
 
 The packages can decide to wrap their public functions into a CLI with typer.
 

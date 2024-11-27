@@ -1,178 +1,184 @@
 """PLANET scene based preprocessing."""
 
-from pathlib import Path
+import logging
+import time
+from typing import Literal
 
+import odc.geo.xr  # noqa: F401
 import xarray as xr
+from darts_utils.cuda import free_cupy
+from xrspatial.utils import has_cuda_and_cupy
 
-from darts_preprocessing.data_sources.arcticdem import load_arcticdem
-from darts_preprocessing.data_sources.planet import load_planet_masks, load_planet_scene
-from darts_preprocessing.data_sources.s2 import load_s2_masks, load_s2_scene
-from darts_preprocessing.data_sources.tcvis import load_tcvis
+from darts_preprocessing.engineering.arcticdem import calculate_slope, calculate_topographic_position_index
 from darts_preprocessing.engineering.indices import calculate_ndvi
 
+logger = logging.getLogger(__name__.replace("darts_", "darts."))
 
-def load_and_preprocess_planet_scene(
-    planet_scene_path: Path, slope_vrt: Path, elevation_vrt: Path, cache_dir: Path | None = None
+
+if has_cuda_and_cupy():
+    import cupy as cp
+    import cupy_xarray  # noqa: F401
+
+    DEFAULT_DEVICE = "cuda"
+    logger.debug("GPU-accelerated xrspatial functions are available.")
+else:
+    DEFAULT_DEVICE = "cpu"
+    logger.debug("GPU-accelerated xrspatial functions are not available.")
+
+
+def preprocess_legacy(
+    ds_optical: xr.Dataset,
+    ds_arcticdem: xr.Dataset,
+    ds_tcvis: xr.Dataset,
+    ds_data_masks: xr.Dataset,
 ) -> xr.Dataset:
-    """Load and preprocess a Planet Scene (PSOrthoTile or PSScene) into an xr.Dataset.
+    """Preprocess optical data with legacy (DARTS v1) preprocessing steps.
+
+    The processing steps are:
+    - Calculate NDVI
+    - Merge everything into a single ds.
 
     Args:
-        planet_scene_path (Path): path to the Planet Scene
-        slope_vrt (Path): path to the ArcticDEM slope VRT file
-        elevation_vrt (Path): path to the ArcticDEM elevation VRT file
-        cache_dir (Path | None): The cache directory. If None, no caching will be used. Defaults to None.
+        ds_optical (xr.Dataset): The Planet scene optical data or Sentinel 2 scene optical data.
+        ds_arcticdem (xr.Dataset): The ArcticDEM data.
+        ds_tcvis (xr.Dataset): The TCVIS data.
+        ds_data_masks (xr.Dataset): The data masks, based on the optical data.
 
     Returns:
-        xr.Dataset: preprocessed Planet Scene
-
-    Examples:
-        ### PS Orthotile
-
-        Data directory structure:
-
-        ```sh
-            data/input
-            ├── ArcticDEM
-            │   ├── elevation.vrt
-            │   ├── slope.vrt
-            │   ├── relative_elevation
-            │   │   └── 4372514_relative_elevation_100.tif
-            │   └── slope
-            │       └── 4372514_slope.tif
-            └── planet
-                └── PSOrthoTile
-                    └── 4372514/5790392_4372514_2022-07-16_2459
-                        ├── 5790392_4372514_2022-07-16_2459_BGRN_Analytic_metadata.xml
-                        ├── 5790392_4372514_2022-07-16_2459_BGRN_DN_udm.tif
-                        ├── 5790392_4372514_2022-07-16_2459_BGRN_SR.tif
-                        ├── 5790392_4372514_2022-07-16_2459_metadata.json
-                        └── 5790392_4372514_2022-07-16_2459_udm2.tif
-        ```
-
-        Load and preprocess a Planet Scene:
-
-        ```python
-            from pathlib import Path
-            from darts_preprocessing.preprocess import load_and_preprocess_planet_scene
-
-            fpath = Path("data/input/planet/PSOrthoTile/4372514/5790392_4372514_2022-07-16_2459")
-            arcticdem_dir = input_data_dir / "ArcticDEM"
-            tile = load_and_preprocess_planet_scene(fpath, arcticdem_dir / "slope.vrt", arcticdem_dir / "elevation.vrt")
-        ```
-
-
-        ### PS Scene
-
-        Data directory structure:
-
-        ```sh
-            data/input
-            ├── ArcticDEM
-            │   ├── elevation.vrt
-            │   ├── slope.vrt
-            │   ├── relative_elevation
-            │   │   └── 4372514_relative_elevation_100.tif
-            │   └── slope
-            │       └── 4372514_slope.tif
-            └── planet
-                └── PSScene
-                    └── 20230703_194241_43_2427
-                        ├── 20230703_194241_43_2427_3B_AnalyticMS_metadata.xml
-                        ├── 20230703_194241_43_2427_3B_AnalyticMS_SR.tif
-                        ├── 20230703_194241_43_2427_3B_udm2.tif
-                        ├── 20230703_194241_43_2427_metadata.json
-                        └── 20230703_194241_43_2427.json
-        ```
-
-        Load and preprocess a Planet Scene:
-
-        ```python
-            from pathlib import Path
-            from darts_preprocessing.preprocess import load_and_preprocess_planet_scene
-
-            fpath = Path("data/input/planet/PSOrthoTile/20230703_194241_43_2427")
-            arcticdem_dir = input_data_dir / "ArcticDEM"
-            tile = load_and_preprocess_planet_scene(fpath, arcticdem_dir / "slope.vrt", arcticdem_dir / "elevation.vrt")
-        ```
+        xr.Dataset: The preprocessed dataset.
 
     """
-    # load planet scene
-    ds_planet = load_planet_scene(planet_scene_path)
+    # Calculate NDVI
+    ds_ndvi = calculate_ndvi(ds_optical)
 
-    # calculate xr.dataset ndvi
-    ds_ndvi = calculate_ndvi(ds_planet)
+    # Reproject TCVIS to optical data
+    ds_tcvis = ds_tcvis.odc.reproject(ds_optical.odc.geobox, resampling="cubic")
 
-    ds_articdem = load_arcticdem(slope_vrt, elevation_vrt, ds_planet)
-
-    ds_tcvis = load_tcvis(ds_planet, cache_dir)
-
-    # load udm2
-    ds_data_masks = load_planet_masks(planet_scene_path)
+    # Since this function expects the arcticdem to be loaded from a VRT, which already contains slope and tpi,
+    # we dont need to calculate them here
 
     # merge to final dataset
-    ds_merged = xr.merge([ds_planet, ds_ndvi, ds_articdem, ds_tcvis, ds_data_masks])
+    ds_merged = xr.merge([ds_optical, ds_ndvi, ds_arcticdem, ds_tcvis, ds_data_masks])
 
     return ds_merged
 
 
-def load_and_preprocess_sentinel2_scene(
-    s2_scene_path: Path, slope_vrt: Path, elevation_vrt: Path, cache_dir: Path | None = None
-) -> xr.Dataset:
-    """Load and preprocess a Sentinel 2 scene into an xr.Dataset.
+def preprocess_legacy_arcticdem_fast(
+    ds_arcticdem: xr.Dataset, tpi_outer_radius: int, tpi_inner_radius: int, device: Literal["cuda", "cpu"] | int
+):
+    """Preprocess the ArcticDEM data with legacy (DARTS v1) preprocessing steps.
 
     Args:
-        s2_scene_path (Path): path to the Sentinel 2 Scene
-        slope_vrt (Path): path to the ArcticDEM slope VRT file
-        elevation_vrt (Path): path to the ArcticDEM elevation VRT file
-        cache_dir (Path | None): The cache directory. If None, no caching will be used. Defaults to None.
+        ds_arcticdem (xr.Dataset): The ArcticDEM dataset.
+        tpi_outer_radius (int): The outer radius of the annulus kernel for the tpi calculation in number of cells.
+        tpi_inner_radius (int): The inner radius of the annulus kernel for the tpi calculation in number of cells.
+        device (Literal["cuda", "cpu"] | int): The device to run the tpi and slope calculations on.
+            If "cuda" take the first device (0), if int take the specified device.
 
     Returns:
-        xr.Dataset: preprocessed Sentinel Scene
-
-    Examples:
-        Data directory structure:
-
-        ```sh
-            data/input
-            ├── ArcticDEM
-            │   ├── elevation.vrt
-            │   ├── slope.vrt
-            │   ├── relative_elevation
-            │   │   └── 4372514_relative_elevation_100.tif
-            │   └── slope
-            │       └── 4372514_slope.tif
-            └── sentinel2
-                └── 20220826T200911_20220826T200905_T17XMJ/
-                    ├── 20220826T200911_20220826T200905_T17XMJ_SCL_clip.tif
-                    └── 20220826T200911_20220826T200905_T17XMJ_SR_clip.tif
-        ```
-
-        Load and preprocess a Sentinel Scene:
-
-        ```python
-            from pathlib import Path
-            from darts_preprocessing.preprocess import load_and_preprocess_sentinel2_scene
-
-            fpath = Path("data/input/sentinel2/20220826T200911_20220826T200905_T17XMJ")
-            arcticdem_dir = input_data_dir / "ArcticDEM"
-            tile = load_and_preprocess_planet_scene(fpath, arcticdem_dir / "slope.vrt", arcticdem_dir / "elevation.vrt")
-        ```
+        xr.Dataset: The preprocessed ArcticDEM dataset.
 
     """
-    # load planet scene
-    ds_s2 = load_s2_scene(s2_scene_path)
+    use_gpu = device == "cuda" or isinstance(device, int)
 
-    # calculate xr.dataset ndvi
-    ds_ndvi = calculate_ndvi(ds_s2)
+    # Warn user if use_gpu is set but no GPU is available
+    if use_gpu and not has_cuda_and_cupy():
+        logger.warning(
+            f"Device was set to {device}, but GPU acceleration is not available. Calculating TPI and slope on CPU."
+        )
+        use_gpu = False
 
-    ds_articdem = load_arcticdem(slope_vrt, elevation_vrt, ds_s2)
+    # Calculate TPI and slope from ArcticDEM on GPU
+    if use_gpu:
+        device_nr = device if isinstance(device, int) else 0
+        logger.debug(f"Moving arcticdem to GPU:{device}.")
+        # Check if dem is dask, if not persist it, since tpi and slope can't be calculated from cupy-dask arrays
+        if ds_arcticdem.chunks is not None:
+            ds_arcticdem = ds_arcticdem.persist()
+        # Move and calculate on specified device
+        with cp.cuda.Device(device_nr):
+            ds_arcticdem = ds_arcticdem.cupy.as_cupy()
+            ds_arcticdem = calculate_topographic_position_index(ds_arcticdem, tpi_outer_radius, tpi_inner_radius)
+            ds_arcticdem = calculate_slope(ds_arcticdem)
+            ds_arcticdem = ds_arcticdem.cupy.as_numpy()
+            free_cupy()
 
-    ds_tcvis = load_tcvis(ds_s2, cache_dir)
+    # Calculate TPI and slope from ArcticDEM on CPU
+    else:
+        ds_arcticdem = calculate_topographic_position_index(ds_arcticdem, tpi_outer_radius, tpi_inner_radius)
+        ds_arcticdem = calculate_slope(ds_arcticdem)
 
-    # load scl
-    ds_data_masks = load_s2_masks(s2_scene_path)
+    # Apply legacy scaling to tpi
+    with xr.set_options(keep_attrs=True):
+        ds_arcticdem["tpi"] = (ds_arcticdem.tpi + 50) * 300
+    return ds_arcticdem
+
+
+def preprocess_legacy_fast(
+    ds_optical: xr.Dataset,
+    ds_arcticdem: xr.Dataset,
+    ds_tcvis: xr.Dataset,
+    ds_data_masks: xr.Dataset,
+    tpi_outer_radius: int = 100,
+    tpi_inner_radius: int = 0,
+    device: Literal["cuda", "cpu"] | int = DEFAULT_DEVICE,
+) -> xr.Dataset:
+    """Preprocess optical data with legacy (DARTS v1) preprocessing steps, but with new data concepts.
+
+    The processing steps are:
+    - Calculate NDVI
+    - Calculate slope and relative elevation from ArcticDEM
+    - Merge everything into a single ds.
+
+    The main difference to preprocess_legacy is the new data concept of the arcticdem.
+    Instead of using already preprocessed arcticdem data which are loaded from a VRT, this step expects the raw
+    arcticdem data and calculates slope and relative elevation on the fly.
+
+    Args:
+        ds_optical (xr.Dataset): The Planet scene optical data or Sentinel 2 scene optical dataset.
+        ds_arcticdem (xr.Dataset): The ArcticDEM dataset.
+        ds_tcvis (xr.Dataset): The TCVIS dataset.
+        ds_data_masks (xr.Dataset): The data masks, based on the optical data.
+        tpi_outer_radius (int, optional): The outer radius of the annulus kernel for the tpi calculation
+            in m. Defaults to 100m.
+        tpi_inner_radius (int, optional): The inner radius of the annulus kernel for the tpi calculation
+            in m. Defaults to 0.
+        device (Literal["cuda", "cpu"] | int, optional): The device to run the tpi and slope calculations on.
+            If "cuda" take the first device (0), if int take the specified device.
+            Defaults to "cuda" if cuda is available, else "cpu".
+
+    Returns:
+        xr.Dataset: The preprocessed dataset.
+
+    """
+    tick_fstart = time.perf_counter()
+    logger.info("Starting fast v1 preprocessing.")
 
     # merge to final dataset
-    ds_merged = xr.merge([ds_s2, ds_ndvi, ds_articdem, ds_tcvis, ds_data_masks])
+    ds_merged = xr.merge([ds_optical, ds_data_masks])
 
+    # Calculate NDVI
+    ds_merged["ndvi"] = calculate_ndvi(ds_merged).ndvi
+
+    # Reproject TCVIS to optical data
+    ds_tcvis = ds_tcvis.odc.reproject(ds_optical.odc.geobox, resampling="cubic")
+    ds_merged["tc_brightness"] = ds_tcvis.tc_brightness
+    ds_merged["tc_greenness"] = ds_tcvis.tc_greenness
+    ds_merged["tc_wetness"] = ds_tcvis.tc_wetness
+
+    # Calculate TPI and slope from ArcticDEM
+    ds_arcticdem = ds_arcticdem.odc.reproject(ds_optical.odc.geobox.buffered(tpi_outer_radius), resampling="cubic")
+    ds_arcticdem = preprocess_legacy_arcticdem_fast(ds_arcticdem, tpi_outer_radius, tpi_inner_radius, device)
+    ds_arcticdem = ds_arcticdem.odc.crop(ds_optical.odc.geobox.extent)
+    ds_merged["dem"] = ds_arcticdem.dem
+    ds_merged["relative_elevation"] = ds_arcticdem.tpi
+    ds_merged["slope"] = ds_arcticdem.slope
+
+    # Update datamask with arcticdem mask
+    with xr.set_options(keep_attrs=True):
+        ds_merged["quality_data_mask"] = ds_data_masks.quality_data_mask * ds_arcticdem.datamask
+    ds_merged.quality_data_mask.attrs["data_source"] += " + ArcticDEM"
+
+    tick_fend = time.perf_counter()
+    logger.info(f"Preprocessing done in {tick_fend - tick_fstart:.2f} seconds.")
     return ds_merged

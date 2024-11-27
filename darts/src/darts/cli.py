@@ -1,18 +1,24 @@
 """Entrypoint for the darts-pipeline CLI."""
 
 import logging
+import sys
 from pathlib import Path
 from typing import Annotated
 
 import cyclopts
-from darts_acquisition.arcticdem import create_arcticdem_vrt
 from rich.console import Console
 
 from darts import __version__
-from darts.native import run_native_planet_pipeline, run_native_sentinel2_pipeline
+from darts.native import (
+    run_native_planet_pipeline,
+    run_native_planet_pipeline_fast,
+    run_native_sentinel2_pipeline,
+    run_native_sentinel2_pipeline_fast,
+)
 from darts.utils.config import ConfigParser
 from darts.utils.logging import add_logging_handlers, setup_logging
 
+root_file = Path(__file__).resolve()
 logger = logging.getLogger(__name__)
 console = Console()
 
@@ -21,13 +27,15 @@ app = cyclopts.App(
     version=__version__,
     console=console,
     config=config_parser,
+    help_format="rich",
+    version_format="rich",
 )
 
 pipeline_group = cyclopts.Group.create_ordered("Pipeline Commands")
 data_group = cyclopts.Group.create_ordered("Data Commands")
 
 
-# @app.command
+@app.command
 def hello(name: str, n: int = 1):
     """Say hello to someone.
 
@@ -46,9 +54,33 @@ def hello(name: str, n: int = 1):
         logger.info(f"Hello {name}")
 
 
+@app.command
+def env_info():
+    """Print debug information about the environment."""
+    from darts.utils.cuda import debug_info
+
+    debug_info()
+
+
 app.command(group=pipeline_group)(run_native_planet_pipeline)
+app.command(group=pipeline_group)(run_native_planet_pipeline_fast)
 app.command(group=pipeline_group)(run_native_sentinel2_pipeline)
-app.command(group=data_group)(create_arcticdem_vrt)
+app.command(group=pipeline_group)(run_native_sentinel2_pipeline_fast)
+
+
+# Custom wrapper for the create_arcticdem_vrt function, which dodges the loading of all the heavy modules
+@app.command(group=data_group)
+def create_arcticdem_vrt(dem_data_dir: Path, vrt_target_dir: Path):
+    """Create a VRT file from ArcticDEM data.
+
+    Args:
+        dem_data_dir (Path): The directory containing the ArcticDEM data (.tif).
+        vrt_target_dir (Path): The output directory.
+
+    """
+    from darts_acquisition.arcticdem.vrt import create_arcticdem_vrt as _create_arcticdem_vrt
+
+    _create_arcticdem_vrt(dem_data_dir, vrt_target_dir)
 
 
 # Intercept the logging behavior to add a file handler
@@ -58,8 +90,9 @@ def launcher(  # noqa: D103
     log_dir: Path = Path("logs"),
     config_file: Path = Path("config.toml"),
 ):
-    command, bound = app.parse_args(tokens)
+    command, bound, _ = app.parse_args(tokens)
     add_logging_handlers(command.__name__, console, log_dir)
+    logger.debug(f"Running on Python version {sys.version} from {__name__} ({root_file})")
     return command(*bound.args, **bound.kwargs)
 
 

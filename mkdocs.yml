@@ -19,6 +19,7 @@ nav:
       - Segmentation: ref/segmentation.md
       - Superresolution: ref/superresolution.md
       - Postprocessing: ref/postprocessing.md
+      - Utility: ref/utils.md
       - All: ref.md
   - Dev:
       - Contribute: contribute.md
@@ -93,6 +94,7 @@ plugins:
             - 'darts-postprocessing/src'
             - 'darts-segmentation/src'
             - 'darts-superresolution/src'
+            - 'darts-utils/src'
           options:
             members: true
             inherited_members: true

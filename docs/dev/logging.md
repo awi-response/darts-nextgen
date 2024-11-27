@@ -70,3 +70,26 @@ logger.warning(la)
 logger.warning(da)
 logger.warning(t)
 ```
+
+### When to use which level
+
+> The following is only a recommendation and should help writing helpful and not cluttered logs.
+
+1. `Debug` should be used ot tell what will happen next, `Info` for conclusive statements.
+
+    Example:
+
+    ```py
+    import logging
+    import time
+
+    logger = logging.getLogger(__name__.replace("darts_", "darts.")) # don't replace __name__
+
+    def my_func(param):
+        tick_fstart = time.perf_counter()  # pattern used a lot in the code is: fstart = function_start
+        logger.debug(f"Doing x with {param=}")
+        ...  # Doing x
+        logger.info(f"Done x in {time.perf_counter() - tick_fstart:.2f}s")
+    ```
+
+2. Unimportant or very often called functions should only log on `debug` level, independent of the above statement types.

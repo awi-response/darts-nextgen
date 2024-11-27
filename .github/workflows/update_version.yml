@@ -46,7 +46,7 @@ jobs:
           cd ../darts-postprocessing && rye version --bump ${{ github.event.inputs.bump }}
           cd ../darts-segmentation && rye version --bump ${{ github.event.inputs.bump }}
           cd ../darts-superresolution && rye version --bump ${{ github.event.inputs.bump }}
-
+          cd ../darts-utils && rye version --bump ${{ github.event.inputs.bump }}
 
       # Get the new version with rye version and save it as an variable
       - name: Get new version

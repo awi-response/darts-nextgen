@@ -1,9 +1,15 @@
 """DARTS v1 ensemble based on two models, one trained with TCVIS data and the other without."""
 
+import logging
 from pathlib import Path
 
+import torch
 import xarray as xr
 from darts_segmentation.segment import SMPSegmenter
+
+logger = logging.getLogger(__name__.replace("darts_", "darts."))
+
+DEFAULT_DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
 class EnsembleV1:
@@ -13,16 +19,33 @@ class EnsembleV1:
         self,
         rts_v6_tcvis_model_path: str | Path,
         rts_v6_notcvis_model_path: str | Path,
+        device: torch.device = DEFAULT_DEVICE,
     ):
         """Initialize the ensemble.
 
         Args:
             rts_v6_tcvis_model_path (str | Path): Path to the model trained with TCVIS data.
             rts_v6_notcvis_model_path (str | Path): Path to the model trained without TCVIS data.
+            device (torch.device): The device to run the model on.
+                Defaults to torch.device("cuda") if cuda is available, else torch.device("cpu").
 
         """
-        self.rts_v6_tcvis_model = SMPSegmenter(rts_v6_tcvis_model_path)
-        self.rts_v6_notcvis_model = SMPSegmenter(rts_v6_notcvis_model_path)
+        rts_v6_tcvis_model_path = (
+            rts_v6_tcvis_model_path if isinstance(rts_v6_tcvis_model_path, Path) else Path(rts_v6_tcvis_model_path)
+        )
+        rts_v6_notcvis_model_path = (
+            rts_v6_notcvis_model_path
+            if isinstance(rts_v6_notcvis_model_path, Path)
+            else Path(rts_v6_notcvis_model_path)
+        )
+        logger.debug(
+            "Loading models:\n"
+            f"\tTCVIS Model: {rts_v6_tcvis_model_path.resolve()}\n"
+            f"\tNOTCVIS Model: {rts_v6_notcvis_model_path.resolve()}"
+        )
+
+        self.rts_v6_tcvis_model = SMPSegmenter(rts_v6_tcvis_model_path, device=device)
+        self.rts_v6_notcvis_model = SMPSegmenter(rts_v6_notcvis_model_path, device=device)
 
     def segment_tile(
         self,
@@ -51,15 +74,15 @@ class EnsembleV1:
         tcvis_probabilities = self.rts_v6_tcvis_model.segment_tile(
             tile, patch_size=patch_size, overlap=overlap, batch_size=batch_size, reflection=reflection
         )["probabilities"].copy()
-        notcvis_propabilities = self.rts_v6_notcvis_model.segment_tile(
+        notcvis_probabilities = self.rts_v6_notcvis_model.segment_tile(
             tile, patch_size=patch_size, overlap=overlap, batch_size=batch_size, reflection=reflection
         )["probabilities"].copy()
 
-        tile["probabilities"] = (tcvis_probabilities + notcvis_propabilities) / 2
+        tile["probabilities"] = (tcvis_probabilities + notcvis_probabilities) / 2
 
         if keep_inputs:
             tile["probabilities-tcvis"] = tcvis_probabilities
-            tile["probabilities-notcvis"] = notcvis_propabilities
+            tile["probabilities-notcvis"] = notcvis_probabilities
 
         return tile
 

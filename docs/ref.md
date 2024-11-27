@@ -12,3 +12,4 @@ All references on one page
 ::: darts_preprocessing
 ::: darts_segmentation
 ::: darts_superresolution
+::: darts_utils

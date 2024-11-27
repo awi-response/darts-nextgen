@@ -109,7 +109,12 @@ def rasterio_polygonization(labels: np.ndarray, rio_georef: xarray.Dataset) -> g
     return gdf
 
 
-def vectorize(xdat: xarray.Dataset, polygonization_func: str = "rasterio", minimum_mapping_unit=32) -> gpd.GeoDataFrame:
+def vectorize(
+    xdat: xarray.Dataset,
+    layername: str = "binarized_segmentation",
+    polygonization_func: str = "rasterio",
+    minimum_mapping_unit=32,
+) -> gpd.GeoDataFrame:
     """Vectorize an inference result dataset.
 
     Detects connected regions in the with the same value `binarized_segmentation` layer, polygonizes
@@ -118,14 +123,16 @@ def vectorize(xdat: xarray.Dataset, polygonization_func: str = "rasterio", minim
 
     Args:
         xdat (xarray.Dataset): the input dataset augmented with the rioxarray `rio` accessor
-        polygonization_func (str): the method to utilize for polygonization, either 'gdal' or 'rasterio', the default.
+        layername (str, optional): the name of the layer in `xdat` to polygonize
+        polygonization_func (str, optional): the method to utilize for polygonization, either 'gdal' or 'rasterio',
+            the default.
         minimum_mapping_unit (int, optional): polygons smaller than this number are removed. Defaults to 32.
 
     Returns:
         _type_: _description_
 
     """
-    layer = xdat.binarized_segmentation
+    layer = xdat[layername]
 
     # MIN POLYGON for sieving
     if minimum_mapping_unit > 0:
