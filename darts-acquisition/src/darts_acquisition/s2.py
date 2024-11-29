@@ -58,6 +58,8 @@ def load_s2_scene(fpath: str | Path) -> xr.Dataset:
     ds_s2 = xr.merge(datasets)
     planet_crop_id = fpath.stem
     s2_tile_id = "_".join(s2_image.stem.split("_")[:3])
+    ds_s2.attrs["planet_crop_id"] = planet_crop_id
+    ds_s2.attrs["s2_tile_id"] = s2_tile_id
     ds_s2.attrs["tile_id"] = f"{planet_crop_id}_{s2_tile_id}"
     logger.debug(f"Loaded Sentinel 2 scene in {time.time() - start_time} seconds.")
     return ds_s2

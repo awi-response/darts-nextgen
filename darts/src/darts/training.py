@@ -107,10 +107,10 @@ def preprocess_s2_train_data(
                 device,
             )
 
-            labels = gpd.read_file(fpath / f"{optical.attrs['tile_id']}.shp")
-            tile_id = optical.attrs["tile_id"]
+            labels = gpd.read_file(fpath / f"{optical.attrs['s2_tile_id']}.shp")
 
             # Save the patches
+            tile_id = optical.attrs["tile_id"]
             gen = create_training_patches(tile, labels, bands, patch_size, overlap, include_allzero, include_nan_edges)
             for patch_id, (x, y) in enumerate(gen):
                 torch.save(x, outpath_x / f"{tile_id}_pid{patch_id}.pt")
