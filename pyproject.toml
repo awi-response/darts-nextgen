@@ -60,8 +60,8 @@ cuda11 = [
     "torch==2.2.0+cu118",
     "torchvision==0.17.0+cu118",
     "cucim-cu11>=24.8.0",
-    "cupy>=13.3.0",
-    "cupy-xarray>=0.1.4",
+    "cupy-cuda11x>=13.3.0",
+    "cupy-xarray @ git+https://github.com/xarray-contrib/cupy-xarray",
     "cuda-python>=12.6.2.post1",
     "pynvml==11.4.1",
 ]
@@ -69,8 +69,8 @@ cuda12 = [
     "torch==2.2.0+cu121",
     "torchvision==0.17.0+cu121",
     "cucim-cu12==24.8.*",
-    "cupy>=13.3.0",
-    "cupy-xarray>=0.1.4",
+    "cupy-cuda12x>=13.3.0",
+    "cupy-xarray @ git+https://github.com/xarray-contrib/cupy-xarray",
     "cuda-python>=12.6.2.post1",
     "pynvml==11.4.1",
 ]
