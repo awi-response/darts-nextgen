@@ -7,6 +7,8 @@ arcticdem_elevation_vrt = "data/input/ArcticDEM/elevation.vrt"
 output_data_dir = "data/output"
 model_dir = "models"
 
+tcvis_dir = "tcvis_dir"
+
 if __name__ == "__main__":
     print("Running the pipeline")
     run_native_planet_pipeline(orthotiles_dir=Path(orthotiles_dir),
@@ -14,4 +16,5 @@ if __name__ == "__main__":
                                output_data_dir=Path(output_data_dir),
                                arcticdem_slope_vrt=Path(arcticdem_slope_vrt),
                                arcticdem_elevation_vrt=Path(arcticdem_elevation_vrt),
-                               model_dir=Path(model_dir))
+                               model_dir=Path(model_dir),
+                               tcvis_dir=Path(tcvis_dir))
