@@ -62,7 +62,7 @@ def preprocess_s2_train_data(
     from darts_acquisition.s2 import load_s2_masks, load_s2_scene
     from darts_acquisition.tcvis import load_tcvis
     from darts_preprocessing import preprocess_legacy_fast
-    from darts_segmentation.prepare_training import create_training_patches
+    from darts_segmentation.training.prepare_training import create_training_patches
     from dask.distributed import Client, LocalCluster
     from odc.stac import configure_rio
 
@@ -153,3 +153,101 @@ def preprocess_s2_train_data(
 
     client.close()
     cluster.close()
+
+
+def train_smp(
+    train_data_dir: Path,
+    artifact_dir: Path = Path("lightning_logs"),
+    augment: bool = True,
+    batch_size: int = 8,
+    num_workers: int = 0,
+    wandb_entity: str | None = None,
+    wandb_project: str | None = None,
+    run_name: str | None = None,
+):
+    """Run the training of the SMP model.
+
+    Args:
+        train_data_dir (Path): Path to the training data directory.
+        artifact_dir (Path, optional): Path to the training output directory.
+            Will contain checkpoints and metrics. Defaults to Path("lightning_logs").
+        augment (bool, optional): Weather to apply augments or not. Defaults to True.
+        batch_size (int, optional): Batch Size. Defaults to 8.
+        num_workers (int, optional): Number of Dataloader workers. Defaults to 0.
+        wandb_entity (str | None, optional): Weights and Biases Entity. Defaults to None.
+        wandb_project (str | None, optional): Weights and Biases Project. Defaults to None.
+        run_name (str | None, optional): Name of this run, as a further grouping method for logs etc. Defaults to None.
+
+    """
+    import lightning as L  # noqa: N812
+    import lovely_tensors
+    import torch
+    from darts_segmentation.segment import SMPSegmenterConfig
+    from darts_segmentation.training.data import DartsDataModule
+    from darts_segmentation.training.module import SMPSegmenter
+    from lightning.pytorch.callbacks import EarlyStopping, RichProgressBar
+    from lightning.pytorch.loggers import CSVLogger, WandbLogger
+
+    lovely_tensors.monkey_patch()
+
+    torch.set_float32_matmul_precision("medium")
+
+    config = SMPSegmenterConfig(
+        input_combination=[
+            "blue",
+            "green",
+            "red",
+            "nir",
+            "ndvi",
+            "tc_brightness",
+            "tc_greenness",
+            "tc_wetness",
+            "relative_elevation",
+            "slope",
+        ],
+        model={
+            "arch": "Unet",
+            "encoder_name": "dpn107",
+            "encoder_weights": "imagenet+5k",
+            "in_channels": 10,
+            "classes": 1,
+        },
+        norm_factors={
+            "red": 1 / 3000,
+            "green": 1 / 3000,
+            "blue": 1 / 3000,
+            "nir": 1 / 3000,
+            "ndvi": 1 / 20000,
+            "relative_elevation": 1 / 30000,
+            "slope": 1 / 90,
+            "tc_brightness": 1 / 255,
+            "tc_greenness": 1 / 255,
+            "tc_wetness": 1 / 255,
+        },
+    )
+
+    norm_factors_ordered = [config["norm_factors"][band] for band in config["input_combination"]]
+
+    datamodule = DartsDataModule(train_data_dir, norm_factors_ordered, batch_size, augment, num_workers)
+
+    model = SMPSegmenter(config)
+
+    trainer_loggers = [
+        CSVLogger(save_dir=artifact_dir, name=run_name),
+    ]
+    if wandb_entity and wandb_project:
+        wandb_logger = WandbLogger(save_dir=artifact_dir, name=run_name, project=wandb_project, entity=wandb_entity)
+        trainer_loggers.append(wandb_logger)
+    early_stopping = EarlyStopping(monitor="val_loss")
+    callbacks = [
+        early_stopping,
+        RichProgressBar(),
+    ]
+
+    trainer = L.Trainer(
+        max_epochs=100,
+        callbacks=callbacks,
+        log_every_n_steps=10,
+        logger=trainer_loggers,
+    )
+    trainer.fit(model, datamodule)

@@ -46,11 +46,17 @@ def add_logging_handlers(command: str, console: Console, log_dir: Path):
         log_dir (Path): The directory to save the logs to.
 
     """
+    import lightning as L  # noqa: N812
+    import torch
+    import torch.utils.data
+
     log_dir.mkdir(parents=True, exist_ok=True)
     current_time = time.strftime("%Y-%m-%d_%H-%M-%S")
 
     # Configure the rich console handler
-    rich_handler = RichHandler(console=console, rich_tracebacks=True, tracebacks_suppress=[cyclopts])
+    rich_handler = RichHandler(
+        console=console, rich_tracebacks=True, tracebacks_suppress=[cyclopts, L, torch, torch.utils.data]
+    )
     rich_handler.setFormatter(
         logging.Formatter(
             "%(message)s",

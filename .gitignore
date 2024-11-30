@@ -14,6 +14,9 @@ wheels/
 models
 data
 logs
+wandb
+lightning_logs
+artifacts
 
 # Mkdocs
 .cache
