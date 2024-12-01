@@ -10,7 +10,6 @@ from typing import Literal
 
 import albumentations as A  # noqa: N812
 import lightning as L  # noqa: N812
-import numpy as np
 import torch
 from torch.utils.data import DataLoader, Dataset, random_split
 
@@ -18,8 +17,7 @@ logger = logging.getLogger(__name__.replace("darts_", "darts."))
 
 
 class DartsDataset(Dataset):
-    def __init__(self, data_dir: Path, augment: bool, norm_factors: list[float]):
-        self.norm_factors = np.array(norm_factors, dtype=np.float32).reshape(-1, 1, 1)
+    def __init__(self, data_dir: Path, augment: bool):
         self.x_files = sorted((data_dir / "x").glob("*.pt"))
         self.y_files = sorted((data_dir / "y").glob("*.pt"))
 
@@ -33,7 +31,7 @@ class DartsDataset(Dataset):
                     A.HorizontalFlip(),
                     A.VerticalFlip(),
                     A.RandomRotate90(),
-                    A.Blur(),
+                    # A.Blur(),
                     A.RandomBrightnessContrast(),
                     A.MultiplicativeNoise(per_channel=True, elementwise=True),
                     # ToTensorV2(),
@@ -54,10 +52,6 @@ class DartsDataset(Dataset):
         x = torch.load(xfile).numpy()
         y = torch.load(yfile).int().numpy()
 
-        # Normalize the bands and clip the values
-        x = x * self.norm_factors
-        x = np.clip(x, 0, 1)
-
         # Apply augmentations
         if self.transform is not None:
             augmented = self.transform(image=x.transpose(1, 2, 0), mask=y)
@@ -68,19 +62,16 @@ class DartsDataset(Dataset):
 
 
 class DartsDataModule(L.LightningDataModule):
-    def __init__(
-        self, data_dir: Path, norm_factors: list[float], batch_size: int, augment: bool = True, num_workers: int = 0
-    ):
+    def __init__(self, data_dir: Path, batch_size: int, augment: bool = True, num_workers: int = 0):
         super().__init__()
         self.save_hyperparameters()
         self.data_dir = data_dir
         self.batch_size = batch_size
         self.augment = augment
-        self.norm_factors = norm_factors
         self.num_workers = num_workers
 
     def setup(self, stage: Literal["fit", "validate", "test", "predict"] | None = None):
-        dataset = DartsDataset(self.data_dir, self.augment, self.norm_factors)
+        dataset = DartsDataset(self.data_dir, self.augment)
         splits = [0.8, 0.1, 0.1]
         generator = torch.Generator().manual_seed(42)
         self.train, self.val, self.test = random_split(dataset, splits, generator)

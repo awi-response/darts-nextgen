@@ -11,6 +11,21 @@ import toml
 logger = logging.getLogger(__name__)
 
 
+# We hardcode these because they depend on the preprocessing used
+NORM_FACTORS = {
+    "red": 1 / 3000,
+    "green": 1 / 3000,
+    "blue": 1 / 3000,
+    "nir": 1 / 3000,
+    "ndvi": 1 / 20000,
+    "relative_elevation": 1 / 30000,
+    "slope": 1 / 90,
+    "tc_brightness": 1 / 255,
+    "tc_greenness": 1 / 255,
+    "tc_wetness": 1 / 255,
+}
+
+
 def preprocess_s2_train_data(
     *,
     sentinel2_dir: Path,
@@ -86,6 +101,22 @@ def preprocess_s2_train_data(
     outpath_x.mkdir(exist_ok=True, parents=True)
     outpath_y.mkdir(exist_ok=True, parents=True)
 
+    # We hardcode these because they depend on the preprocessing used
+    norm_factors = {
+        "red": 1 / 3000,
+        "green": 1 / 3000,
+        "blue": 1 / 3000,
+        "nir": 1 / 3000,
+        "ndvi": 1 / 20000,
+        "relative_elevation": 1 / 30000,
+        "slope": 1 / 90,
+        "tc_brightness": 1 / 255,
+        "tc_greenness": 1 / 255,
+        "tc_wetness": 1 / 255,
+    }
+    # Filter out bands that are not in the specified bands
+    norm_factors = {k: v for k, v in norm_factors.items() if k in bands}
+
     # Find all Sentinel 2 scenes
     n_patches = 0
     for fpath in sentinel2_dir.glob("*/"):
@@ -111,7 +142,16 @@ def preprocess_s2_train_data(
 
             # Save the patches
             tile_id = optical.attrs["tile_id"]
-            gen = create_training_patches(tile, labels, bands, patch_size, overlap, include_allzero, include_nan_edges)
+            gen = create_training_patches(
+                tile,
+                labels,
+                bands,
+                norm_factors,
+                patch_size,
+                overlap,
+                include_allzero,
+                include_nan_edges,
+            )
             for patch_id, (x, y) in enumerate(gen):
                 torch.save(x, outpath_x / f"{tile_id}_pid{patch_id}.pt")
                 torch.save(y, outpath_y / f"{tile_id}_pid{patch_id}.pt")
@@ -134,6 +174,7 @@ def preprocess_s2_train_data(
             "arcticdem_dir": arcticdem_dir,
             "tcvis_dir": tcvis_dir,
             "bands": bands,
+            "norm_factors": norm_factors,
             "device": device,
             "ee_project": ee_project,
             "ee_use_highvolume": ee_use_highvolume,
@@ -156,8 +197,12 @@ def preprocess_s2_train_data(
 
 
 def train_smp(
+    *,
     train_data_dir: Path,
     artifact_dir: Path = Path("lightning_logs"),
+    model_arch: str = "Unet",
+    model_encoder: str = "dpn107",
+    model_encoder_weights: str | None = None,
     augment: bool = True,
     batch_size: int = 8,
     num_workers: int = 0,
@@ -167,10 +212,15 @@ def train_smp(
 ):
     """Run the training of the SMP model.
 
+    Please see https://smp.readthedocs.io/en/latest/index.html for model configurations.
+
     Args:
         train_data_dir (Path): Path to the training data directory.
         artifact_dir (Path, optional): Path to the training output directory.
             Will contain checkpoints and metrics. Defaults to Path("lightning_logs").
+        model_arch (str, optional): Model architecture to use. Defaults to "Unet".
+        model_encoder (str, optional): Encoder to use. Defaults to "dpn107".
+        model_encoder_weights (str | None, optional): Path to the encoder weights. Defaults to None.
         augment (bool, optional): Weather to apply augments or not. Defaults to True.
         batch_size (int, optional): Batch Size. Defaults to 8.
         num_workers (int, optional): Number of Dataloader workers. Defaults to 0.
@@ -192,43 +242,21 @@ def train_smp(
 
     torch.set_float32_matmul_precision("medium")
 
+    preprocess_config = toml.load(train_data_dir / "config.toml")["darts"]
+
     config = SMPSegmenterConfig(
-        input_combination=[
-            "blue",
-            "green",
-            "red",
-            "nir",
-            "ndvi",
-            "tc_brightness",
-            "tc_greenness",
-            "tc_wetness",
-            "relative_elevation",
-            "slope",
-        ],
+        input_combination=preprocess_config["bands"],
         model={
-            "arch": "Unet",
-            "encoder_name": "dpn107",
-            "encoder_weights": "imagenet+5k",
-            "in_channels": 10,
+            "arch": model_arch,
+            "encoder_name": model_encoder,
+            "encoder_weights": model_encoder_weights,
+            "in_channels": len(preprocess_config["bands"]),
             "classes": 1,
         },
-        norm_factors={
-            "red": 1 / 3000,
-            "green": 1 / 3000,
-            "blue": 1 / 3000,
-            "nir": 1 / 3000,
-            "ndvi": 1 / 20000,
-            "relative_elevation": 1 / 30000,
-            "slope": 1 / 90,
-            "tc_brightness": 1 / 255,
-            "tc_greenness": 1 / 255,
-            "tc_wetness": 1 / 255,
-        },
+        norm_factors=preprocess_config["norm_factors"],
     )
 
-    norm_factors_ordered = [config["norm_factors"][band] for band in config["input_combination"]]
-
-    datamodule = DartsDataModule(train_data_dir, norm_factors_ordered, batch_size, augment, num_workers)
+    datamodule = DartsDataModule(train_data_dir, batch_size, augment, num_workers)
 
     model = SMPSegmenter(config)
 
@@ -238,7 +266,7 @@ def train_smp(
     if wandb_entity and wandb_project:
         wandb_logger = WandbLogger(save_dir=artifact_dir, name=run_name, project=wandb_project, entity=wandb_entity)
         trainer_loggers.append(wandb_logger)
-    early_stopping = EarlyStopping(monitor="val_loss")
+    early_stopping = EarlyStopping(monitor="val/JaccardIndex", mode="max", patience=5)
     callbacks = [
         early_stopping,
         RichProgressBar(),
@@ -249,5 +277,6 @@ def train_smp(
         callbacks=callbacks,
         log_every_n_steps=10,
         logger=trainer_loggers,
+        check_val_every_n_epoch=3,
     )
     trainer.fit(model, datamodule)
