@@ -17,4 +17,5 @@ if __name__ == "__main__":
                                arcticdem_slope_vrt=Path(arcticdem_slope_vrt),
                                arcticdem_elevation_vrt=Path(arcticdem_elevation_vrt),
                                model_dir=Path(model_dir),
-                               tcvis_dir=Path(tcvis_dir))
+                               tcvis_dir=Path(tcvis_dir),
+                               ee_project='pdg-project-406720')
