@@ -512,7 +512,6 @@ def run_native_sentinel2_pipeline_fast(
 
     Args:
         sentinel2_dir (Path): The directory containing the Sentinel 2 scenes.
-        scenes_dir (Path): The directory containing the PlanetScope scenes.
         output_data_dir (Path): The "output" directory.
         arcticdem_dir (Path): The directory containing the ArcticDEM data (the datacube and the extent files).
             Will be created and downloaded if it does not exist.
