@@ -8,7 +8,7 @@ dependencies = [
     "xarray>=2024.9.0",
     "ray[data]>=2.37.0",
     "rich>=13.9.2",
-    "cyclopts==2.9.9",
+    "cyclopts==3.1.2",
     # Utils
     "lovely-tensors>=0.1.17",
     "lovely-numpy>=0.2.13",
