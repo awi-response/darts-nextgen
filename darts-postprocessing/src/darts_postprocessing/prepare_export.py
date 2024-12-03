@@ -18,11 +18,11 @@ try:
 
     CUCIM_AVAILABLE = True
     DEFAULT_DEVICE = "cuda"
-    logger.debug("GPU-accelerated xrspatial functions are available.")
+    logger.debug("GPU-accelerated cucim functions are available.")
 except ImportError:
     CUCIM_AVAILABLE = False
     DEFAULT_DEVICE = "cpu"
-    logger.debug("GPU-accelerated xrspatial functions are not available.")
+    logger.debug("GPU-accelerated cucim functions are not available.")
 
 
 def erode_mask(mask: xr.DataArray, size: int, device: Literal["cuda", "cpu"] | int) -> xr.DataArray:

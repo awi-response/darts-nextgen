@@ -47,6 +47,7 @@ dependencies = [
     "albumentations>=1.4.21",
     "wandb>=0.18.7",
     "torchmetrics>=1.6.0",
+    "seaborn>=0.13.2",
 ]
 readme = "README.md"
 requires-python = ">= 3.11"

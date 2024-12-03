@@ -43,6 +43,7 @@ def preprocess_s2_train_data(
     overlap: int = 16,
     include_allzero: bool = False,
     include_nan_edges: bool = True,
+    mask_erosion_size: int = 10,
 ):
     """Preprocess Sentinel 2 data for training.
 
@@ -69,6 +70,7 @@ def preprocess_s2_train_data(
         include_allzero (bool, optional): Whether to include patches where the labels are all zero. Defaults to False.
         include_nan_edges (bool, optional): Whether to include patches where the input data has nan values at the edges.
             Defaults to True.
+        mask_erosion_size (int, optional): The size of the disk to use for mask erosion and the edge-cropping.
 
     """
     # Import here to avoid long loading times when running other commands
@@ -80,11 +82,13 @@ def preprocess_s2_train_data(
     from darts_preprocessing import preprocess_legacy_fast
     from darts_segmentation.training.prepare_training import create_training_patches
     from dask.distributed import Client, LocalCluster
+    from lovely_tensors import monkey_patch
     from odc.stac import configure_rio
 
     from darts.utils.cuda import debug_info, decide_device
     from darts.utils.earthengine import init_ee
 
+    monkey_patch()
     debug_info()
     device = decide_device(device)
     init_ee(ee_project, ee_use_highvolume)
@@ -152,6 +156,8 @@ def preprocess_s2_train_data(
                 overlap,
                 include_allzero,
                 include_nan_edges,
+                device,
+                mask_erosion_size,
             )
             for patch_id, (x, y) in enumerate(gen):
                 torch.save(x, outpath_x / f"{tile_id}_pid{patch_id}.pt")
