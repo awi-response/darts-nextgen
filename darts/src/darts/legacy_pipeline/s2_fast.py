@@ -3,64 +3,26 @@
 from dataclasses import dataclass
 from math import ceil, sqrt
 from pathlib import Path
-from typing import Literal
+from typing import Annotated
+
+from cyclopts import Parameter
 
 from darts.legacy_pipeline._base import AquisitionData, _BasePipeline, _FastMixin, _S2Mixin
 
 
 @dataclass
-class _LegacyNativeSentinel2PipelineFast(_BasePipeline, _S2Mixin, _FastMixin):
-    def _get_data(self, fpath: Path):
-        from darts_acquisition.arcticdem import load_arcticdem_tile
-        from darts_acquisition.s2 import load_s2_masks, load_s2_scene
-        from darts_acquisition.tcvis import load_tcvis
-
-        optical = load_s2_scene(fpath)
-        arcticdem = load_arcticdem_tile(
-            optical.odc.geobox, self.arcticdem_dir, resolution=10, buffer=ceil(self.tpi_outer_radius / 10 * sqrt(2))
-        )
-        tcvis = load_tcvis(optical.odc.geobox, self.tcvis_dir)
-        data_masks = load_s2_masks(fpath, optical.odc.geobox)
-        aqdata = AquisitionData(optical, arcticdem, tcvis, data_masks)
-        return aqdata
-
-
-def run_native_sentinel2_pipeline_fast(
-    *,
-    sentinel2_dir: Path,
-    output_data_dir: Path,
-    arcticdem_dir: Path,
-    tcvis_dir: Path,
-    model_dir: Path,
-    tcvis_model_name: str = "RTS_v6_tcvis_s2native.pt",
-    notcvis_model_name: str = "RTS_v6_notcvis_s2native.pt",
-    device: Literal["cuda", "cpu", "auto"] | int | None = None,
-    ee_project: str | None = None,
-    ee_use_highvolume: bool = True,
-    tpi_outer_radius: int = 100,
-    tpi_inner_radius: int = 0,
-    patch_size: int = 1024,
-    overlap: int = 16,
-    batch_size: int = 8,
-    reflection: int = 0,
-    binarization_threshold: float = 0.5,
-    mask_erosion_size: int = 10,
-    min_object_size: int = 32,
-    use_quality_mask: bool = False,
-    write_model_outputs: bool = False,
-):
-    """Search for all Sentinel 2 scenes in the given directory and runs the segmentation pipeline on them.
-
-    Loads the ArcticDEM from a datacube instead of VRT which is a lot faster and does not need manual preprocessing.
+class LegacyNativeSentinel2PipelineFast(_FastMixin, _S2Mixin, _BasePipeline):
+    """Pipeline for Sentinel 2 data with optimized preprocessing.
 
     Args:
         sentinel2_dir (Path): The directory containing the Sentinel 2 scenes.
-        scenes_dir (Path): The directory containing the PlanetScope scenes.
-        output_data_dir (Path): The "output" directory.
+            [italic magenta]Defaults to Path("data/input/sentinel2").[/italic magenta]
+        output_data_dir (Path): The "output" directory. Defaults to Path("data/output").
         arcticdem_dir (Path): The directory containing the ArcticDEM data (the datacube and the extent files).
             Will be created and downloaded if it does not exist.
-        tcvis_dir (Path): The directory containing the TCVis data.
-        model_dir (Path): The path to the models to use for segmentation.
+            Defaults to Path("data/download/arcticdem").
+        tcvis_dir (Path): The directory containing the TCVis data. Defaults to Path("data/download/tcvis").
+        model_dir (Path): The path to the models to use for segmentation. Defaults to Path("models").
         tcvis_model_name (str, optional): The name of the model to use for TCVis. Defaults to "RTS_v6_tcvis.pt".
         notcvis_model_name (str, optional): The name of the model to use for not TCVis. Defaults to "RTS_v6_notcvis.pt".
         device (Literal["cuda", "cpu"] | int, optional): The device to run the model on.
@@ -88,26 +50,29 @@ def run_native_sentinel2_pipeline_fast(
             Defaults to False.
 
     """
-    _LegacyNativeSentinel2PipelineFast(
-        sentinel2_dir=sentinel2_dir,
-        output_data_dir=output_data_dir,
-        arcticdem_dir=arcticdem_dir,
-        tcvis_dir=tcvis_dir,
-        model_dir=model_dir,
-        tcvis_model_name=tcvis_model_name,
-        notcvis_model_name=notcvis_model_name,
-        device=device,
-        ee_project=ee_project,
-        ee_use_highvolume=ee_use_highvolume,
-        tpi_outer_radius=tpi_outer_radius,
-        tpi_inner_radius=tpi_inner_radius,
-        patch_size=patch_size,
-        overlap=overlap,
-        batch_size=batch_size,
-        reflection=reflection,
-        binarization_threshold=binarization_threshold,
-        mask_erosion_size=mask_erosion_size,
-        min_object_size=min_object_size,
-        use_quality_mask=use_quality_mask,
-        write_model_outputs=write_model_outputs,
-    ).run()
+
+    def _get_data(self, fpath: Path):
+        from darts_acquisition.arcticdem import load_arcticdem_tile
+        from darts_acquisition.s2 import load_s2_masks, load_s2_scene
+        from darts_acquisition.tcvis import load_tcvis
+
+        optical = load_s2_scene(fpath)
+        arcticdem = load_arcticdem_tile(
+            optical.odc.geobox, self.arcticdem_dir, resolution=10, buffer=ceil(self.tpi_outer_radius / 10 * sqrt(2))
+        )
+        tcvis = load_tcvis(optical.odc.geobox, self.tcvis_dir)
+        data_masks = load_s2_masks(fpath, optical.odc.geobox)
+        aqdata = AquisitionData(optical, arcticdem, tcvis, data_masks)
+        return aqdata
+
+
+def run_native_sentinel2_pipeline_fast(*, pipeline: Annotated[LegacyNativeSentinel2PipelineFast, Parameter("*")]):
+    """Search for all Sentinel 2 scenes in the given directory and runs the segmentation pipeline on them.
+
+    Loads the ArcticDEM from a datacube instead of VRT which is a lot faster and does not need manual preprocessing.
+
+    Args:
+        pipeline (_LegacyNativeSentinel2PipelineFast): The pipeline to run.
+
+    """
+    pipeline.run()

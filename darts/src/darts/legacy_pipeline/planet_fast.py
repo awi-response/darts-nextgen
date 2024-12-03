@@ -3,65 +3,28 @@
 from dataclasses import dataclass
 from math import ceil, sqrt
 from pathlib import Path
-from typing import Literal
+from typing import Annotated
+
+from cyclopts import Parameter
 
 from darts.legacy_pipeline._base import AquisitionData, _BasePipeline, _FastMixin, _PlanetMixin
 
 
 @dataclass
-class _LegacyNativePlanetPipelineFast(_BasePipeline, _PlanetMixin, _FastMixin):
-    def _get_data(self, fpath: Path):
-        from darts_acquisition.arcticdem import load_arcticdem_tile
-        from darts_acquisition.planet import load_planet_masks, load_planet_scene
-        from darts_acquisition.tcvis import load_tcvis
-
-        optical = load_planet_scene(fpath)
-        arcticdem = load_arcticdem_tile(
-            optical.odc.geobox, self.arcticdem_dir, resolution=10, buffer=ceil(self.tpi_outer_radius / 10 * sqrt(2))
-        )
-        tcvis = load_tcvis(optical.odc.geobox, self.tcvis_dir)
-        data_masks = load_planet_masks(fpath)
-        aqdata = AquisitionData(optical, arcticdem, tcvis, data_masks)
-        return aqdata
-
-
-def run_native_planet_pipeline_fast(
-    *,
-    orthotiles_dir: Path,
-    scenes_dir: Path,
-    output_data_dir: Path,
-    arcticdem_dir: Path,
-    tcvis_dir: Path,
-    model_dir: Path,
-    tcvis_model_name: str = "RTS_v6_tcvis.pt",
-    notcvis_model_name: str = "RTS_v6_notcvis.pt",
-    device: Literal["cuda", "cpu", "auto"] | int | None = None,
-    ee_project: str | None = None,
-    ee_use_highvolume: bool = True,
-    tpi_outer_radius: int = 100,
-    tpi_inner_radius: int = 0,
-    patch_size: int = 1024,
-    overlap: int = 16,
-    batch_size: int = 8,
-    reflection: int = 0,
-    binarization_threshold: float = 0.5,
-    mask_erosion_size: int = 10,
-    min_object_size: int = 32,
-    use_quality_mask: bool = False,
-    write_model_outputs: bool = False,
-):
-    """Search for all PlanetScope scenes in the given directory and runs the segmentation pipeline on them.
-
-    Loads the ArcticDEM from a datacube instead of VRT which is a lot faster and does not need manual preprocessing.
+class LegacyNativePlanetPipelineFast(_FastMixin, _PlanetMixin, _BasePipeline):
+    """Pipeline for Planet data with optimized preprocessing.
 
     Args:
         orthotiles_dir (Path): The directory containing the PlanetScope orthotiles.
+            Defaults to Path("data/input/planet/PSOrthoTile").
         scenes_dir (Path): The directory containing the PlanetScope scenes.
-        output_data_dir (Path): The "output" directory.
+            Defaults to Path("data/input/planet/PSScene").
+        output_data_dir (Path): The "output" directory. Defaults to Path("data/output").
         arcticdem_dir (Path): The directory containing the ArcticDEM data (the datacube and the extent files).
             Will be created and downloaded if it does not exist.
-        tcvis_dir (Path): The directory containing the TCVis data.
-        model_dir (Path): The path to the models to use for segmentation.
+            Defaults to Path("data/download/arcticdem").
+        tcvis_dir (Path): The directory containing the TCVis data. Defaults to Path("data/download/tcvis").
+        model_dir (Path): The path to the models to use for segmentation. Defaults to Path("models").
         tcvis_model_name (str, optional): The name of the model to use for TCVis. Defaults to "RTS_v6_tcvis.pt".
         notcvis_model_name (str, optional): The name of the model to use for not TCVis. Defaults to "RTS_v6_notcvis.pt".
         device (Literal["cuda", "cpu"] | int, optional): The device to run the model on.
@@ -89,27 +52,26 @@ def run_native_planet_pipeline_fast(
             Defaults to False.
 
     """
-    _LegacyNativePlanetPipelineFast(
-        orthotiles_dir=orthotiles_dir,
-        scenes_dir=scenes_dir,
-        output_data_dir=output_data_dir,
-        arcticdem_dir=arcticdem_dir,
-        tcvis_dir=tcvis_dir,
-        model_dir=model_dir,
-        tcvis_model_name=tcvis_model_name,
-        notcvis_model_name=notcvis_model_name,
-        device=device,
-        ee_project=ee_project,
-        ee_use_highvolume=ee_use_highvolume,
-        tpi_outer_radius=tpi_outer_radius,
-        tpi_inner_radius=tpi_inner_radius,
-        patch_size=patch_size,
-        overlap=overlap,
-        batch_size=batch_size,
-        reflection=reflection,
-        binarization_threshold=binarization_threshold,
-        mask_erosion_size=mask_erosion_size,
-        min_object_size=min_object_size,
-        use_quality_mask=use_quality_mask,
-        write_model_outputs=write_model_outputs,
-    ).run()
+
+    def _get_data(self, fpath: Path):
+        from darts_acquisition.arcticdem import load_arcticdem_tile
+        from darts_acquisition.planet import load_planet_masks, load_planet_scene
+        from darts_acquisition.tcvis import load_tcvis
+
+        optical = load_planet_scene(fpath)
+        arcticdem = load_arcticdem_tile(
+            optical.odc.geobox, self.arcticdem_dir, resolution=10, buffer=ceil(self.tpi_outer_radius / 10 * sqrt(2))
+        )
+        tcvis = load_tcvis(optical.odc.geobox, self.tcvis_dir)
+        data_masks = load_planet_masks(fpath)
+        aqdata = AquisitionData(optical, arcticdem, tcvis, data_masks)
+        return aqdata
+
+
+def run_native_planet_pipeline_fast(*, pipeline: Annotated[LegacyNativePlanetPipelineFast, Parameter("*")]):
+    """Search for all PlanetScope scenes in the given directory and runs the segmentation pipeline on them.
+
+    Loads the ArcticDEM from a datacube instead of VRT which is a lot faster and does not need manual preprocessing.
+
+    """
+    pipeline.run()

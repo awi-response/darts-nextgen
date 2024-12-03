@@ -2,58 +2,26 @@
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Literal
+from typing import Annotated
+
+from cyclopts import Parameter
 
 from darts.legacy_pipeline._base import AquisitionData, _BasePipeline, _S2Mixin, _VRTMixin
 
 
 @dataclass
-class _LegacyNativeSentinel2Pipeline(_BasePipeline, _S2Mixin, _VRTMixin):
-    def _get_data(self, fpath: Path):
-        from darts_acquisition.arcticdem import load_arcticdem_from_vrt
-        from darts_acquisition.s2 import load_s2_masks, load_s2_scene
-        from darts_acquisition.tcvis import load_tcvis
-
-        optical = load_s2_scene(fpath)
-        arcticdem = load_arcticdem_from_vrt(self.arcticdem_slope_vrt, self.arcticdem_elevation_vrt, optical)
-        tcvis = load_tcvis(optical.odc.geobox, self.tcvis_dir)
-        data_masks = load_s2_masks(fpath, optical.odc.geobox)
-        aqdata = AquisitionData(optical, arcticdem, tcvis, data_masks)
-        return aqdata
-
-
-def run_native_sentinel2_pipeline(
-    *,
-    sentinel2_dir: Path,
-    output_data_dir: Path,
-    arcticdem_slope_vrt: Path,
-    arcticdem_elevation_vrt: Path,
-    tcvis_dir: Path,
-    model_dir: Path,
-    tcvis_model_name: str = "RTS_v6_tcvis_s2native.pt",
-    notcvis_model_name: str = "RTS_v6_notcvis_s2native.pt",
-    device: Literal["cuda", "cpu", "auto"] | int | None = None,
-    ee_project: str | None = None,
-    ee_use_highvolume: bool = True,
-    patch_size: int = 1024,
-    overlap: int = 16,
-    batch_size: int = 8,
-    reflection: int = 0,
-    binarization_threshold: float = 0.5,
-    mask_erosion_size: int = 10,
-    min_object_size: int = 32,
-    use_quality_mask: bool = False,
-    write_model_outputs: bool = False,
-):
-    """Search for all Sentinel scenes in the given directory and runs the segmentation pipeline on them.
+class LegacyNativeSentinel2Pipeline(_S2Mixin, _VRTMixin, _BasePipeline):
+    """Pipeline for Sentinel 2 data.
 
     Args:
-        sentinel2_dir (Path): The directory containing the Sentinel 2 scenes.
-        output_data_dir (Path): The "output" directory.
+        sentinel2_dir (Path): The directory containing the Sentinel 2 scenes. Defaults to Path("data/input/sentinel2").
+        output_data_dir (Path): The "output" directory. Defaults to Path("data/output").
         arcticdem_slope_vrt (Path): The path to the ArcticDEM slope VRT file.
+            Defaults to Path("data/input/ArcticDEM/slope.vrt").
         arcticdem_elevation_vrt (Path): The path to the ArcticDEM elevation VRT file.
-        tcvis_dir (Path): The directory containing the TCVis data.
-        model_dir (Path): The path to the models to use for segmentation.
+            Defaults to Path("data/input/ArcticDEM/elevation.vrt").
+        tcvis_dir (Path): The directory containing the TCVis data. Defaults to Path("data/download/tcvis").
+        model_dir (Path): The path to the models to use for segmentation. Defaults to Path("models").
         tcvis_model_name (str, optional): The name of the model to use for TCVis. Defaults to "RTS_v6_tcvis.pt".
         notcvis_model_name (str, optional): The name of the model to use for not TCVis. Defaults to "RTS_v6_notcvis.pt".
         device (Literal["cuda", "cpu"] | int, optional): The device to run the model on.
@@ -103,27 +71,21 @@ def run_native_sentinel2_pipeline(
         arcticdem_elevation_vrt: data/input/ArcticDEM/elevation.vrt
         ```
 
-
     """
-    _LegacyNativeSentinel2Pipeline(
-        sentinel2_dir=sentinel2_dir,
-        output_data_dir=output_data_dir,
-        arcticdem_elevation_vrt=arcticdem_elevation_vrt,
-        arcticdem_slope_vrt=arcticdem_slope_vrt,
-        tcvis_dir=tcvis_dir,
-        model_dir=model_dir,
-        tcvis_model_name=tcvis_model_name,
-        notcvis_model_name=notcvis_model_name,
-        device=device,
-        ee_project=ee_project,
-        ee_use_highvolume=ee_use_highvolume,
-        patch_size=patch_size,
-        overlap=overlap,
-        batch_size=batch_size,
-        reflection=reflection,
-        binarization_threshold=binarization_threshold,
-        mask_erosion_size=mask_erosion_size,
-        min_object_size=min_object_size,
-        use_quality_mask=use_quality_mask,
-        write_model_outputs=write_model_outputs,
-    ).run()
+
+    def _get_data(self, fpath: Path):
+        from darts_acquisition.arcticdem import load_arcticdem_from_vrt
+        from darts_acquisition.s2 import load_s2_masks, load_s2_scene
+        from darts_acquisition.tcvis import load_tcvis
+
+        optical = load_s2_scene(fpath)
+        arcticdem = load_arcticdem_from_vrt(self.arcticdem_slope_vrt, self.arcticdem_elevation_vrt, optical)
+        tcvis = load_tcvis(optical.odc.geobox, self.tcvis_dir)
+        data_masks = load_s2_masks(fpath, optical.odc.geobox)
+        aqdata = AquisitionData(optical, arcticdem, tcvis, data_masks)
+        return aqdata
+
+
+def run_native_sentinel2_pipeline(*, pipeline: Annotated[LegacyNativeSentinel2Pipeline, Parameter("*")]):
+    """Search for all Sentinel scenes in the given directory and runs the segmentation pipeline on them."""
+    pipeline.run()

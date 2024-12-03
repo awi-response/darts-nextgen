@@ -1,6 +1,7 @@
 import logging
 import multiprocessing as mp
 from collections import namedtuple
+from collections.abc import Generator
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
@@ -12,7 +13,7 @@ AquisitionData = namedtuple("AquisitionData", ["optical", "arcticdem", "tcvis", 
 
 @dataclass
 class _BasePipeline:
-    """Base class for all pipelines.
+    """Base class for all legacy pipelines.
 
     This class provides the run method which is the main entry point for all pipelines.
 
@@ -28,34 +29,32 @@ class _BasePipeline:
     The main class must be also a dataclass, to fully inherit all parameter of this class (and the mixins).
     """
 
-    output_data_dir: Path
-    tcvis_dir: Path
-    model_dir: Path
-    tcvis_model_name: str
-    notcvis_model_name: str
-    device: Literal["cuda", "cpu", "auto"] | int | None
-    ee_project: str | None
-    ee_use_highvolume: bool
-    patch_size: int
-    overlap: int
-    batch_size: int
-    reflection: int
-    binarization_threshold: float
-    mask_erosion_size: int
-    min_object_size: int
-    use_quality_mask: bool
-    write_model_outputs: bool
+    output_data_dir: Path = Path("data/output")
+    tcvis_dir: Path = Path("data/download/tcvis")
+    model_dir: Path = Path("models")
+    tcvis_model_name: str = "RTS_v6_tcvis_s2native.pt"
+    notcvis_model_name: str = "RTS_v6_notcvis_s2native.pt"
+    device: Literal["cuda", "cpu", "auto"] | int | None = None
+    ee_project: str | None = None
+    ee_use_highvolume: bool = True
+    patch_size: int = 1024
+    overlap: int = 256
+    batch_size: int = 8
+    reflection: int = 0
+    binarization_threshold: float = 0.5
+    mask_erosion_size: int = 10
+    min_object_size: int = 32
+    use_quality_mask: bool = False
+    write_model_outputs: bool = False
 
-    # These would be the type hints for the methods that need to be implemented
-    # Leaving them uncommented would result in a NotImplementedError if Mixins are used
-    # def _path_generator(self) -> Generator[tuple[Path, Path]]:
-    #     raise NotImplementedError
+    def _path_generator(self) -> Generator[tuple[Path, Path]]:
+        raise NotImplementedError
 
-    # def _get_data(self, fpath: Path) -> AquisitionData:
-    #     raise NotImplementedError
+    def _get_data(self, fpath: Path) -> AquisitionData:
+        raise NotImplementedError
 
-    # def _preprocess(self, aqdata: AquisitionData) -> xr.Dataset:
-    #     raise NotImplementedError
+    def _preprocess(self, aqdata: AquisitionData):
+        raise NotImplementedError
 
     def run(self):
         import torch
@@ -125,8 +124,8 @@ class _BasePipeline:
 # =============================================================================
 @dataclass
 class _VRTMixin:
-    arcticdem_slope_vrt: Path
-    arcticdem_elevation_vrt: Path
+    arcticdem_slope_vrt: Path = Path("data/input/ArcticDEM/slope.vrt")
+    arcticdem_elevation_vrt: Path = Path("data/input/ArcticDEM/elevation.vrt")
 
     def _preprocess(self, aqdata: AquisitionData):
         from darts_preprocessing import preprocess_legacy
@@ -136,9 +135,9 @@ class _VRTMixin:
 
 @dataclass
 class _FastMixin:
-    arcticdem_dir: Path
-    tpi_outer_radius: int
-    tpi_inner_radius: int
+    arcticdem_dir: Path = Path("data/download/arcticdem")
+    tpi_outer_radius: int = 100
+    tpi_inner_radius: int = 0
 
     def _preprocess(self, aqdata: AquisitionData):
         from darts_preprocessing import preprocess_legacy_fast
@@ -159,8 +158,8 @@ class _FastMixin:
 # =============================================================================
 @dataclass
 class _PlanetMixin:
-    orthotiles_dir: Path
-    scenes_dir: Path
+    orthotiles_dir: Path = Path("data/input/planet/PSOrthoTile")
+    scenes_dir: Path = Path("data/input/planet/PSScene")
 
     def _path_generator(self):
         # Find all PlanetScope orthotiles
@@ -179,7 +178,7 @@ class _PlanetMixin:
 
 @dataclass
 class _S2Mixin:
-    sentinel2_dir: Path
+    sentinel2_dir: Path = Path("data/input/sentinel2")
 
     def _path_generator(self):
         for fpath in self.sentinel2_dir.glob("*/"):
