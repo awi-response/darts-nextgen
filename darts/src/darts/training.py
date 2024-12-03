@@ -2,6 +2,7 @@
 
 import logging
 import multiprocessing as mp
+from datetime import datetime
 from math import ceil, sqrt
 from pathlib import Path
 from typing import Literal
@@ -280,3 +281,55 @@ def train_smp(
         check_val_every_n_epoch=3,
     )
     trainer.fit(model, datamodule)
+
+    # TODO: save with own config etc.
+    # Add timestamp
+
+
+def convert_lightning_checkpoint(
+    *,
+    lightning_checkpoint: Path,
+    out_directory: Path,
+    checkpoint_name: str,
+    framework: str = "smp",
+):
+    """Convert a lightning checkpoint to our own format.
+
+    The final checkpoint will contain the model configuration and the state dict.
+    It will be saved to:
+
+    ```python
+        out_directory / f"{checkpoint_name}_{formatted_date}.ckpt"
+    ```
+
+    Args:
+        lightning_checkpoint (Path): Path to the lightning checkpoint.
+        out_directory (Path): Output directory for the converted checkpoint.
+        checkpoint_name (str): A unique name of the new checkpoint.
+        framework (str, optional): The framework used for the model. Defaults to "smp".
+
+    """
+    import torch
+
+    logger.debug(f"Loading checkpoint from {lightning_checkpoint.resolve()}")
+    lckpt = torch.load(lightning_checkpoint, weights_only=False)
+
+    now = datetime.now()
+    formatted_date = now.strftime("%Y-%m-%d")
+    config = lckpt["hyper_parameters"]
+    config["time"] = formatted_date
+    config["name"] = checkpoint_name
+    config["model_framework"] = framework
+
+    own_ckpt = {
+        "config": config,
+        "statedict": lckpt["state_dict"],
+    }
+
+    out_directory.mkdir(exist_ok=True, parents=True)
+
+    out_checkpoint = out_directory / f"{checkpoint_name}_{formatted_date}.ckpt"
+
+    torch.save(own_ckpt, out_checkpoint)
+
+    logger.info(f"Saved converted checkpoint to {out_checkpoint.resolve()}")
