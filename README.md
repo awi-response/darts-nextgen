@@ -17,8 +17,18 @@ At the first start, VSCode should ask you if you want to install the recommended
 The settings should be automaticly used by VSCode.
 Both should provide the developers with a better experience and enforce code-style.
 
+## Create Conda Environment from Script
 
-## Conda Environment setup
+This script will create (or recreate) the conda environment from a bash script.
+
+Prereq
+ - [Conda] (https://docs.anaconda.com/miniconda/): Link to miniconda. Can use any other conda
+ - Install by running this command `. create_env.sh`
+ - The conda environment is installed, activate it and type `darts --help`
+
+## Manual Conda Environment setup
+
+If you prefer to install conda manually, here are steps
 
 Prereq:
  - [Conda] (https://docs.anaconda.com/miniconda/): Link to miniconda. Can use any other conda
