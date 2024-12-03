@@ -89,6 +89,9 @@ gdal384_win64 = ["gdal @ https://github.com/cgohlke/geospatial-wheels/releases/d
 [project.scripts]
 darts = "darts.cli:start_app"
 
+# ==============================================================================
+# Build System Configuration
+# ==============================================================================
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
@@ -99,6 +102,69 @@ allow-direct-references = true
 [tool.hatch.build.targets.wheel]
 packages = ["darts/src/darts"]
 
+# ==============================================================================
+# uv Configuration (Not used yet!)
+# ==============================================================================
+
+# Problems with uv:
+# 1. gdal extra needs to be explicit deactivated. Otherwise, uv will try to build all gdal versions from source to get their requirements. This results in an error, because gdal expects the exact version of itself installed.
+# 2. It is impossible to maintain both rye and uv, because rye needs the torch-endings "+cpu" or "+cu118" or "+cu121" to install the correct pytorch version. uv does handles these endings by itself.
+# 3. UV toml syntax can't be read by Rye.
+# [tool.uv]
+# conflicts = [
+#   [
+#     { extra = "cpu" },
+#     { extra = "cuda11" },
+#     { extra = "cuda12" },
+#   ],
+#   [
+#     { extra = "gdal393" },
+#     { extra = "gdal39" },
+#     { extra = "gdal38" },
+#     { extra = "gdal384" },
+#     { extra = "gdal37" },
+#     { extra = "gdal36" },
+#     { extra = "gdal384_win64" },
+#   ]
+# ]
+# dependency-metadata = [
+#     { name = "gdal", requires-dist = ["setuptools"], requires-python = ">=3.9" },
+# ]
+# # TODO: Disable macos for now, fix later
+# environments = [
+#     "platform_system != 'Darwin' or extra != 'cpu'"
+# ]
+
+# [tool.uv.sources]
+# torch = [
+#   { index = "pytorch-cpu", extra = "cpu", marker = "platform_system != 'Darwin'" },
+#   { index = "pytorch-cu118", extra = "cuda11" },
+#   { index = "pytorch-cu121", extra = "cuda12" },
+# ]
+# torchvision = [
+#   { index = "pytorch-cpu", extra = "cpu", marker = "platform_system != 'Darwin'" },
+#   { index = "pytorch-cu118", extra = "cuda11" },
+#   { index = "pytorch-cu121", extra = "cuda12" },
+# ]
+
+#[[tool.uv.index]]
+#name = "pytorch-cpu"
+#url = "https://download.pytorch.org/whl/cpu"
+#explicit = true
+
+# [[tool.uv.index]]
+# name = "pytorch-cu118"
+# url = "https://download.pytorch.org/whl/cu118"
+# explicit = true
+
+# [[tool.uv.index]]
+# name = "pytorch-cu121"
+# url = "https://download.pytorch.org/whl/cu121"
+# explicit = true
+
+# ==============================================================================
+# Rye Configuration
+# ==============================================================================
 [tool.rye]
 managed = true
 dev-dependencies = [
@@ -137,6 +203,9 @@ url = "https://download.pytorch.org/whl/cu118"
 name = "pytorch-cu12"
 url = "https://download.pytorch.org/whl/cu121"
 
+# ==============================================================================
+# Ruff Configuration
+# ==============================================================================
 [tool.ruff]
 line-length = 120
 indent-width = 4  # This is the default
