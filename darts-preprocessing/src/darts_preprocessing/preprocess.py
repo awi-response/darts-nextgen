@@ -31,7 +31,6 @@ def preprocess_legacy(
     ds_arcticdem: xr.Dataset,
     ds_tcvis: xr.Dataset,
     ds_data_masks: xr.Dataset,
-    compat_overridee: bool = True,
 ) -> xr.Dataset:
     """Preprocess optical data with legacy (DARTS v1) preprocessing steps.
 
@@ -59,10 +58,8 @@ def preprocess_legacy(
     # we dont need to calculate them here
 
     # merge to final dataset
-    if compat_overridee:
-        ds_merged = xr.merge([ds_optical, ds_ndvi, ds_arcticdem, ds_tcvis, ds_data_masks], compat='override')
-    else:
-        ds_merged = xr.merge([ds_optical, ds_ndvi, ds_arcticdem, ds_tcvis, ds_data_masks])
+    ds_merged = xr.merge([ds_optical, ds_ndvi, ds_arcticdem, ds_tcvis, ds_data_masks])
+
     return ds_merged
 
 

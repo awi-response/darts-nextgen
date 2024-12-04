@@ -2,8 +2,6 @@
 [darts]
 ee-project = "your-project-here"
 
-
-
 [darts.paths]
 sentinel2-dir = "data/input/sentinel2"
 orthotiles-dir = "data/input/planet/PSOrthoTile"
