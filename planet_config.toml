@@ -1,0 +1,9 @@
+[darts]
+orthotiles-dir = "/home/toddn/pdg/darts-nextgen/rts_dtaset01/input/planet/PSOrthoTile"
+scenes-dir = "/home/toddn/pdg/darts-nextgen/rts_dtaset01/input/planet/PSScene"
+arcticdem-slope-vrt = "/home/toddn/pdg/darts-nextgen/rts_dtaset01/input/ArcticDEM/slope.vrt"
+arcticdem-elevation-vrt = "/home/toddn/pdg/darts-nextgen/rts_dtaset01/input/ArcticDEM/elevation.vrt"
+output-data-dir = "/home/toddn/pdg/darts-nextgen/data/output"
+model-dir = "/home/toddn/pdg/darts-nextgen/rts_dtaset01/models"
+tcvis-dir= "/home/toddn/pdg/darts-nextgen/tcvis_dir"
+ee-project = "pdg-project-406720"
