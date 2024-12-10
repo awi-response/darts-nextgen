@@ -93,7 +93,7 @@ def preprocess_s2_train_data(
     device = decide_device(device)
     init_ee(ee_project, ee_use_highvolume)
 
-    cluster = LocalCluster(n_workers=mp.cpu_count() - 1)
+    cluster = LocalCluster(n_workers=min(mp.cpu_count() - 1, 16))
     logger.info(f"Created Dask cluster: {cluster}")
     client = Client(cluster)
     logger.info(f"Using Dask client: {client}")
@@ -124,7 +124,9 @@ def preprocess_s2_train_data(
 
     # Find all Sentinel 2 scenes
     n_patches = 0
-    for fpath in sentinel2_dir.glob("*/"):
+    s2_paths = sorted(sentinel2_dir.glob("*/"))
+    logger.info(f"Found {len(s2_paths)} Sentinel 2 scenes in {sentinel2_dir}")
+    for i, fpath in enumerate(s2_paths):
         try:
             optical = load_s2_scene(fpath)
             arcticdem = load_arcticdem_tile(
@@ -163,14 +165,14 @@ def preprocess_s2_train_data(
                 torch.save(x, outpath_x / f"{tile_id}_pid{patch_id}.pt")
                 torch.save(y, outpath_y / f"{tile_id}_pid{patch_id}.pt")
                 n_patches += 1
-            logger.info(f"Processed {tile_id} with {patch_id} patches.")
+            logger.info(f"Processed sample {i} '{fpath.resolve()}' ({tile_id=}) with {patch_id} patches.")
 
         except KeyboardInterrupt:
             logger.info("Interrupted by user.")
             break
 
         except Exception as e:
-            logger.warning(f"Could not process folder '{fpath.resolve()}'.\nSkipping...")
+            logger.warning(f"Could not process folder sample {i} '{fpath.resolve()}'.\nSkipping...")
             logger.exception(e)
 
     # Save a config file as toml

@@ -208,7 +208,7 @@ def load_tcvis(
         tick_sload = time.perf_counter()
         tcvis_aoi = tcvis_aoi.compute()
         tick_eload = time.perf_counter()
-        logger.debug(f"ArcticDEM AOI loaded from disk in {tick_eload - tick_sload:.2f} seconds")
+        logger.debug(f"TCVIS AOI loaded from disk in {tick_eload - tick_sload:.2f} seconds")
 
     logger.info(
         f"TCVIS tile {'loaded' if persist else 'lazy-opened'} in {time.perf_counter() - tick_fstart:.2f} seconds"

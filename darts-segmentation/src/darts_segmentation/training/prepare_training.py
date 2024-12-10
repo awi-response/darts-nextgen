@@ -24,8 +24,8 @@ def create_training_patches(
     norm_factors: dict[str, float],
     patch_size: int,
     overlap: int,
-    include_allzero: bool,  # TODO: rename to include_nopositive
-    include_nan_edges: bool,
+    exclude_nopositive: bool,
+    exclude_nan: bool,
     device: Literal["cuda", "cpu"] | int,
     mask_erosion_size: int,
 ) -> Generator[tuple[torch.tensor, torch.tensor]]:
@@ -38,8 +38,8 @@ def create_training_patches(
         norm_factors (dict[str, float]): The normalization factors for the bands.
         patch_size (int): The size of the patches.
         overlap (int): The size of the overlap.
-        include_allzero (bool): Whether to include patches where the labels are all zero.
-        include_nan_edges (bool): Whether to include patches where the input data has nan values at the edges.
+        exclude_nopositive (bool): Whether to exclude patches where the labels do not contain positives.
+        exclude_nan (bool): Whether to exclude patches where the input data has nan values.
         device (Literal["cuda", "cpu"] | int): The device to use for the erosion.
         mask_erosion_size (int): The size of the disk to use for erosion.
 
@@ -51,8 +51,15 @@ def create_training_patches(
         ValueError: If a band is not found in the preprocessed data.
 
     """
+    if len(labels) == 0 and exclude_nopositive:
+        logger.warning("No labels found in the labels GeoDataFrame. Skipping.")
+        return
+
     # Rasterize the labels
-    labels_rasterized = 1 - make_geocube(labels, measurements=["id"], like=tile).id.isnull()  # noqa: PD003
+    if len(labels) > 0:
+        labels_rasterized = 1 - make_geocube(labels, measurements=["id"], like=tile).id.isnull()  # noqa: PD003
+    else:
+        labels_rasterized = xr.zeros_like(tile["valid_data_mask"])
 
     # Filter out the nodata values (class 2 -> invalid data)
     mask = erode_mask(tile["valid_data_mask"], mask_erosion_size, device)
@@ -96,10 +103,10 @@ def create_training_patches(
         x = tensor_patches[i]
         y = tensor_labels[i]
 
-        if not include_allzero and not (y == 1).any():
+        if exclude_nopositive and not (y == 1).any():
             continue
 
-        if not include_nan_edges and torch.isnan(x).any():
+        if exclude_nan and torch.isnan(x).any():
             continue
 
         # Skip where there are less than 10% visible pixel
