@@ -73,7 +73,12 @@ def decide_device(device: Literal["cuda", "cpu", "auto"] | int | None) -> Litera
     # We can't provide a default value for device in the parameter list because then we would need to import torch at
     # top-level, which would make the CLI slow.
     if device is None:
-        device = "cuda" if torch.cuda.is_available() and has_cuda_and_cupy() else "cpu"
+        if torch.cuda.is_available() and has_cuda_and_cupy():
+            device = "cuda"
+        elif torch.backends.mps.is_available():
+            device = "mps"
+        else:
+            device = "cpu"
         logger.info(f"Device not provided. Using {device}.")
         return device
 
