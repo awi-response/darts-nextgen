@@ -35,6 +35,7 @@ class _BasePipeline:
     tcvis_model_name: str = "RTS_v6_tcvis_s2native.pt"
     notcvis_model_name: str = "RTS_v6_notcvis_s2native.pt"
     device: Literal["cuda", "cpu", "auto"] | int | None = None
+    dask_worker: int = min(16, mp.cpu_count() - 1)  # noqa: RUF009
     ee_project: str | None = None
     ee_use_highvolume: bool = True
     patch_size: int = 1024
@@ -78,13 +79,17 @@ class _BasePipeline:
         )
 
         # Init Dask stuff with a context manager
-        with LocalCluster(n_workers=mp.cpu_count() - 1) as cluster, Client(cluster) as client:
-            logger.info(f"Using Dask client: {client}")
+        with LocalCluster(n_workers=self.dask_worker) as cluster, Client(cluster) as client:
+            logger.info(f"Using Dask client: {client} on cluster {cluster}")
+            logger.info(f"Dashboard available at: {client.dashboard_link}")
             configure_rio(cloud_defaults=True, aws={"aws_unsigned": True}, client=client)
             logger.info("Configured Rasterio with Dask")
 
             # Iterate over all the data (_path_generator)
-            for fpath, outpath in self._path_generator():
+            n_tiles = 0
+            paths = sorted(self._path_generator())
+            logger.info(f"Found {len(paths)} tiles to process.")
+            for i, (fpath, outpath) in enumerate(paths):
                 try:
                     aqdata = self._get_data(fpath)
                     tile = self._preprocess(aqdata)
@@ -111,12 +116,16 @@ class _BasePipeline:
                     writer.export_probabilities(outpath)
                     writer.export_binarized(outpath)
                     writer.export_polygonized(outpath)
+                    n_tiles += 1
+                    logger.info(f"Processed sample {i + 1} of {len(paths)} '{fpath.resolve()}'.")
                 except KeyboardInterrupt:
                     logger.warning("Keyboard interrupt detected.\nExiting...")
-                    break
+                    raise KeyboardInterrupt
                 except Exception as e:
                     logger.warning(f"Could not process folder '{fpath.resolve()}'.\nSkipping...")
                     logger.exception(e)
+            else:
+                logger.info(f"Processed {n_tiles} tiles to {self.output_data_dir.resolve()}.")
 
 
 # =============================================================================

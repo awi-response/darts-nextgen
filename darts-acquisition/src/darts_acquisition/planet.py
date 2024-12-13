@@ -82,30 +82,21 @@ def load_planet_scene(fpath: str | Path) -> xr.Dataset:
     # Define band names and corresponding indices
     planet_da = xr.open_dataarray(ps_image)
 
-    bands = {1: "blue", 2: "green", 3: "red", 4: "nir"}
-
-    # Create a list to hold datasets
-    datasets = [
-        planet_da.sel(band=index)
-        .assign_attrs(
+    # Create a dataset with the bands
+    bands = ["blue", "green", "red", "nir"]
+    ds_planet = (
+        planet_da.fillna(0).rio.write_nodata(0).astype("uint16").assign_coords({"band": bands}).to_dataset(dim="band")
+    )
+    for var in ds_planet.variables:
+        ds_planet[var].assign_attrs(
             {
+                "long_name": f"PLANET {var.capitalize()}",
                 "data_source": "planet",
                 "planet_type": planet_type,
-                "long_name": f"PLANET {name.capitalize()}",
                 "units": "Reflectance",
             }
         )
-        .fillna(0)
-        .rio.write_nodata(0)
-        .astype("uint16")
-        .to_dataset(name=name)
-        .drop_vars("band")
-        for index, name in bands.items()
-    ]
-
-    # Merge all datasets into one
-    ds_planet = xr.merge(datasets)
-    ds_planet.attrs["tile_id"] = fpath.parent.stem if planet_type == "orthotile" else fpath.stem
+    ds_planet.attrs = {"tile_id": fpath.parent.stem if planet_type == "orthotile" else fpath.stem}
     logger.debug(f"Loaded Planet scene in {time.time() - start_time} seconds.")
     return ds_planet
 

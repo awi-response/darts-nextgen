@@ -41,21 +41,15 @@ def load_s2_scene(fpath: str | Path) -> xr.Dataset:
     # Define band names and corresponding indices
     s2_da = xr.open_dataarray(s2_image)
 
-    bands = {1: "blue", 2: "green", 3: "red", 4: "nir"}
+    # Create a dataset with the bands
+    bands = ["blue", "green", "red", "nir"]
+    ds_s2 = s2_da.fillna(0).rio.write_nodata(0).astype("uint16").assign_coords({"band": bands}).to_dataset(dim="band")
 
-    # Create a list to hold datasets
-    datasets = [
-        s2_da.sel(band=index)
-        .assign_attrs({"data_source": "s2", "long_name": f"Sentinel 2 {name.capitalize()}", "units": "Reflectance"})
-        .fillna(0)
-        .rio.write_nodata(0)
-        .astype("uint16")
-        .to_dataset(name=name)
-        .drop_vars("band")
-        for index, name in bands.items()
-    ]
+    for var in ds_s2.data_vars:
+        ds_s2[var].assign_attrs(
+            {"data_source": "s2", "long_name": f"Sentinel 2 {var.capitalize()}", "units": "Reflectance"}
+        )
 
-    ds_s2 = xr.merge(datasets)
     planet_crop_id = fpath.stem
     s2_tile_id = "_".join(s2_image.stem.split("_")[:3])
     ds_s2.attrs["planet_crop_id"] = planet_crop_id

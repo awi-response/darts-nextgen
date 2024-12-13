@@ -60,7 +60,7 @@ class LegacyNativePlanetPipelineFast(_FastMixin, _PlanetMixin, _BasePipeline):
 
         optical = load_planet_scene(fpath)
         arcticdem = load_arcticdem_tile(
-            optical.odc.geobox, self.arcticdem_dir, resolution=10, buffer=ceil(self.tpi_outer_radius / 10 * sqrt(2))
+            optical.odc.geobox, self.arcticdem_dir, resolution=2, buffer=ceil(self.tpi_outer_radius / 2 * sqrt(2))
         )
         tcvis = load_tcvis(optical.odc.geobox, self.tcvis_dir)
         data_masks = load_planet_masks(fpath)
