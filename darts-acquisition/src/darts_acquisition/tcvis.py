@@ -121,7 +121,7 @@ def procedural_download_datacube(storage: zarr.storage.Store, geobox: GeoBox):
         ds = ds.odc.crop(geobox_tile.extent)
 
         # Save original min-max values for each band for clipping later
-        clip_values = {band: (ds[band].min().values.item(), ds[band].max().values.item()) for band in ds.data_vars}  # noqa: PD011
+        clip_values = {band: (ds[band].min().values.item(), ds[band].max().values.item()) for band in ds.data_vars}
 
         # Interpolate missing values (there are very few, so we actually can interpolate them)
         ds.rio.write_crs(ds.attrs["crs"], inplace=True)
@@ -201,7 +201,7 @@ def load_tcvis(
     tcvis_datacube = xr.open_zarr(storage, mask_and_scale=False).set_coords("spatial_ref")
 
     # Get an AOI slice of the datacube
-    tcvis_aoi = tcvis_datacube.odc.crop(reference_geobox.extent)
+    tcvis_aoi = tcvis_datacube.odc.crop(reference_geobox.extent, apply_mask=False)
 
     # The following code would load the data from disk
     if persist:

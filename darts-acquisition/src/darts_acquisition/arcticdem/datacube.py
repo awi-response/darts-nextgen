@@ -320,7 +320,7 @@ def load_arcticdem_tile(
     arcticdem_datacube = xr.open_zarr(storage, mask_and_scale=False).set_coords("spatial_ref")
 
     # Get an AOI slice of the datacube
-    arcticdem_aoi = arcticdem_datacube.odc.crop(reference_geobox.extent)
+    arcticdem_aoi = arcticdem_datacube.odc.crop(reference_geobox.extent, apply_mask=False)
 
     # Change dtype of the datamask to uint8 for later reproject_match
     arcticdem_aoi["datamask"] = arcticdem_aoi.datamask.astype("uint8")

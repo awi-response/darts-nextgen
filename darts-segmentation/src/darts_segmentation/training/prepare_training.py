@@ -57,7 +57,7 @@ def create_training_patches(
 
     # Rasterize the labels
     if len(labels) > 0:
-        labels_rasterized = 1 - make_geocube(labels, measurements=["id"], like=tile).id.isnull()  # noqa: PD003
+        labels_rasterized = 1 - make_geocube(labels, measurements=["id"], like=tile).id.isnull()
     else:
         labels_rasterized = xr.zeros_like(tile["valid_data_mask"])
 
