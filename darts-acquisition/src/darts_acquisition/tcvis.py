@@ -1,6 +1,7 @@
 """Landsat Trends related Data Loading. Should be used temporary and maybe moved to the acquisition package."""
 
 import logging
+import multiprocessing as mp
 import time
 import warnings
 from pathlib import Path
@@ -42,6 +43,9 @@ DATA_VARS_ENCODING = {
     "tc_greenness": {"dtype": "uint8"},
     "tc_wetness": {"dtype": "uint8"},
 }
+
+# Lock for downloading the data
+download_lock = mp.Lock()
 
 
 def procedural_download_datacube(storage: zarr.storage.Store, geobox: GeoBox):
@@ -195,7 +199,8 @@ def load_tcvis(
 
     # Download the adjacent tiles (if necessary)
     reference_geobox = geobox.to_crs("epsg:4326", resolution=DATA_EXTENT.resolution.x).pad(buffer)
-    procedural_download_datacube(storage, reference_geobox)
+    with download_lock:
+        procedural_download_datacube(storage, reference_geobox)
 
     # Load the datacube and set the spatial_ref since it is set as a coordinate within the zarr format
     chunks = None if persist else "auto"
