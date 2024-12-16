@@ -161,13 +161,21 @@ def preprocess_legacy_fast(
     ds_merged["ndvi"] = calculate_ndvi(ds_merged).ndvi
 
     # Reproject TCVIS to optical data
+    tick_sproj = time.perf_counter()
     ds_tcvis = ds_tcvis.odc.reproject(ds_optical.odc.geobox, resampling="cubic")
+    tick_eproj = time.perf_counter()
+    logger.debug(f"Reprojection of TCVIS done in {tick_eproj - tick_sproj:.2f} seconds.")
+
     ds_merged["tc_brightness"] = ds_tcvis.tc_brightness
     ds_merged["tc_greenness"] = ds_tcvis.tc_greenness
     ds_merged["tc_wetness"] = ds_tcvis.tc_wetness
 
     # Calculate TPI and slope from ArcticDEM
+    tick_sproj = time.perf_counter()
     ds_arcticdem = ds_arcticdem.odc.reproject(ds_optical.odc.geobox.buffered(tpi_outer_radius), resampling="cubic")
+    tick_eproj = time.perf_counter()
+    logger.debug(f"Reprojection of ArcticDEM done in {tick_eproj - tick_sproj:.2f} seconds.")
+
     ds_arcticdem = preprocess_legacy_arcticdem_fast(ds_arcticdem, tpi_outer_radius, tpi_inner_radius, device)
     ds_arcticdem = ds_arcticdem.odc.crop(ds_optical.odc.geobox.extent)
     ds_merged["dem"] = ds_arcticdem.dem

@@ -198,15 +198,16 @@ def load_tcvis(
     procedural_download_datacube(storage, reference_geobox)
 
     # Load the datacube and set the spatial_ref since it is set as a coordinate within the zarr format
-    tcvis_datacube = xr.open_zarr(storage, mask_and_scale=False).set_coords("spatial_ref")
+    chunks = None if persist else "auto"
+    tcvis_datacube = xr.open_zarr(storage, mask_and_scale=False, chunks=chunks).set_coords("spatial_ref")
 
     # Get an AOI slice of the datacube
     tcvis_aoi = tcvis_datacube.odc.crop(reference_geobox.extent, apply_mask=False)
 
-    # The following code would load the data from disk
+    # The following code would load the lazy zarr data from disk into memory
     if persist:
         tick_sload = time.perf_counter()
-        tcvis_aoi = tcvis_aoi.compute()
+        tcvis_aoi = tcvis_aoi.load()
         tick_eload = time.perf_counter()
         logger.debug(f"TCVIS AOI loaded from disk in {tick_eload - tick_sload:.2f} seconds")
 

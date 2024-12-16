@@ -317,20 +317,21 @@ def load_arcticdem_tile(
     procedural_download_datacube(storage, adjacent_tiles)
 
     # Load the datacube and set the spatial_ref since it is set as a coordinate within the zarr format
-    arcticdem_datacube = xr.open_zarr(storage, mask_and_scale=False).set_coords("spatial_ref")
+    chunks = None if persist else "auto"
+    arcticdem_datacube = xr.open_zarr(storage, mask_and_scale=False, chunks=chunks).set_coords("spatial_ref")
 
     # Get an AOI slice of the datacube
     arcticdem_aoi = arcticdem_datacube.odc.crop(reference_geobox.extent, apply_mask=False)
 
-    # Change dtype of the datamask to uint8 for later reproject_match
-    arcticdem_aoi["datamask"] = arcticdem_aoi.datamask.astype("uint8")
-
-    # The following code would load the data from disk
+    # The following code would load the lazy zarr data from disk into memory
     if persist:
         tick_sload = time.perf_counter()
-        arcticdem_aoi = arcticdem_aoi.compute()
+        arcticdem_aoi = arcticdem_aoi.load()
         tick_eload = time.perf_counter()
         logger.debug(f"ArcticDEM AOI loaded from disk in {tick_eload - tick_sload:.2f} seconds")
+
+    # Change dtype of the datamask to uint8 for later reproject_match
+    arcticdem_aoi["datamask"] = arcticdem_aoi.datamask.astype("uint8")
 
     logger.info(
         f"ArcticDEM tile {'loaded' if persist else 'lazy-opened'} in {time.perf_counter() - tick_fstart:.2f} seconds"
