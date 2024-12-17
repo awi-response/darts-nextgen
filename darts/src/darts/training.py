@@ -505,7 +505,7 @@ def sweep_smp(
             plot_every_n_val_epochs=plot_every_n_val_epochs,
             # Device and Manager config
             num_workers=num_workers,
-            devices=device,
+            device=device,
             wandb_entity=wandb_entity,
             wandb_project=wandb_project,
             run_name=wandb.run.name,
