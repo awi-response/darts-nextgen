@@ -134,6 +134,7 @@ def preprocess_s2_train_data(
     for i, fpath in enumerate(s2_paths):
         try:
             optical = load_s2_scene(fpath)
+            logger.info(f"Found optical tile with size {optical.sizes}")
             tile_id = optical.attrs["tile_id"]
 
             # Check for a cached preprocessed file
