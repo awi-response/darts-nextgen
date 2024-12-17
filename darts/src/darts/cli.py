@@ -15,9 +15,9 @@ from darts.legacy_pipeline import (
     run_native_sentinel2_pipeline,
     run_native_sentinel2_pipeline_fast,
 )
-from darts.training import convert_lightning_checkpoint, preprocess_s2_train_data, train_smp
+from darts.training import convert_lightning_checkpoint, preprocess_s2_train_data, sweep_smp, train_smp
 from darts.utils.config import ConfigParser
-from darts.utils.logging import add_logging_handlers, setup_logging
+from darts.utils.logging import LoggingManager
 
 root_file = Path(__file__).resolve()
 logger = logging.getLogger(__name__)
@@ -72,6 +72,7 @@ app.command(group=pipeline_group)(run_native_sentinel2_pipeline_fast)
 app.command(group=train_group)(preprocess_s2_train_data)
 app.command(group=train_group)(train_smp)
 app.command(group=train_group)(convert_lightning_checkpoint)
+app.command(group=train_group)(sweep_smp)
 
 
 # Custom wrapper for the create_arcticdem_vrt function, which dodges the loading of all the heavy modules
@@ -97,7 +98,7 @@ def launcher(  # noqa: D103
     config_file: Path = Path("config.toml"),
 ):
     command, bound, _ = app.parse_args(tokens)
-    add_logging_handlers(command.__name__, console, log_dir)
+    LoggingManager.add_logging_handlers(command.__name__, console, log_dir)
     logger.debug(f"Running on Python version {sys.version} from {__name__} ({root_file})")
     return command(*bound.args, **bound.kwargs)
 
@@ -105,7 +106,8 @@ def launcher(  # noqa: D103
 def start_app():
     """Wrapp to start the app."""
     try:
-        setup_logging()
+        # First time initialization of the logging manager
+        LoggingManager.setup_logging()
         app.meta()
     except KeyboardInterrupt:
         logger.info("Interrupted by user. Closing...")

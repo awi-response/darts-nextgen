@@ -1,9 +1,3 @@
-# ruff: noqa: D100
-# ruff: noqa: D101
-# ruff: noqa: D102
-# ruff: noqa: D105
-# ruff: noqa: D107
-
 """Training script for DARTS segmentation."""
 
 from pathlib import Path
@@ -37,9 +31,27 @@ from darts_segmentation.training.viz import plot_sample
 
 
 class SMPSegmenter(L.LightningModule):
-    def __init__(self, config: SMPSegmenterConfig, learning_rate: float = 1e-5, gamma: float = 0.9):
+    """Lightning module for training a segmentation model using the segmentation_models_pytorch library."""
+
+    def __init__(
+        self,
+        config: SMPSegmenterConfig,
+        learning_rate: float = 1e-5,
+        gamma: float = 0.9,
+        plot_every_n_val_epochs: int = 5,
+    ):
+        """Initialize the SMPSegmenter.
+
+        Args:
+            config (SMPSegmenterConfig): Configuration for the segmentation model.
+            learning_rate (float, optional): Initial learning rate. Defaults to 1e-5.
+            gamma (float, optional): Multiplicative factor of learning rate decay. Defaults to 0.9.
+            plot_every_n_val_epochs (int, optional): Plot validation samples every n epochs. Defaults to 5.
+
+        """
         super().__init__()
-        self.save_hyperparameters()
+        # This saves config, learning_rate and gamma under self.hparams
+        self.save_hyperparameters(ignore=["plot_every_n_val_epochs"])
         self.model = smp.create_model(**config["model"], activation="sigmoid")
 
         # Assumes that the training preparation was done with setting invalid pixels in the mask to 2
@@ -69,14 +81,23 @@ class SMPSegmenter(L.LightningModule):
         self.val_roc = ROC(thresholds=20, **metric_kwargs)
         self.val_prc = PrecisionRecallCurve(thresholds=20, **metric_kwargs)
         self.val_cmx = ConfusionMatrix(normalize="true", **metric_kwargs)
-        self.plot_every_n_val_epochs = 5
+        self.plot_every_n_val_epochs = plot_every_n_val_epochs
+
+    def __repr__(self):  # noqa: D105
+        return f"SMPSegmenter({self.hparams['config']['model']})"
 
     @property
     def is_val_plot_epoch(self):
+        """Check if the current epoch is an epoch where validation samples should be plotted.
+
+        Returns:
+            bool: True if the current epoch is a plot epoch, False otherwise.
+
+        """
         n = self.plot_every_n_val_epochs * self.trainer.check_val_every_n_epoch
         return ((self.current_epoch + 1) % n) == 0 or self.current_epoch == 0
 
-    def training_step(self, batch, batch_idx):
+    def training_step(self, batch, batch_idx):  # noqa: D102
         x, y = batch
         y_hat = self.model(x).squeeze(1)
         loss = self.loss_fn(y_hat, y.long())
@@ -85,10 +106,10 @@ class SMPSegmenter(L.LightningModule):
         self.log_dict(self.train_metrics, on_step=True, on_epoch=False)
         return loss
 
-    def on_train_epoch_end(self):
+    def on_train_epoch_end(self):  # noqa: D102
         self.train_metrics.reset()
 
-    def validation_step(self, batch, batch_idx):
+    def validation_step(self, batch, batch_idx):  # noqa: D102
         x, y = batch
         y_hat = self.model(x).squeeze(1)
         loss = self.loss_fn(y_hat, y.long())
@@ -116,7 +137,7 @@ class SMPSegmenter(L.LightningModule):
 
         return loss
 
-    def on_validation_epoch_end(self):
+    def on_validation_epoch_end(self):  # noqa: D102
         self.log_dict(self.val_metrics.compute())
 
         # Only do this every self.plot_every_n_val_epochs epochs
@@ -154,7 +175,7 @@ class SMPSegmenter(L.LightningModule):
         self.val_prc.reset()
         self.val_cmx.reset()
 
-    def configure_optimizers(self):
+    def configure_optimizers(self):  # noqa: D102
         optimizer = optim.AdamW(self.parameters(), lr=self.hparams.learning_rate)
         scheduler = optim.lr_scheduler.ExponentialLR(optimizer, gamma=self.hparams.gamma)
         return [optimizer], [scheduler]
