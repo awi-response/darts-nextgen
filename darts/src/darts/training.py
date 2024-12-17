@@ -244,7 +244,7 @@ def train_smp(
     plot_every_n_val_epochs: int = 5,
     # Device and Manager config
     num_workers: int = 0,
-    devices: int | str = "auto",
+    device: int | str = "auto",
     wandb_entity: str | None = None,
     wandb_project: str | None = None,
     run_name: str | None = None,
@@ -281,7 +281,7 @@ def train_smp(
             Defaults to 5.
         plot_every_n_val_epochs (int, optional): Plot validation samples every n epochs. Defaults to 5.
         num_workers (int, optional): Number of Dataloader workers. Defaults to 0.
-        devices (int | str | list[int], optional): The device(s) to run the model on. Defaults to "auto".
+        device (int | str, optional): The device to run the model on. Defaults to "auto".
         wandb_entity (str | None, optional): Weights and Biases Entity. Defaults to None.
         wandb_project (str | None, optional): Weights and Biases Project. Defaults to None.
         run_name (str | None, optional): Name of this run, as a further grouping method for logs etc. Defaults to None.
@@ -306,7 +306,7 @@ def train_smp(
         f"Using config:\n\t{model_arch=}\n\t{model_encoder=}\n\t{model_encoder_weights=}\n\t{augment=}\n\t"
         f"{learning_rate=}\n\t{gamma=}\n\t{batch_size=}\n\t{max_epochs=}\n\t{log_every_n_steps=}\n\t"
         f"{check_val_every_n_epoch=}\n\t{early_stopping_patience=}\n\t{plot_every_n_val_epochs=}\n\t{num_workers=}"
-        f"\n\t{devices=}"
+        f"\n\t{device=}"
     )
 
     lovely_tensors.monkey_patch()
@@ -365,7 +365,8 @@ def train_smp(
         log_every_n_steps=log_every_n_steps,
         logger=trainer_loggers,
         check_val_every_n_epoch=check_val_every_n_epoch,
-        devices=devices,
+        accelerator="gpu" if isinstance(device, int) else device,
+        devices=[device] if isinstance(device, int) else device,
     )
     trainer.fit(model, datamodule)
 
