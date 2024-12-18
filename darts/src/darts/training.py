@@ -44,8 +44,8 @@ def preprocess_s2_train_data(
     tpi_inner_radius: int = 0,
     patch_size: int = 1024,
     overlap: int = 16,
-    include_allzero: bool = False,
-    include_nan_edges: bool = True,
+    exclude_nopositive: bool = False,
+    exclude_nan: bool = True,
     mask_erosion_size: int = 10,
 ):
     """Preprocess Sentinel 2 data for training.
@@ -71,8 +71,9 @@ def preprocess_s2_train_data(
             in m. Defaults to 0.
         patch_size (int, optional): The patch size to use for inference. Defaults to 1024.
         overlap (int, optional): The overlap to use for inference. Defaults to 16.
-        include_allzero (bool, optional): Whether to include patches where the labels are all zero. Defaults to False.
-        include_nan_edges (bool, optional): Whether to include patches where the input data has nan values at the edges.
+        exclude_nopositive (bool, optional): Whether to exclude patches where the labels do not contain positives.
+            Defaults to False.
+        exclude_nan (bool, optional): Whether to exclude patches where the input data has nan values.
             Defaults to True.
         mask_erosion_size (int, optional): The size of the disk to use for mask erosion and the edge-cropping.
 
@@ -143,8 +144,10 @@ def preprocess_s2_train_data(
                 logger.info(f"Loading preprocessed data from {cache_file.resolve()}")
                 tile = xr.open_dataset(preprocess_cache / f"{tile_id}.nc", engine="h5netcdf").set_coords("spatial_ref")
             else:
+                arctidem_res = 10
+                arcticdem_buffer = ceil(tpi_outer_radius / arctidem_res * sqrt(2))
                 arcticdem = load_arcticdem_tile(
-                    optical.odc.geobox, arcticdem_dir, resolution=10, buffer=ceil(tpi_outer_radius / 10 * sqrt(2))
+                    optical.odc.geobox, arcticdem_dir, resolution=arctidem_res, buffer=arcticdem_buffer
                 )
                 tcvis = load_tcvis(optical.odc.geobox, tcvis_dir)
                 data_masks = load_s2_masks(fpath, optical.odc.geobox)
@@ -175,8 +178,8 @@ def preprocess_s2_train_data(
                 norm_factors,
                 patch_size,
                 overlap,
-                include_allzero,
-                include_nan_edges,
+                exclude_nopositive,
+                exclude_nan,
                 device,
                 mask_erosion_size,
             )
@@ -210,8 +213,8 @@ def preprocess_s2_train_data(
             "tpi_inner_radius": tpi_inner_radius,
             "patch_size": patch_size,
             "overlap": overlap,
-            "include_allzero": include_allzero,
-            "include_nan_edges": include_nan_edges,
+            "exclude_nopositive": exclude_nopositive,
+            "exclude_nan": exclude_nan,
             "n_patches": n_patches,
         }
     }
@@ -236,6 +239,8 @@ def train_smp(
     augment: bool = True,
     learning_rate: float = 1e-3,
     gamma: float = 0.9,
+    focal_loss_alpha: float | None = None,
+    focal_loss_gamma: float = 2.0,
     batch_size: int = 8,
     # Epoch and Logging config
     max_epochs: int = 100,
@@ -274,6 +279,10 @@ def train_smp(
         augment (bool, optional): Weather to apply augments or not. Defaults to True.
         learning_rate (float, optional): Learning Rate. Defaults to 1e-3.
         gamma (float, optional): Multiplicative factor of learning rate decay. Defaults to 0.9.
+        focal_loss_alpha (float, optional): Weight factor to balance positive and negative samples.
+            Alpha must be in [0...1] range, high values will give more weight to positive class.
+            None will not weight samples. Defaults to None.
+        focal_loss_gamma (float, optional): Focal loss power factor. Defaults to 2.0.
         batch_size (int, optional): Batch Size. Defaults to 8.
         max_epochs (int, optional): Maximum number of epochs to train. Defaults to 100.
         log_every_n_steps (int, optional): Log every n steps. Defaults to 10.
@@ -330,7 +339,7 @@ def train_smp(
 
     # Data and model
     datamodule = DartsDataModule(train_data_dir, batch_size, augment, num_workers)
-    model = SMPSegmenter(config, learning_rate, gamma, plot_every_n_val_epochs)
+    model = SMPSegmenter(config, learning_rate, gamma, focal_loss_alpha, focal_loss_gamma, plot_every_n_val_epochs)
 
     # Loggers
     trainer_loggers = [

@@ -38,6 +38,8 @@ class SMPSegmenter(L.LightningModule):
         config: SMPSegmenterConfig,
         learning_rate: float = 1e-5,
         gamma: float = 0.9,
+        focal_loss_alpha: float | None = None,
+        focal_loss_gamma: float = 2.0,
         plot_every_n_val_epochs: int = 5,
     ):
         """Initialize the SMPSegmenter.
@@ -46,6 +48,10 @@ class SMPSegmenter(L.LightningModule):
             config (SMPSegmenterConfig): Configuration for the segmentation model.
             learning_rate (float, optional): Initial learning rate. Defaults to 1e-5.
             gamma (float, optional): Multiplicative factor of learning rate decay. Defaults to 0.9.
+            focal_loss_alpha (float, optional): Weight factor to balance positive and negative samples.
+                Alpha must be in [0...1] range, high values will give more weight to positive class.
+                None will not weight samples. Defaults to None.
+            focal_loss_gamma (float, optional): Focal loss power factor. Defaults to 2.0.
             plot_every_n_val_epochs (int, optional): Plot validation samples every n epochs. Defaults to 5.
 
         """
@@ -55,7 +61,9 @@ class SMPSegmenter(L.LightningModule):
         self.model = smp.create_model(**config["model"], activation="sigmoid")
 
         # Assumes that the training preparation was done with setting invalid pixels in the mask to 2
-        self.loss_fn = smp.losses.FocalLoss(mode="binary", ignore_index=2)
+        self.loss_fn = smp.losses.FocalLoss(
+            mode="binary", alpha=focal_loss_alpha, gamma=focal_loss_gamma, ignore_index=2
+        )
 
         metric_kwargs = {"task": "binary", "validate_args": False, "ignore_index": 2}
         metrics = MetricCollection(
@@ -108,6 +116,7 @@ class SMPSegmenter(L.LightningModule):
 
     def on_train_epoch_end(self):  # noqa: D102
         self.train_metrics.reset()
+        self.log("learning_rate", self.lr_schedulers().get_last_lr()[0])
 
     def validation_step(self, batch, batch_idx):  # noqa: D102
         x, y = batch

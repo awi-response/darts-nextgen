@@ -13,7 +13,7 @@ import torch
 # New Plot: Threshold vs. F1-Score and IoU
 
 
-def plot_sample(x, y, y_pred, input_combinations: list[str]):
+def plot_sample(x: torch.Tensor, y: torch.Tensor, y_pred: torch.Tensor, input_combinations: list[str]):
     """Plot a single sample with the input, the ground truth and the prediction.
 
     This function does a few expections on the input:
@@ -43,6 +43,10 @@ def plot_sample(x, y, y_pred, input_combinations: list[str]):
     y_pred = y_pred.where(y != 2, torch.nan)
     y = y.where(y != 2, torch.nan)
 
+    # pred == 0, y == 0 -> 0 (true negative)
+    # pred == 1, y == 0 -> 1 (false positive)
+    # pred == 0, y == 1 -> 2 (false negative)
+    # pred == 1, y == 1 -> 3 (true positive)
     classification_labels = (y_pred > 0.5).int() + y * 2
     classification_labels = classification_labels.where(classification_labels != 0, torch.nan)
 
