@@ -187,7 +187,9 @@ def preprocess_s2_train_data(
                 torch.save(x, outpath_x / f"{tile_id}_pid{patch_id}.pt")
                 torch.save(y, outpath_y / f"{tile_id}_pid{patch_id}.pt")
                 n_patches += 1
-            logger.info(f"Processed sample {i} '{fpath.resolve()}' ({tile_id=}) with {patch_id} patches.")
+            logger.info(
+                f"Processed sample {i + 1} of {len(s2_paths)} '{fpath.resolve()}' ({tile_id=}) with {patch_id} patches."
+            )
 
         except KeyboardInterrupt:
             logger.info("Interrupted by user.")

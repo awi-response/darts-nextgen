@@ -138,16 +138,15 @@ class DartsDataModule(L.LightningDataModule):
             if not self.in_memory
             else DartsDatasetInMemory(self.data_dir, self.augment)
         )
-        # self.dataset = dataset
         splits = [0.8, 0.1, 0.1]
         generator = torch.Generator().manual_seed(42)
         self.train, self.val, self.test = random_split(dataset, splits, generator)
 
     def train_dataloader(self):
-        return DataLoader(self.dataset, batch_size=self.batch_size, num_workers=self.num_workers, shuffle=True)
+        return DataLoader(self.train, batch_size=self.batch_size, num_workers=self.num_workers, shuffle=True)
 
     def val_dataloader(self):
-        return DataLoader(self.dataset, batch_size=self.batch_size, num_workers=self.num_workers)
+        return DataLoader(self.val, batch_size=self.batch_size, num_workers=self.num_workers)
 
     def test_dataloader(self):
         return DataLoader(self.test, batch_size=self.batch_size, num_workers=self.num_workers)
