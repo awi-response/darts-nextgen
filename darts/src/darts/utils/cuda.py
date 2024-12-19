@@ -17,7 +17,7 @@ def debug_info():
     logger.debug(f"PyTorch version: {torch.__version__}")
     logger.debug(f"PyTorch CUDA available: {torch.cuda.is_available()}")
     logger.debug(f"Cupy+Numba CUDA available: {has_cuda_and_cupy()}")
-    logger.debug(f"LD_LIBRARY_PATH: {os.environ.get("LD_LIBRARY_PATH")}")
+    logger.debug(f"LD_LIBRARY_PATH: {os.environ.get('LD_LIBRARY_PATH')}")
 
     try:
         from pynvml import (
