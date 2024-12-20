@@ -48,6 +48,15 @@ class _BasePipeline:
     use_quality_mask: bool = False
     write_model_outputs: bool = False
 
+    def __post_init__(self):
+        from darts.utils.cuda import debug_info
+
+        debug_info()
+
+        from darts.utils.earthengine import init_ee
+
+        init_ee(self.ee_project, self.ee_use_highvolume)
+
     def _path_generator(self) -> Generator[tuple[Path, Path]]:
         raise NotImplementedError
 
@@ -65,12 +74,9 @@ class _BasePipeline:
         from dask.distributed import Client, LocalCluster
         from odc.stac import configure_rio
 
-        from darts.utils.cuda import debug_info, decide_device
-        from darts.utils.earthengine import init_ee
+        from darts.utils.cuda import decide_device
 
-        debug_info()
         self.device = decide_device(self.device)
-        init_ee(self.ee_project, self.ee_use_highvolume)
 
         ensemble = EnsembleV1(
             self.model_dir / self.tcvis_model_name,
