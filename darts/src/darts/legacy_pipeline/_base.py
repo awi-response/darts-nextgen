@@ -48,15 +48,6 @@ class _BasePipeline:
     use_quality_mask: bool = False
     write_model_outputs: bool = False
 
-    def __post_init__(self):
-        from darts.utils.cuda import debug_info
-
-        debug_info()
-
-        from darts.utils.earthengine import init_ee
-
-        init_ee(self.ee_project, self.ee_use_highvolume)
-
     def _path_generator(self) -> Generator[tuple[Path, Path]]:
         raise NotImplementedError
 
@@ -67,6 +58,14 @@ class _BasePipeline:
         raise NotImplementedError
 
     def run(self):
+        from darts.utils.cuda import debug_info
+
+        debug_info()
+
+        from darts.utils.earthengine import init_ee
+
+        init_ee(self.ee_project, self.ee_use_highvolume)
+
         import torch
         from darts_ensemble.ensemble_v1 import EnsembleV1
         from darts_export.inference import InferenceResultWriter
