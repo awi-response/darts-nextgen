@@ -73,11 +73,20 @@ def debug_info():
     try:
         import numba.cuda
 
-        logger.debug(f"Numba CUDA runtime: {numba.cuda.runtime.get_version()}")
-        logger.debug(f"Numba CUDA is available: {numba.cuda.is_available()}")
-        logger.debug(f"Numba CUDA has supported devices: {numba.cuda.detect()}")
+        cuda_available = numba.cuda.is_available()
+        logger.debug(f"Numba CUDA is available: {cuda_available}")
+        if cuda_available:
+            logger.debug(f"Numba CUDA runtime: {numba.cuda.runtime.get_version()}")
+            # logger.debug(f"Numba CUDA has supported devices: {numba.cuda.detect()}")
     except ImportError:
         logger.debug("Module 'numba.cuda' not found, darts is probably installed without CUDA support.")
+
+    try:
+        import cucim
+
+        logger.debug(f"Cucim version: {cucim.__version__}")
+    except ImportError:
+        logger.debug("Module 'cucim' not found, darts is probably installed without CUDA support.")
 
 
 def decide_device(device: Literal["cuda", "cpu", "auto"] | int | None) -> Literal["cuda", "cpu"] | int:
