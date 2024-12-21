@@ -31,6 +31,7 @@ class LegacyNativePlanetPipelineFast(_FastMixin, _PlanetMixin, _BasePipeline):
             If "cuda" take the first device (0), if int take the specified device.
             If "auto" try to automatically select a free GPU (<50% memory usage).
             Defaults to "cuda" if available, else "cpu".
+        dask_worker (int, optional): The number of Dask workers to use. Defaults to min(16, mp.cpu_count() - 1).
         ee_project (str, optional): The Earth Engine project ID or number to use. May be omitted if
             project is defined within persistent API credentials obtained via `earthengine authenticate`.
         ee_use_highvolume (bool, optional): Whether to use the high volume server (https://earthengine-highvolume.googleapis.com).

@@ -15,7 +15,7 @@ from darts.legacy_pipeline import (
     run_native_sentinel2_pipeline,
     run_native_sentinel2_pipeline_fast,
 )
-from darts.training import convert_lightning_checkpoint, preprocess_s2_train_data, sweep_smp, train_smp
+from darts.legacy_training import convert_lightning_checkpoint, preprocess_s2_train_data, sweep_smp, train_smp
 from darts.utils.config import ConfigParser
 from darts.utils.logging import LoggingManager
 
