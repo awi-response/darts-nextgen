@@ -39,13 +39,14 @@ class LoggingManagerSingleton:
         logging.getLogger("darts").setLevel(DARTS_LEVEL)
         logging.captureWarnings(True)
 
-    def add_logging_handlers(self, command: str, console: Console, log_dir: Path):
+    def add_logging_handlers(self, command: str, console: Console, log_dir: Path, tracebacks_show_locals: bool = False):
         """Add logging handlers (rich-console and file) to the application.
 
         Args:
             command (str): The command that is run.
             console (Console): The rich console to log everything to.
             log_dir (Path): The directory to save the logs to.
+            tracebacks_show_locals (bool): Whether to show local variables in tracebacks.
 
         """
         import distributed
@@ -66,7 +67,7 @@ class LoggingManagerSingleton:
             console=console,
             rich_tracebacks=True,
             tracebacks_suppress=[cyclopts, L, torch, torch.utils.data, xr, distributed],
-            tracebacks_show_locals=True,
+            tracebacks_show_locals=tracebacks_show_locals,
         )
         rich_handler.setFormatter(
             logging.Formatter(

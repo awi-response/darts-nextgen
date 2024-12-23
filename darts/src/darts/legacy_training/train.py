@@ -2,7 +2,9 @@
 
 import logging
 import time
+from collections import defaultdict
 from pathlib import Path
+from statistics import mean
 
 import toml
 import yaml
@@ -15,6 +17,7 @@ def train_smp(
     # Data config
     train_data_dir: Path,
     artifact_dir: Path = Path("lightning_logs"),
+    current_fold: int = 0,
     # Hyperparameters
     model_arch: str = "Unet",
     model_encoder: str = "dpn107",
@@ -56,6 +59,7 @@ def train_smp(
         train_data_dir (Path): Path to the training data directory.
         artifact_dir (Path, optional): Path to the training output directory.
             Will contain checkpoints and metrics. Defaults to Path("lightning_logs").
+        current_fold (int, optional): The current fold to train on. Must be in [0, 4]. Defaults to 0.
         model_arch (str, optional): Model architecture to use. Defaults to "Unet".
         model_encoder (str, optional): Encoder to use. Defaults to "dpn107".
         model_encoder_weights (str | None, optional): Path to the encoder weights. Defaults to None.
@@ -78,6 +82,9 @@ def train_smp(
         wandb_entity (str | None, optional): Weights and Biases Entity. Defaults to None.
         wandb_project (str | None, optional): Weights and Biases Project. Defaults to None.
         run_name (str | None, optional): Name of this run, as a further grouping method for logs etc. Defaults to None.
+
+    Returns:
+        Trainer: The trainer object used for training.
 
     """
     import lightning as L  # noqa: N812
@@ -105,6 +112,7 @@ def train_smp(
     lovely_tensors.monkey_patch()
 
     torch.set_float32_matmul_precision("medium")
+    torch.manual_seed(42)
 
     preprocess_config = toml.load(train_data_dir / "config.toml")["darts"]
 
@@ -121,8 +129,21 @@ def train_smp(
     )
 
     # Data and model
-    datamodule = DartsDataModule(train_data_dir, batch_size, augment, num_workers)
-    model = SMPSegmenter(config, learning_rate, gamma, focal_loss_alpha, focal_loss_gamma, plot_every_n_val_epochs)
+    datamodule = DartsDataModule(
+        data_dir=train_data_dir / "cross-val",
+        batch_size=batch_size,
+        current_fold=current_fold,
+        augment=augment,
+        num_workers=num_workers,
+    )
+    model = SMPSegmenter(
+        config=config,
+        learning_rate=learning_rate,
+        gamma=gamma,
+        focal_loss_alpha=focal_loss_alpha,
+        focal_loss_gamma=focal_loss_gamma,
+        plot_every_n_val_epochs=plot_every_n_val_epochs,
+    )
 
     # Loggers
     trainer_loggers = [
@@ -166,13 +187,20 @@ def train_smp(
     tick_fend = time.perf_counter()
     logger.info(f"Finished training '{run_name}' in {tick_fend - tick_fstart:.2f}s.")
 
+    if wandb_entity and wandb_project:
+        wandb_logger.finalize("success")
+        wandb_logger.experiment.finish(exit_code=0)
+        logger.debug(f"Finalized WandB logging for '{run_name}'")
 
-def sweep_smp(
+    return trainer
+
+
+def wandb_sweep_smp(
     *,
     # Data and sweep config
     train_data_dir: Path,
     sweep_config: Path,
-    sweep_count: int = 10,
+    n_trials: int = 10,
     sweep_id: str | None = None,
     artifact_dir: Path = Path("lightning_logs"),
     # Epoch and Logging config
@@ -186,7 +214,7 @@ def sweep_smp(
     wandb_entity: str | None = None,
     wandb_project: str | None = None,
 ):
-    """Create a sweep and run it on specified cuda devices, or continue an existing sweep.
+    """Create a sweep with wandb and run it on the specified cuda device, or continue an existing sweep.
 
     If `sweep_id` is None, a new sweep will be created. Otherwise, the sweep with the given ID will be continued.
 
@@ -200,10 +228,12 @@ def sweep_smp(
             Since plotting is quite costly, you can reduce the frequency. Works similar like early stopping.
             In epochs, this would be `check_val_every_n_epoch * plot_every_n_val_epochs`.
 
+    This will NOT use cross-validation. For cross-validation, use `optuna_sweep_smp`.
+
     Example:
         In one terminal, start a sweep:
         ```sh
-            $ rye run darts sweep_smp --config-file /path/to/sweep-config.toml
+            $ rye run darts wandb-sweep-smp --config-file /path/to/sweep-config.toml
             ...  # Many logs
             Created sweep with ID 123456789
             ... # More logs from spawned agent
@@ -211,7 +241,7 @@ def sweep_smp(
 
         In another terminal, start an a second agent:
         ```sh
-            $ rye run darts sweep_smp --sweep-id 123456789
+            $ rye run darts wandb-sweep-smp --sweep-id 123456789
             ...
         ```
 
@@ -221,7 +251,7 @@ def sweep_smp(
             Hyperparameters must contain the following fields: `model_arch`, `model_encoder`, `augment`, `gamma`,
             `batch_size`.
             Please read https://docs.wandb.ai/guides/sweeps/sweep-config-keys for more information.
-        sweep_count (int, optional): Number of runs to execute. Defaults to 10.
+        n_trials (int, optional): Number of runs to execute. Defaults to 10.
         sweep_id (str | None, optional): The ID of the sweep. If None, a new sweep will be created. Defaults to None.
         artifact_dir (Path, optional): Path to the training output directory.
             Will contain checkpoints and metrics. Defaults to Path("lightning_logs").
@@ -282,6 +312,7 @@ def sweep_smp(
             # Data config
             train_data_dir=train_data_dir,
             artifact_dir=artifact_dir,
+            current_fold=0,
             # Hyperparameters
             model_arch=model_arch,
             model_encoder=model_encoder,
@@ -309,4 +340,153 @@ def sweep_smp(
         return
 
     logger.info("Starting a default sweep agent")
-    wandb.agent(sweep_id, function=run, count=sweep_count, project=wandb_project, entity=wandb_entity)
+    wandb.agent(sweep_id, function=run, count=n_trials, project=wandb_project, entity=wandb_entity)
+
+
+def optuna_sweep_smp(
+    *,
+    # Data and sweep config
+    train_data_dir: Path,
+    sweep_config: Path,
+    n_trials: int = 10,
+    sweep_db: str | None = None,
+    sweep_id: str | None = None,
+    artifact_dir: Path = Path("lightning_logs"),
+    # Epoch and Logging config
+    max_epochs: int = 100,
+    log_every_n_steps: int = 10,
+    check_val_every_n_epoch: int = 3,
+    plot_every_n_val_epochs: int = 5,
+    # Device and Manager config
+    num_workers: int = 0,
+    device: int | str | None = None,
+    wandb_entity: str | None = None,
+    wandb_project: str | None = None,
+):
+    """Create an optuna sweep and run it on the specified cuda device, or continue an existing sweep.
+
+    If `sweep_id` already exists in `sweep_db`, the sweep will be continued. Otherwise, a new sweep will be created.
+
+    If a `cuda_device` is specified, run an agent on this device. If None, do nothing.
+
+    You can specify the frequency on how often logs will be written and validation will be performed.
+        - `log_every_n_steps` specifies how often train-logs will be written. This does not affect validation.
+        - `check_val_every_n_epoch` specifies how often validation will be performed.
+            This will also affect early stopping.
+        - `plot_every_n_val_epochs` specifies how often validation samples will be plotted.
+            Since plotting is quite costly, you can reduce the frequency. Works similar like early stopping.
+            In epochs, this would be `check_val_every_n_epoch * plot_every_n_val_epochs`.
+
+    This will use cross-validation.
+
+    Example:
+        In one terminal, start a sweep:
+        ```sh
+            $ rye run darts sweep-smp --config-file /path/to/sweep-config.toml
+            ...  # Many logs
+            Created sweep with ID 123456789
+            ... # More logs from spawned agent
+        ```
+
+        In another terminal, start an a second agent:
+        ```sh
+            $ rye run darts sweep-smp --sweep-id 123456789
+            ...
+        ```
+
+    Args:
+        train_data_dir (Path): Path to the training data directory.
+        sweep_config (Path): Path to the sweep yaml configuration file. Must contain a valid wandb sweep configuration.
+            Hyperparameters must contain the following fields: `model_arch`, `model_encoder`, `augment`, `gamma`,
+            `batch_size`.
+            Please read https://docs.wandb.ai/guides/sweeps/sweep-config-keys for more information.
+        n_trials (int, optional): Number of runs to execute. Defaults to 10.
+        sweep_db (str | None, optional): Path to the optuna database. If None, a new database will be created.
+        sweep_id (str | None, optional): The ID of the sweep. If None, a new sweep will be created. Defaults to None.
+        artifact_dir (Path, optional): Path to the training output directory.
+            Will contain checkpoints and metrics. Defaults to Path("lightning_logs").
+        max_epochs (int, optional): Maximum number of epochs to train. Defaults to 100.
+        log_every_n_steps (int, optional): Log every n steps. Defaults to 10.
+        check_val_every_n_epoch (int, optional): Check validation every n epochs. Defaults to 3.
+        plot_every_n_val_epochs (int, optional): Plot validation samples every n epochs. Defaults to 5.
+        num_workers (int, optional): Number of Dataloader workers. Defaults to 0.
+        device (int | str | None, optional): The device to run the model on. Defaults to None.
+        wandb_entity (str | None, optional): Weights and Biases Entity. Defaults to None.
+        wandb_project (str | None, optional): Weights and Biases Project. Defaults to None.
+        run_name (str | None, optional): Name of this run, as a further grouping method for logs etc. Defaults to None.
+
+    """
+    import optuna
+
+    from darts.legacy_training.util import suggest_optuna_params_from_wandb_config
+
+    with sweep_config.open("r") as f:
+        sweep_configuration = yaml.safe_load(f)
+
+    logger.debug(f"Loaded sweep configuration from {sweep_config.resolve()}:\n{sweep_configuration}")
+
+    def objective(trial):
+        hparams = suggest_optuna_params_from_wandb_config(trial, sweep_configuration)
+        logger.info(f"Running trial with parameters: {hparams}")
+
+        # We set the default weights to None, to be able to use different architectures
+        model_encoder_weights = None
+        # We set early stopping to None, because wandb will handle the early stopping
+        early_stopping_patience = None
+        learning_rate = hparams["learning_rate"]
+        gamma = hparams["gamma"]
+        batch_size = hparams["batch_size"]
+        model_arch = hparams["model_arch"]
+        model_encoder = hparams["model_encoder"]
+        augment = hparams["augment"]
+
+        crossval_scores = defaultdict(list)
+        for current_fold in range(5):
+            logger.info(f"Running cross-validation fold {current_fold}")
+            trainer = train_smp(
+                # Data config
+                train_data_dir=train_data_dir,
+                artifact_dir=artifact_dir,
+                current_fold=current_fold,
+                # Hyperparameters
+                model_arch=model_arch,
+                model_encoder=model_encoder,
+                model_encoder_weights=model_encoder_weights,
+                augment=augment,
+                learning_rate=learning_rate,
+                gamma=gamma,
+                batch_size=batch_size,
+                # Epoch and Logging config
+                early_stopping_patience=early_stopping_patience,
+                max_epochs=max_epochs,
+                log_every_n_steps=log_every_n_steps,
+                check_val_every_n_epoch=check_val_every_n_epoch,
+                plot_every_n_val_epochs=plot_every_n_val_epochs,
+                # Device and Manager config
+                num_workers=num_workers,
+                device=device,
+                wandb_entity=wandb_entity,
+                wandb_project=wandb_project,
+                run_name=f"{sweep_id}_t{trial.number}f{current_fold}",
+            )
+            for metric, value in trainer.callback_metrics.items():
+                crossval_scores[metric].append(value.item())
+
+        logger.debug(f"Cross-validation scores: {crossval_scores}")
+        crossval_jaccard = mean(crossval_scores["val/JaccardIndex"])
+        crossval_recall = mean(crossval_scores["val/Recall"])
+        return crossval_jaccard, crossval_recall
+
+    study = optuna.create_study(
+        storage=sweep_db,
+        study_name=sweep_id,
+        directions=["maximize", "maximize"],
+        load_if_exists=True,
+    )
+
+    if device is None:
+        logger.info("No device specified, closing script...")
+        return
+
+    logger.info("Starting optimizing")
+    study.optimize(objective, n_trials=n_trials)

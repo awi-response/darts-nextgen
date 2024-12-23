@@ -11,7 +11,8 @@ from typing import Literal
 import albumentations as A  # noqa: N812
 import lightning as L  # noqa: N812
 import torch
-from torch.utils.data import DataLoader, Dataset, random_split
+from sklearn.model_selection import KFold
+from torch.utils.data import DataLoader, Dataset, Subset
 
 logger = logging.getLogger(__name__.replace("darts_", "darts."))
 
@@ -120,6 +121,7 @@ class DartsDataModule(L.LightningDataModule):
         self,
         data_dir: Path,
         batch_size: int,
+        current_fold: int = 0,
         augment: bool = True,
         num_workers: int = 0,
         in_memory: bool = False,
@@ -128,6 +130,7 @@ class DartsDataModule(L.LightningDataModule):
         self.save_hyperparameters()
         self.data_dir = data_dir
         self.batch_size = batch_size
+        self.current_fold = current_fold
         self.augment = augment
         self.num_workers = num_workers
         self.in_memory = in_memory
@@ -138,15 +141,14 @@ class DartsDataModule(L.LightningDataModule):
             if not self.in_memory
             else DartsDatasetInMemory(self.data_dir, self.augment)
         )
-        splits = [0.8, 0.1, 0.1]
-        generator = torch.Generator().manual_seed(42)
-        self.train, self.val, self.test = random_split(dataset, splits, generator)
+
+        kf = KFold(n_splits=5)
+        train_idx, val_idx = list(kf.split(dataset))[self.current_fold]
+        self.train = Subset(dataset, train_idx)
+        self.val = Subset(dataset, val_idx)
 
     def train_dataloader(self):
         return DataLoader(self.train, batch_size=self.batch_size, num_workers=self.num_workers, shuffle=True)
 
     def val_dataloader(self):
         return DataLoader(self.val, batch_size=self.batch_size, num_workers=self.num_workers)
-
-    def test_dataloader(self):
-        return DataLoader(self.test, batch_size=self.batch_size, num_workers=self.num_workers)

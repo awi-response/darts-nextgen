@@ -7,13 +7,11 @@ from math import ceil, sqrt
 from pathlib import Path
 from typing import Literal
 
-import toml
-
 logger = logging.getLogger(__name__)
 
 
 def split_dataset_paths(
-    s2_paths: list[Path], train_data_dir: Path, test_val_split: float, test_regions: list[str] | None
+    s2_paths: list[Path], train_data_dir: Path, test_val_split: float, test_regions: list[str] | None, admin_dir: Path
 ):
     """Split the dataset into a cross-val, a val-test and a test dataset.
 
@@ -33,6 +31,7 @@ def split_dataset_paths(
     """
     # Import here to avoid long loading times when running other commands
     import geopandas as gpd
+    from darts_acquisition.admin import download_admin_files
     from darts_acquisition.s2 import parse_s2_tile_id
     from sklearn.model_selection import train_test_split
 
@@ -45,11 +44,32 @@ def split_dataset_paths(
     test_paths: list[Path] = []
     training_paths: list[Path] = []
     if test_regions:
+        # Download admin files if they do not exist
+        admin1_fpath = admin_dir / "geoBoundariesCGAZ_ADM1.shp"
+        admin2_fpath = admin_dir / "geoBoundariesCGAZ_ADM2.shp"
+
+        if not admin1_fpath.exists() or not admin2_fpath.exists():
+            download_admin_files(admin_dir)
+
+        # Load the admin files
+        admin1 = gpd.read_file(admin1_fpath)
+        admin2 = gpd.read_file(admin2_fpath)
+
+        # Get the regions from the admin files
+        test_region_geometries_adm1 = admin1[admin1["shapeName"].isin(test_regions)]
+        test_region_geometries_adm2 = admin2[admin2["shapeName"].isin(test_regions)]
+
+        logger.debug(f"Found {len(test_region_geometries_adm1)} admin1-regions in {admin1_fpath}")
+        logger.debug(f"Found {len(test_region_geometries_adm2)} admin2-regions in {admin2_fpath}")
+
         for fpath in s2_paths:
             _, s2_tile_id, _ = parse_s2_tile_id(fpath)
-            labels = gpd.read_file(fpath / f"{s2_tile_id}.shp")
-            # If any of the regions is in the test region, add to the test set
-            if labels["region"].isin(test_regions).any():
+            labels = gpd.read_file(fpath / f"{s2_tile_id}.shp").to_crs("EPSG:4326")
+            # Check if any label is intersecting with the test regions
+            adm1_intersects = labels.overlay(test_region_geometries_adm1, how="intersection")
+            adm2_intersects = labels.overlay(test_region_geometries_adm2, how="intersection")
+
+            if (len(adm1_intersects.index) > 0) or (len(adm2_intersects.index) > 0):
                 test_paths.append(fpath)
             else:
                 training_paths.append(fpath)
@@ -92,6 +112,7 @@ def preprocess_s2_train_data(
     train_data_dir: Path,
     arcticdem_dir: Path,
     tcvis_dir: Path,
+    admin_dir: Path,
     preprocess_cache: Path | None = None,
     device: Literal["cuda", "cpu", "auto"] | int | None = None,
     dask_worker: int = min(16, mp.cpu_count() - 1),
@@ -116,6 +137,7 @@ def preprocess_s2_train_data(
         arcticdem_dir (Path): The directory containing the ArcticDEM data (the datacube and the extent files).
             Will be created and downloaded if it does not exist.
         tcvis_dir (Path): The directory containing the TCVis data.
+        admin_dir (Path): The directory containing the admin files.
         preprocess_cache (Path, optional): The directory to store the preprocessed data. Defaults to None.
         device (Literal["cuda", "cpu"] | int, optional): The device to run the model on.
             If "cuda" take the first device (0), if int take the specified device.
@@ -144,6 +166,7 @@ def preprocess_s2_train_data(
     # Import here to avoid long loading times when running other commands
     import geopandas as gpd
     import pandas as pd
+    import toml
     import torch
     import xarray as xr
     from darts_acquisition.arcticdem import load_arcticdem_tile
@@ -189,13 +212,18 @@ def preprocess_s2_train_data(
 
         # Find all Sentinel 2 scenes and split into train+val (cross-val), val-test (variance) and test (region)
         n_patches = 0
+        n_patches_by_mode = {"cross-val": 0, "val-test": 0, "test": 0}
         joint_lables = []
         s2_paths = sorted(sentinel2_dir.glob("*/"))
         logger.info(f"Found {len(s2_paths)} Sentinel 2 scenes in {sentinel2_dir}")
-        path_gen = split_dataset_paths(s2_paths, train_data_dir, test_val_split, test_regions)
+        path_gen = split_dataset_paths(s2_paths, train_data_dir, test_val_split, test_regions, admin_dir)
         for i, (fpath, output_dir, mode) in enumerate(path_gen):
             try:
                 _, s2_tile_id, tile_id = parse_s2_tile_id(fpath)
+
+                logger.debug(
+                    f"Processing sample {i + 1} of {len(s2_paths)} '{fpath.resolve()}' ({tile_id=}) to split '{mode}'"
+                )
 
                 # Check for a cached preprocessed file
                 if preprocess_cache and (preprocess_cache / f"{tile_id}.nc").exists():
@@ -251,14 +279,15 @@ def preprocess_s2_train_data(
                 outdir_y = output_dir / "y"
                 outdir_x.mkdir(exist_ok=True, parents=True)
                 outdir_y.mkdir(exist_ok=True, parents=True)
-                n_patches = 0
+                patch_id = None
                 for patch_id, (x, y) in enumerate(gen):
                     torch.save(x, outdir_x / f"{tile_id}_pid{patch_id}.pt")
                     torch.save(y, outdir_y / f"{tile_id}_pid{patch_id}.pt")
                     n_patches += 1
+                    n_patches_by_mode[mode] += 1
                 if n_patches > 0 and len(labels) > 0:
                     labels["mode"] = mode
-                    joint_lables.append(labels)
+                    joint_lables.append(labels.to_crs("EPSG:3413"))
 
                 logger.info(
                     f"Processed sample {i + 1} of {len(s2_paths)} '{fpath.resolve()}'"
@@ -300,4 +329,4 @@ def preprocess_s2_train_data(
     with open(train_data_dir / "config.toml", "w") as f:
         toml.dump(config, f)
 
-    logger.info(f"Saved {n_patches} patches to {train_data_dir}")
+    logger.info(f"Saved {n_patches} ({n_patches_by_mode}) patches to {train_data_dir}")
