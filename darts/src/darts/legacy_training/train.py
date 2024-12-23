@@ -307,6 +307,8 @@ def wandb_sweep_smp(
         model_arch = wandb.config["model_arch"]
         model_encoder = wandb.config["model_encoder"]
         augment = wandb.config["augment"]
+        focal_loss_alpha = wandb.config["focal_loss_alpha"]
+        focal_loss_gamma = wandb.config["focal_loss_gamma"]
 
         train_smp(
             # Data config
@@ -320,6 +322,8 @@ def wandb_sweep_smp(
             augment=augment,
             learning_rate=learning_rate,
             gamma=gamma,
+            focal_loss_alpha=focal_loss_alpha,
+            focal_loss_gamma=focal_loss_gamma,
             batch_size=batch_size,
             # Epoch and Logging config
             early_stopping_patience=early_stopping_patience,
@@ -435,6 +439,8 @@ def optuna_sweep_smp(
         early_stopping_patience = None
         learning_rate = hparams["learning_rate"]
         gamma = hparams["gamma"]
+        focal_loss_alpha = hparams["focal_loss_alpha"]
+        focal_loss_gamma = hparams["focal_loss_gamma"]
         batch_size = hparams["batch_size"]
         model_arch = hparams["model_arch"]
         model_encoder = hparams["model_encoder"]
@@ -455,6 +461,8 @@ def optuna_sweep_smp(
                 augment=augment,
                 learning_rate=learning_rate,
                 gamma=gamma,
+                focal_loss_alpha=focal_loss_alpha,
+                focal_loss_gamma=focal_loss_gamma,
                 batch_size=batch_size,
                 # Epoch and Logging config
                 early_stopping_patience=early_stopping_patience,

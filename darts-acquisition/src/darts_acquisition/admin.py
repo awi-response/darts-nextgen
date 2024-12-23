@@ -8,7 +8,7 @@ from pathlib import Path
 
 import requests
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger(__name__.replace("darts_", "darts."))
 
 
 def _download_zip(url: str, admin_dir: Path):
