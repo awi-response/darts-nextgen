@@ -131,12 +131,16 @@ class SMPSegmenter(L.LightningModule):
 
         # Create figures for the samples (plot at maximum 24)
         is_last_batch = self.trainer.num_val_batches == (batch_idx + 1)
-        max_batch_idx = 24 // x.shape[0]  # Does only work if NOT last batch, since last batch may be smaller
+        max_batch_idx = (24 // x.shape[0]) - 1  # Does only work if NOT last batch, since last batch may be smaller
         # If num_val_batches is 1 then this batch is the last one, but we still want to log it. despite its size
-        # Does not work well for batch-sizes larger than 24!
-        should_log_batch = (max_batch_idx >= batch_idx and not is_last_batch) or self.trainer.num_val_batches == 1
+        # Will plot the first 24 samples of the first batch if batch-size is larger than 24
+        should_log_batch = (
+            (max_batch_idx >= batch_idx and not is_last_batch)
+            or self.trainer.num_val_batches == 1
+            or (max_batch_idx == -1 and batch_idx == 0)
+        )
         if self.is_val_plot_epoch and should_log_batch:
-            for i in range(x.shape[0]):
+            for i in range(min(x.shape[0], 24)):
                 fig, _ = plot_sample(x[i], y[i], y_hat[i], self.hparams.config["input_combination"])
                 for logger in self.loggers:
                     if isinstance(logger, CSVLogger):
