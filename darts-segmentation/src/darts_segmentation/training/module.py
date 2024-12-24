@@ -129,8 +129,13 @@ class SMPSegmenter(L.LightningModule):
         self.val_prc.update(y_hat, y)
         self.val_cmx.update(y_hat, y)
 
-        # Create figures for the samples
-        if self.is_val_plot_epoch and batch_idx % 2 == 0:
+        # Create figures for the samples (plot at maximum 24)
+        is_last_batch = self.trainer.num_val_batches == (batch_idx + 1)
+        max_batch_idx = 24 // x.shape[0]  # Does only work if NOT last batch, since last batch may be smaller
+        # If num_val_batches is 1 then this batch is the last one, but we still want to log it. despite its size
+        # Does not work well for batch-sizes larger than 24!
+        should_log_batch = (max_batch_idx >= batch_idx and not is_last_batch) or self.trainer.num_val_batches == 1
+        if self.is_val_plot_epoch and should_log_batch:
             for i in range(x.shape[0]):
                 fig, _ = plot_sample(x[i], y[i], y_hat[i], self.hparams.config["input_combination"])
                 for logger in self.loggers:
@@ -140,15 +145,15 @@ class SMPSegmenter(L.LightningModule):
                         fig.savefig(fig_dir / f"sample_{self.global_step}_{batch_idx}_{i}.png")
                     if isinstance(logger, WandbLogger):
                         wandb_run: Run = logger.experiment
-                        wandb_run.log({f"val-samples/sample_{batch_idx}_{i}": wandb.Image(fig)}, step=self.global_step)
+                        # We don't commit the log yet, so that the step is increased with the next lightning log
+                        # Which happens at the end of the validation epoch
+                        wandb_run.log({f"val-samples/sample_{batch_idx}_{i}": wandb.Image(fig)}, commit=False)
                 fig.clear()
                 plt.close(fig)
 
         return loss
 
     def on_validation_epoch_end(self):  # noqa: D102
-        self.log_dict(self.val_metrics.compute())
-
         # Only do this every self.plot_every_n_val_epochs epochs
         if self.is_val_plot_epoch:
             self.val_cmx.compute()
@@ -170,14 +175,17 @@ class SMPSegmenter(L.LightningModule):
                     fig_prc.savefig(fig_dir / f"prc_{self.global_step}.png")
                 if isinstance(logger, WandbLogger):
                     wandb_run: Run = logger.experiment
-                    wandb_run.log({"val/cmx": wandb.Image(fig_cmx)}, step=self.global_step)
-                    wandb_run.log({"val/roc": wandb.Image(fig_roc)}, step=self.global_step)
-                    wandb_run.log({"val/prc": wandb.Image(fig_prc)}, step=self.global_step)
+                    wandb_run.log({"val/cmx": wandb.Image(fig_cmx)}, commit=False)
+                    wandb_run.log({"val/roc": wandb.Image(fig_roc)}, commit=False)
+                    wandb_run.log({"val/prc": wandb.Image(fig_prc)}, commit=False)
 
             fig_cmx.clear()
             fig_roc.clear()
             fig_prc.clear()
             plt.close("all")
+
+        # This will also commit the accumulated plots
+        self.log_dict(self.val_metrics.compute())
 
         self.val_metrics.reset()
         self.val_roc.reset()
