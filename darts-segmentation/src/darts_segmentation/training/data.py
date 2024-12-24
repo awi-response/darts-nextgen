@@ -12,21 +12,24 @@ import albumentations as A  # noqa: N812
 import lightning as L  # noqa: N812
 import torch
 from sklearn.model_selection import KFold
-from torch.utils.data import DataLoader, Dataset, Subset
+from torch.utils.data import DataLoader, Dataset
 
 logger = logging.getLogger(__name__.replace("darts_", "darts."))
 
 
 class DartsDataset(Dataset):
-    def __init__(self, data_dir: Path | str, augment: bool):
+    def __init__(self, data_dir: Path | str, augment: bool, indices: list[int] | None = None):
         if isinstance(data_dir, str):
             data_dir = Path(data_dir)
+
         self.x_files = sorted((data_dir / "x").glob("*.pt"))
         self.y_files = sorted((data_dir / "y").glob("*.pt"))
-
         assert len(self.x_files) == len(
             self.y_files
         ), f"Dataset corrupted! Got {len(self.x_files)=} and {len(self.y_files)=}!"
+        if indices is not None:
+            self.x_files = [self.x_files[i] for i in indices]
+            self.y_files = [self.y_files[i] for i in indices]
 
         self.transform = (
             A.Compose(
@@ -65,11 +68,16 @@ class DartsDataset(Dataset):
 
 
 class DartsDatasetInMemory(Dataset):
-    def __init__(self, data_dir: Path | str, augment: bool):
+    def __init__(self, data_dir: Path | str, augment: bool, indices: list[int] | None = None):
         if isinstance(data_dir, str):
             data_dir = Path(data_dir)
+
         x_files = sorted((data_dir / "x").glob("*.pt"))
         y_files = sorted((data_dir / "y").glob("*.pt"))
+        assert len(x_files) == len(y_files), f"Dataset corrupted! Got {len(x_files)=} and {len(y_files)=}!"
+        if indices is not None:
+            x_files = [x_files[i] for i in indices]
+            y_files = [y_files[i] for i in indices]
 
         self.x = []
         self.y = []
@@ -81,8 +89,6 @@ class DartsDatasetInMemory(Dataset):
             y = torch.load(yfile).int().numpy()
             self.x.append(x)
             self.y.append(y)
-
-        assert len(x_files) == len(y_files), f"Dataset corrupted! Got {len(x_files)=} and {len(y_files)=}!"
 
         self.transform = (
             A.Compose(
@@ -135,18 +141,16 @@ class DartsDataModule(L.LightningDataModule):
         self.num_workers = num_workers
         self.in_memory = in_memory
 
-    def setup(self, stage: Literal["fit", "validate", "test", "predict"] | None = None):
-        dataset = (
-            DartsDataset(self.data_dir, self.augment)
-            if not self.in_memory
-            else DartsDatasetInMemory(self.data_dir, self.augment)
-        )
+        data_dir = Path(data_dir)
+        self.nsamples = len(sorted((data_dir / "x").glob("*.pt")))
 
+    def setup(self, stage: Literal["fit", "validate", "test", "predict"] | None = None):
         kf = KFold(n_splits=5)
-        train_idx, val_idx = list(kf.split(dataset))[self.current_fold]
-        self.train = Subset(dataset, train_idx)
-        self.val = Subset(dataset, val_idx)
-        self.val.dataset.transform = None
+        train_idx, val_idx = list(kf.split(range(self.nsamples)))[self.current_fold]
+
+        dsclass = DartsDatasetInMemory if self.in_memory else DartsDataset
+        self.train = dsclass(self.data_dir, self.augment, train_idx)
+        self.val = dsclass(self.data_dir, False, val_idx)
 
     def train_dataloader(self):
         return DataLoader(self.train, batch_size=self.batch_size, num_workers=self.num_workers, shuffle=True)
