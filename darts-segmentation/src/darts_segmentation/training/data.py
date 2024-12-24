@@ -146,6 +146,7 @@ class DartsDataModule(L.LightningDataModule):
         train_idx, val_idx = list(kf.split(dataset))[self.current_fold]
         self.train = Subset(dataset, train_idx)
         self.val = Subset(dataset, val_idx)
+        self.val.dataset.transform = False
 
     def train_dataloader(self):
         return DataLoader(self.train, batch_size=self.batch_size, num_workers=self.num_workers, shuffle=True)
