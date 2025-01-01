@@ -1,13 +1,20 @@
 """Functions to prepare the training data for the segmentation model training."""
 
+import logging
 from collections.abc import Generator
+from typing import Literal
 
 import geopandas as gpd
 import torch
 import xarray as xr
+
+# TODO: move erode_mask to darts_utils, since uasge is not limited to prepare_export
+from darts_postprocessing.prepare_export import erode_mask
 from geocube.api.core import make_geocube
 
 from darts_segmentation.utils import create_patches
+
+logger = logging.getLogger(__name__.replace("darts_", "darts."))
 
 
 def create_training_patches(
@@ -17,8 +24,10 @@ def create_training_patches(
     norm_factors: dict[str, float],
     patch_size: int,
     overlap: int,
-    include_allzero: bool,
-    include_nan_edges: bool,
+    exclude_nopositive: bool,
+    exclude_nan: bool,
+    device: Literal["cuda", "cpu"] | int,
+    mask_erosion_size: int,
 ) -> Generator[tuple[torch.tensor, torch.tensor]]:
     """Create training patches from a tile and labels.
 
@@ -29,8 +38,10 @@ def create_training_patches(
         norm_factors (dict[str, float]): The normalization factors for the bands.
         patch_size (int): The size of the patches.
         overlap (int): The size of the overlap.
-        include_allzero (bool): Whether to include patches where the labels are all zero.
-        include_nan_edges (bool): Whether to include patches where the input data has nan values at the edges.
+        exclude_nopositive (bool): Whether to exclude patches where the labels do not contain positives.
+        exclude_nan (bool): Whether to exclude patches where the input data has nan values.
+        device (Literal["cuda", "cpu"] | int): The device to use for the erosion.
+        mask_erosion_size (int): The size of the disk to use for erosion.
 
     Yields:
         Generator[tuple[torch.tensor, torch.tensor]]: A tuple containing the input and the labels as pytorch tensors.
@@ -40,11 +51,20 @@ def create_training_patches(
         ValueError: If a band is not found in the preprocessed data.
 
     """
-    # Rasterize the labels
-    labels_rasterized = 1 - make_geocube(labels, measurements=["id"], like=tile).id.isnull()  # noqa: PD003
+    if len(labels) == 0 and exclude_nopositive:
+        logger.warning("No labels found in the labels GeoDataFrame. Skipping.")
+        return
 
-    # Filter out the nodata values
-    labels_rasterized = xr.where(tile["valid_data_mask"], labels_rasterized, 0)
+    # Rasterize the labels
+    if len(labels) > 0:
+        labels_rasterized = 1 - make_geocube(labels, measurements=["id"], like=tile).id.isnull()
+    else:
+        labels_rasterized = xr.zeros_like(tile["valid_data_mask"])
+
+    # Filter out the nodata values (class 2 -> invalid data)
+    mask = erode_mask(tile["valid_data_mask"], mask_erosion_size, device)
+    mask = tile["valid_data_mask"]
+    labels_rasterized = xr.where(mask, labels_rasterized, 2)
 
     # Normalize the bands and clip the values
     for band in bands:
@@ -83,13 +103,22 @@ def create_training_patches(
         x = tensor_patches[i]
         y = tensor_labels[i]
 
-        if not include_allzero and y.sum() == 0:
+        if exclude_nopositive and not (y == 1).any():
             continue
 
-        if not include_nan_edges and torch.isnan(x).any():
+        if exclude_nan and torch.isnan(x).any():
+            continue
+
+        # Skip where there are less than 10% visible pixel
+        if ((y != 2).sum() / y.numel()) < 0.1:
+            continue
+
+        # Skip patches where everything is nan
+        if torch.isnan(x).all():
             continue
 
         # Convert all nan values to 0
         x[torch.isnan(x)] = 0
 
+        logger.debug(f"Yielding patch {i} with\n\t{x=}\n\t{y=}")
         yield x, y

@@ -9,15 +9,21 @@ import cyclopts
 from rich.console import Console
 
 from darts import __version__
-from darts.native import (
+from darts.legacy_pipeline import (
     run_native_planet_pipeline,
     run_native_planet_pipeline_fast,
     run_native_sentinel2_pipeline,
     run_native_sentinel2_pipeline_fast,
 )
-from darts.training import preprocess_s2_train_data, train_smp
+from darts.legacy_training import (
+    convert_lightning_checkpoint,
+    optuna_sweep_smp,
+    preprocess_s2_train_data,
+    train_smp,
+    wandb_sweep_smp,
+)
 from darts.utils.config import ConfigParser
-from darts.utils.logging import add_logging_handlers, setup_logging
+from darts.utils.logging import LoggingManager
 
 root_file = Path(__file__).resolve()
 logger = logging.getLogger(__name__)
@@ -28,8 +34,8 @@ app = cyclopts.App(
     version=__version__,
     console=console,
     config=config_parser,
-    help_format="rich",
-    version_format="rich",
+    help_format="plaintext",
+    version_format="plaintext",
 )
 
 pipeline_group = cyclopts.Group.create_ordered("Pipeline Commands")
@@ -71,6 +77,9 @@ app.command(group=pipeline_group)(run_native_sentinel2_pipeline_fast)
 
 app.command(group=train_group)(preprocess_s2_train_data)
 app.command(group=train_group)(train_smp)
+app.command(group=train_group)(convert_lightning_checkpoint)
+app.command(group=train_group)(wandb_sweep_smp)
+app.command(group=train_group)(optuna_sweep_smp)
 
 
 # Custom wrapper for the create_arcticdem_vrt function, which dodges the loading of all the heavy modules
@@ -94,9 +103,10 @@ def launcher(  # noqa: D103
     *tokens: Annotated[str, cyclopts.Parameter(show=False, allow_leading_hyphen=True)],
     log_dir: Path = Path("logs"),
     config_file: Path = Path("config.toml"),
+    tracebacks_show_locals: bool = False,
 ):
     command, bound, _ = app.parse_args(tokens)
-    add_logging_handlers(command.__name__, console, log_dir)
+    LoggingManager.add_logging_handlers(command.__name__, console, log_dir, tracebacks_show_locals)
     logger.debug(f"Running on Python version {sys.version} from {__name__} ({root_file})")
     return command(*bound.args, **bound.kwargs)
 
@@ -104,7 +114,8 @@ def launcher(  # noqa: D103
 def start_app():
     """Wrapp to start the app."""
     try:
-        setup_logging()
+        # First time initialization of the logging manager
+        LoggingManager.setup_logging()
         app.meta()
     except KeyboardInterrupt:
         logger.info("Interrupted by user. Closing...")

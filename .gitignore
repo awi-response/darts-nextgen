@@ -37,3 +37,4 @@ requirements-dev.lock
 # Config files
 config.toml
 .env
+configs/

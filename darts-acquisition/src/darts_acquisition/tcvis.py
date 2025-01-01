@@ -1,6 +1,7 @@
 """Landsat Trends related Data Loading. Should be used temporary and maybe moved to the acquisition package."""
 
 import logging
+import multiprocessing as mp
 import time
 import warnings
 from pathlib import Path
@@ -42,6 +43,9 @@ DATA_VARS_ENCODING = {
     "tc_greenness": {"dtype": "uint8"},
     "tc_wetness": {"dtype": "uint8"},
 }
+
+# Lock for downloading the data
+download_lock = mp.Lock()
 
 
 def procedural_download_datacube(storage: zarr.storage.Store, geobox: GeoBox):
@@ -121,7 +125,7 @@ def procedural_download_datacube(storage: zarr.storage.Store, geobox: GeoBox):
         ds = ds.odc.crop(geobox_tile.extent)
 
         # Save original min-max values for each band for clipping later
-        clip_values = {band: (ds[band].min().values.item(), ds[band].max().values.item()) for band in ds.data_vars}  # noqa: PD011
+        clip_values = {band: (ds[band].min().values.item(), ds[band].max().values.item()) for band in ds.data_vars}
 
         # Interpolate missing values (there are very few, so we actually can interpolate them)
         ds.rio.write_crs(ds.attrs["crs"], inplace=True)
@@ -195,20 +199,22 @@ def load_tcvis(
 
     # Download the adjacent tiles (if necessary)
     reference_geobox = geobox.to_crs("epsg:4326", resolution=DATA_EXTENT.resolution.x).pad(buffer)
-    procedural_download_datacube(storage, reference_geobox)
+    with download_lock:
+        procedural_download_datacube(storage, reference_geobox)
 
     # Load the datacube and set the spatial_ref since it is set as a coordinate within the zarr format
-    tcvis_datacube = xr.open_zarr(storage, mask_and_scale=False).set_coords("spatial_ref")
+    chunks = None if persist else "auto"
+    tcvis_datacube = xr.open_zarr(storage, mask_and_scale=False, chunks=chunks).set_coords("spatial_ref")
 
     # Get an AOI slice of the datacube
-    tcvis_aoi = tcvis_datacube.odc.crop(reference_geobox.extent)
+    tcvis_aoi = tcvis_datacube.odc.crop(reference_geobox.extent, apply_mask=False)
 
-    # The following code would load the data from disk
+    # The following code would load the lazy zarr data from disk into memory
     if persist:
         tick_sload = time.perf_counter()
-        tcvis_aoi = tcvis_aoi.compute()
+        tcvis_aoi = tcvis_aoi.load()
         tick_eload = time.perf_counter()
-        logger.debug(f"ArcticDEM AOI loaded from disk in {tick_eload - tick_sload:.2f} seconds")
+        logger.debug(f"TCVIS AOI loaded from disk in {tick_eload - tick_sload:.2f} seconds")
 
     logger.info(
         f"TCVIS tile {'loaded' if persist else 'lazy-opened'} in {time.perf_counter() - tick_fstart:.2f} seconds"

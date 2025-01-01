@@ -2,6 +2,7 @@
 
 import io
 import logging
+import multiprocessing as mp
 import time
 import zipfile
 from pathlib import Path
@@ -65,6 +66,11 @@ DATA_VARS_ENCODING = {
     "datamask": {"dtype": "bool"},
     # "datamask": {"dtype": "bool", "_FillValue": False},
 }
+
+# Lock for downloading the data
+# This will block other processes from downloading or processing the data, until the current download is finished.
+# This may result in halting a tile-process for a while, even if it's data was already downloaded.
+download_lock = mp.Lock()
 
 
 def download_arcticdem_extent(dem_data_dir: Path):
@@ -173,10 +179,6 @@ def procedural_download_datacube(storage: zarr.storage.Store, tiles: gpd.GeoData
     arcticdem_datacube = xr.open_zarr(storage, mask_and_scale=False)
 
     loaded_tiles: list[str] = arcticdem_datacube.attrs.get("loaded_tiles", []).copy()
-    # TODO: Add another attribute called "loading_tiles" to keep track of the tiles that are currently being loaded
-    # This is necessary for parallel loading of the data
-    # Maybe it would be better to turn this into a class which is meant to be used as singleton and can store
-    # the loaded tiles as state
 
     # Collect all tiles which should be downloaded
     new_tiles = tiles[~tiles.dem_id.isin(loaded_tiles)]
@@ -270,14 +272,9 @@ def load_arcticdem_tile(
             Final dataset is NOT matched to the reference CRS and resolution.
 
     Warning:
-        1. This function is not thread-safe. Thread-safety might be added in the future.
-        2. Geobox must be in a meter based CRS.
+        Geobox must be in a meter based CRS.
 
     """
-    # TODO: Thread-safety concers:
-    # - How can we ensure that the same arcticdem tile is not downloaded twice at the same time?
-    # - How can we ensure that the extent is not downloaded twice at the same time?
-
     tick_fstart = time.perf_counter()
 
     datacube_fpath = data_dir / f"datacube_{resolution}m_v4.1.zarr"
@@ -305,8 +302,9 @@ def load_arcticdem_tile(
     # because of the network overhead, hence we use the extent file
     # Download the extent, download if the file does not exist
     extent_fpath = data_dir / f"ArcticDEM_Mosaic_Index_v4_1_{resolution}m.parquet"
-    if not extent_fpath.exists():
-        download_arcticdem_extent(data_dir)
+    with download_lock:
+        if not extent_fpath.exists():
+            download_arcticdem_extent(data_dir)
     extent = gpd.read_parquet(extent_fpath)
 
     # Add a buffer around the geobox to get the adjacent tiles
@@ -314,23 +312,25 @@ def load_arcticdem_tile(
     adjacent_tiles = extent[extent.intersects(reference_geobox.extent.geom)]
 
     # Download the adjacent tiles (if necessary)
-    procedural_download_datacube(storage, adjacent_tiles)
+    with download_lock:
+        procedural_download_datacube(storage, adjacent_tiles)
 
     # Load the datacube and set the spatial_ref since it is set as a coordinate within the zarr format
-    arcticdem_datacube = xr.open_zarr(storage, mask_and_scale=False).set_coords("spatial_ref")
+    chunks = None if persist else "auto"
+    arcticdem_datacube = xr.open_zarr(storage, mask_and_scale=False, chunks=chunks).set_coords("spatial_ref")
 
     # Get an AOI slice of the datacube
-    arcticdem_aoi = arcticdem_datacube.odc.crop(reference_geobox.extent)
+    arcticdem_aoi = arcticdem_datacube.odc.crop(reference_geobox.extent, apply_mask=False)
+
+    # The following code would load the lazy zarr data from disk into memory
+    if persist:
+        tick_sload = time.perf_counter()
+        arcticdem_aoi = arcticdem_aoi.load()
+        tick_eload = time.perf_counter()
+        logger.debug(f"ArcticDEM AOI loaded from disk in {tick_eload - tick_sload:.2f} seconds")
 
     # Change dtype of the datamask to uint8 for later reproject_match
     arcticdem_aoi["datamask"] = arcticdem_aoi.datamask.astype("uint8")
-
-    # The following code would load the data from disk
-    if persist:
-        tick_sload = time.perf_counter()
-        arcticdem_aoi = arcticdem_aoi.compute()
-        tick_eload = time.perf_counter()
-        logger.debug(f"ArcticDEM AOI loaded from disk in {tick_eload - tick_sload:.2f} seconds")
 
     logger.info(
         f"ArcticDEM tile {'loaded' if persist else 'lazy-opened'} in {time.perf_counter() - tick_fstart:.2f} seconds"

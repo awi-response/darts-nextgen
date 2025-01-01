@@ -6,8 +6,13 @@ from math import ceil
 
 import xarray as xr
 from xrspatial import convolution, slope
+from xrspatial.utils import has_cuda_and_cupy
 
 logger = logging.getLogger(__name__.replace("darts_", "darts."))
+
+if has_cuda_and_cupy():
+    import cupy as cp
+    import cupy_xarray  # noqa: F401
 
 
 def calculate_topographic_position_index(arcticdem_ds: xr.Dataset, outer_radius: int, inner_radius: int) -> xr.Dataset:
@@ -47,6 +52,9 @@ def calculate_topographic_position_index(arcticdem_ds: xr.Dataset, outer_radius:
         logger.debug(
             f"Calculating Topographic Position Index with circle kernel of {outer_radius_px} ({outer_radius_m}) cells."
         )
+
+    if has_cuda_and_cupy() and arcticdem_ds.cupy.is_cupy:
+        kernel = cp.asarray(kernel)
 
     tpi = arcticdem_ds.dem - convolution.convolution_2d(arcticdem_ds.dem, kernel) / kernel.sum()
     tpi.attrs = {

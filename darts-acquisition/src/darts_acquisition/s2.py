@@ -12,6 +12,30 @@ from odc.geo.geobox import GeoBox
 logger = logging.getLogger(__name__.replace("darts_", "darts."))
 
 
+def parse_s2_tile_id(fpath: str | Path) -> tuple[str, str, str]:
+    """Parse the Sentinel 2 tile ID from a file path.
+
+    Args:
+        fpath (str | Path): The path to the directory containing the TIFF files.
+
+    Returns:
+        tuple[str, str, str]: A tuple containing the Planet crop ID, the Sentinel 2 tile ID and the combined tile ID.
+
+    Raises:
+        FileNotFoundError: If no matching TIFF file is found in the specified path.
+
+    """
+    fpath = fpath if isinstance(fpath, Path) else Path(fpath)
+    try:
+        s2_image = next(fpath.glob("*_SR*.tif"))
+    except StopIteration:
+        raise FileNotFoundError(f"No matching TIFF files found in {fpath.resolve()} (.glob('*_SR*.tif'))")
+    planet_crop_id = fpath.stem
+    s2_tile_id = "_".join(s2_image.stem.split("_")[:3])
+    tile_id = f"{planet_crop_id}_{s2_tile_id}"
+    return planet_crop_id, s2_tile_id, tile_id
+
+
 def load_s2_scene(fpath: str | Path) -> xr.Dataset:
     """Load a Sentinel 2 satellite GeoTIFF file and return it as an xarray datset.
 
@@ -41,26 +65,19 @@ def load_s2_scene(fpath: str | Path) -> xr.Dataset:
     # Define band names and corresponding indices
     s2_da = xr.open_dataarray(s2_image)
 
-    bands = {1: "blue", 2: "green", 3: "red", 4: "nir"}
+    # Create a dataset with the bands
+    bands = ["blue", "green", "red", "nir"]
+    ds_s2 = s2_da.fillna(0).rio.write_nodata(0).astype("uint16").assign_coords({"band": bands}).to_dataset(dim="band")
 
-    # Create a list to hold datasets
-    datasets = [
-        s2_da.sel(band=index)
-        .assign_attrs({"data_source": "s2", "long_name": f"Sentinel 2 {name.capitalize()}", "units": "Reflectance"})
-        .fillna(0)
-        .rio.write_nodata(0)
-        .astype("uint16")
-        .to_dataset(name=name)
-        .drop_vars("band")
-        for index, name in bands.items()
-    ]
+    for var in ds_s2.data_vars:
+        ds_s2[var].assign_attrs(
+            {"data_source": "s2", "long_name": f"Sentinel 2 {var.capitalize()}", "units": "Reflectance"}
+        )
 
-    ds_s2 = xr.merge(datasets)
-    planet_crop_id = fpath.stem
-    s2_tile_id = "_".join(s2_image.stem.split("_")[:3])
+    planet_crop_id, s2_tile_id, tile_id = parse_s2_tile_id(fpath)
     ds_s2.attrs["planet_crop_id"] = planet_crop_id
     ds_s2.attrs["s2_tile_id"] = s2_tile_id
-    ds_s2.attrs["tile_id"] = f"{planet_crop_id}_{s2_tile_id}"
+    ds_s2.attrs["tile_id"] = tile_id
     logger.debug(f"Loaded Sentinel 2 scene in {time.time() - start_time} seconds.")
     return ds_s2
 

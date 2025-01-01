@@ -12,6 +12,7 @@ dependencies = [
     # Utils
     "lovely-tensors>=0.1.17",
     "lovely-numpy>=0.2.13",
+    "setuptools>=75.5.0",
     # IO
     "h5netcdf>=1.3.0",
     "rasterio>=1.4.0",
@@ -28,11 +29,16 @@ dependencies = [
     "zarr[jupyter]>=2.18.3",
     # Training and Inference
     "segmentation-models-pytorch>=0.3.4",
+    "lightning>=2.4.0",
+    "albumentations>=1.4.21",
+    "wandb>=0.18.7",
+    "torchmetrics>=1.6.0",
     # Processing
     "scikit-image>=0.20",
     "scipy>=1.14.1",
     "xarray-spatial>=0.4.0",
     "dask>=2024.11.0",
+    "distributed>=2024.12.0",
     "geocube>=0.7.0",
     # Visualization
     "cartopy>=0.24.1",
@@ -42,11 +48,8 @@ dependencies = [
     "folium>=0.18.0",
     "bokeh>=3.5.2",
     "jupyter-bokeh>=4.0.5",
-    "setuptools>=75.5.0",
-    "lightning>=2.4.0",
-    "albumentations>=1.4.21",
-    "wandb>=0.18.7",
-    "torchmetrics>=1.6.0",
+    "seaborn>=0.13.2",
+    "optuna>=4.1.0",
 ]
 readme = "README.md"
 requires-python = ">= 3.11"
@@ -89,6 +92,9 @@ gdal384_win64 = ["gdal @ https://github.com/cgohlke/geospatial-wheels/releases/d
 [project.scripts]
 darts = "darts.cli:start_app"
 
+# ==============================================================================
+# Build System Configuration
+# ==============================================================================
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
@@ -99,12 +105,75 @@ allow-direct-references = true
 [tool.hatch.build.targets.wheel]
 packages = ["darts/src/darts"]
 
+# ==============================================================================
+# uv Configuration (Not used yet!)
+# ==============================================================================
+
+# Problems with uv:
+# 1. gdal extra needs to be explicit deactivated. Otherwise, uv will try to build all gdal versions from source to get their requirements. This results in an error, because gdal expects the exact version of itself installed.
+# 2. It is impossible to maintain both rye and uv, because rye needs the torch-endings "+cpu" or "+cu118" or "+cu121" to install the correct pytorch version. uv does handles these endings by itself.
+# 3. UV toml syntax can't be read by Rye.
+# [tool.uv]
+# conflicts = [
+#   [
+#     { extra = "cpu" },
+#     { extra = "cuda11" },
+#     { extra = "cuda12" },
+#   ],
+#   [
+#     { extra = "gdal393" },
+#     { extra = "gdal39" },
+#     { extra = "gdal38" },
+#     { extra = "gdal384" },
+#     { extra = "gdal37" },
+#     { extra = "gdal36" },
+#     { extra = "gdal384_win64" },
+#   ]
+# ]
+# dependency-metadata = [
+#     { name = "gdal", requires-dist = ["setuptools"], requires-python = ">=3.9" },
+# ]
+# # TODO: Disable macos for now, fix later
+# environments = [
+#     "platform_system != 'Darwin' or extra != 'cpu'"
+# ]
+
+# [tool.uv.sources]
+# torch = [
+#   { index = "pytorch-cpu", extra = "cpu", marker = "platform_system != 'Darwin'" },
+#   { index = "pytorch-cu118", extra = "cuda11" },
+#   { index = "pytorch-cu121", extra = "cuda12" },
+# ]
+# torchvision = [
+#   { index = "pytorch-cpu", extra = "cpu", marker = "platform_system != 'Darwin'" },
+#   { index = "pytorch-cu118", extra = "cuda11" },
+#   { index = "pytorch-cu121", extra = "cuda12" },
+# ]
+
+#[[tool.uv.index]]
+#name = "pytorch-cpu"
+#url = "https://download.pytorch.org/whl/cpu"
+#explicit = true
+
+# [[tool.uv.index]]
+# name = "pytorch-cu118"
+# url = "https://download.pytorch.org/whl/cu118"
+# explicit = true
+
+# [[tool.uv.index]]
+# name = "pytorch-cu121"
+# url = "https://download.pytorch.org/whl/cu121"
+# explicit = true
+
+# ==============================================================================
+# Rye Configuration
+# ==============================================================================
 [tool.rye]
 managed = true
 dev-dependencies = [
     "ipykernel>=6.29.5",
     "matplotlib>=3.9.2",
-    "ruff>=0.6.8",
+    "ruff>=0.8.3",
     "mkdocs>=1.6.1",
     "mkdocs-material[imaging]>=9.5.38",
     "mike>=2.1.3",
@@ -137,6 +206,9 @@ url = "https://download.pytorch.org/whl/cu118"
 name = "pytorch-cu12"
 url = "https://download.pytorch.org/whl/cu121"
 
+# ==============================================================================
+# Ruff Configuration
+# ==============================================================================
 [tool.ruff]
 line-length = 120
 indent-width = 4  # This is the default

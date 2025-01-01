@@ -16,9 +16,9 @@ Both functions are used in the CLI setup but can also be called from e.g. a note
 ```python
 import logging
 from rich.logging import RichHandler
-from darts.utils.logging import setup_logging
+from darts.utils.logging import LoggingManager
 
-setup_logging()
+LoggingManager.setup_logging()
 logging.basicConfig(
     level=logging.INFO,
     format="%(message)s",
