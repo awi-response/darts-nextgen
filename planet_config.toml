@@ -1,6 +1,7 @@
 [darts]
 orthotiles-dir = "/home/toddn/pdg/darts-nextgen/rts_dtaset01/input/planet/PSOrthoTile"
 scenes-dir = "/home/toddn/pdg/darts-nextgen/rts_dtaset01/input/planet/PSScene"
+arcticdem-dir = "/home/toddn/pdg/darts-nextgen/rts_dtaset01/input/ArcticDEM"
 arcticdem-slope-vrt = "/home/toddn/pdg/darts-nextgen/rts_dtaset01/input/ArcticDEM/slope.vrt"
 arcticdem-elevation-vrt = "/home/toddn/pdg/darts-nextgen/rts_dtaset01/input/ArcticDEM/elevation.vrt"
 output-data-dir = "/home/toddn/pdg/darts-nextgen/data/output"
