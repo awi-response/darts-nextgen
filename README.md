@@ -148,3 +148,7 @@ logging.basicConfig(
 install(show_locals=True)  # Change to False if you encounter too large tracebacks
 init_ee("ee-project")  # Replace with your project
 ```
+
+currently running planet pipeline using this command 
+
+`darts run-native-planet-pipeline-fast --config-file=planet_config.toml`
