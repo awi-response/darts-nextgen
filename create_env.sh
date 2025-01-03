@@ -6,11 +6,11 @@ echo "${current_directory}"
 
 echo "${CONDA_ENVS}"
 
-conda remove -n darts-nextgen-test -all -y
+conda remove -n darts-nextgen -all -y
 
-conda create -n darts-nextgen-test python=3.11 -y
+conda create -n darts-nextgen python=3.11 -y
 
-conda activate darts-nextgen-test
+conda activate darts-nextgen
 
 CUR_PYTHON="$(which python)"
 
