@@ -26,7 +26,7 @@ nav:
       - Contribute: contribute.md
       - Pipeline steps APIs: dev/arch.md
       - Config: dev/config.md
-      - Datacubes: dev/aux.md
+      - Datacubes: dev/auxiliary.md
       - Logging: dev/logging.md
 
 theme:
