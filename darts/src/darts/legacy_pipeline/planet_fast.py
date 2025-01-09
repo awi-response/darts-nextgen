@@ -55,12 +55,10 @@ class LegacyNativePlanetPipelineFast(_FastMixin, _PlanetMixin, _BasePipeline):
     """
 
     def _get_data(self, fpath: Path):
-        from darts_acquisition.arcticdem import load_arcticdem_tile
-        from darts_acquisition.planet import load_planet_masks, load_planet_scene
-        from darts_acquisition.tcvis import load_tcvis
+        from darts_acquisition import load_arcticdem, load_planet_masks, load_planet_scene, load_tcvis
 
         optical = load_planet_scene(fpath)
-        arcticdem = load_arcticdem_tile(
+        arcticdem = load_arcticdem(
             optical.odc.geobox, self.arcticdem_dir, resolution=2, buffer=ceil(self.tpi_outer_radius / 2 * sqrt(2))
         )
         tcvis = load_tcvis(optical.odc.geobox, self.tcvis_dir)

@@ -185,6 +185,7 @@ dev-dependencies = [
     "ipywidgets>=8.1.5",
     "folium>=0.17.0",
     "mapclassify>=2.8.1",
+    "mkdocs-glightbox>=0.4.0",
 ]
 
 [tool.rye.workspace]

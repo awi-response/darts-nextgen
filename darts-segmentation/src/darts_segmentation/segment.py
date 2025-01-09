@@ -130,7 +130,7 @@ class SMPSegmenter:
             patch_size (int): The size of the patches. Defaults to 1024.
             overlap (int): The size of the overlap. Defaults to 16.
             batch_size (int): The batch size for the prediction, NOT the batch_size of input tiles.
-            Tensor will be sliced into patches and these again will be infered in batches. Defaults to 8.
+                Tensor will be sliced into patches and these again will be infered in batches. Defaults to 8.
             reflection (int): Reflection-Padding which will be applied to the edges of the tensor. Defaults to 0.
 
         Returns:
@@ -176,7 +176,7 @@ class SMPSegmenter:
             patch_size (int): The size of the patches. Defaults to 1024.
             overlap (int): The size of the overlap. Defaults to 16.
             batch_size (int): The batch size for the prediction, NOT the batch_size of input tiles.
-            Tensor will be sliced into patches and these again will be infered in batches. Defaults to 8.
+                Tensor will be sliced into patches and these again will be infered in batches. Defaults to 8.
             reflection (int): Reflection-Padding which will be applied to the edges of the tensor. Defaults to 0.
 
         Returns:
@@ -225,7 +225,7 @@ class SMPSegmenter:
             patch_size (int): The size of the patches. Defaults to 1024.
             overlap (int): The size of the overlap. Defaults to 16.
             batch_size (int): The batch size for the prediction, NOT the batch_size of input tiles.
-            Tensor will be sliced into patches and these again will be infered in batches. Defaults to 8.
+                Tensor will be sliced into patches and these again will be infered in batches. Defaults to 8.
             reflection (int): Reflection-Padding which will be applied to the edges of the tensor. Defaults to 0.
 
         Returns:

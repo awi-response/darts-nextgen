@@ -169,9 +169,8 @@ def preprocess_s2_train_data(
     import toml
     import torch
     import xarray as xr
-    from darts_acquisition.arcticdem import load_arcticdem_tile
-    from darts_acquisition.s2 import load_s2_masks, load_s2_scene, parse_s2_tile_id
-    from darts_acquisition.tcvis import load_tcvis
+    from darts_acquisition import load_arcticdem, load_s2_masks, load_s2_scene, load_tcvis
+    from darts_acquisition.s2 import parse_s2_tile_id
     from darts_preprocessing import preprocess_legacy_fast
     from darts_segmentation.training.prepare_training import create_training_patches
     from dask.distributed import Client, LocalCluster
@@ -237,7 +236,7 @@ def preprocess_s2_train_data(
                     logger.info(f"Found optical tile with size {optical.sizes}")
                     arctidem_res = 10
                     arcticdem_buffer = ceil(tpi_outer_radius / arctidem_res * sqrt(2))
-                    arcticdem = load_arcticdem_tile(
+                    arcticdem = load_arcticdem(
                         optical.odc.geobox, arcticdem_dir, resolution=arctidem_res, buffer=arcticdem_buffer
                     )
                     tcvis = load_tcvis(optical.odc.geobox, tcvis_dir)

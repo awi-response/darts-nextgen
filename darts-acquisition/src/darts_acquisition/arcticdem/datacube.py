@@ -249,18 +249,18 @@ def procedural_download_datacube(storage: zarr.storage.Store, tiles: gpd.GeoData
     logger.info(f"Procedural download of {len(new_tiles)} tiles completed in {tick_fend - tick_fstart:.2f} seconds")
 
 
-def load_arcticdem_tile(
+def load_arcticdem(
     geobox: GeoBox,
-    data_dir: Path,
+    data_dir: Path | str,
     resolution: RESOLUTIONS,
     buffer: int = 0,
     persist: bool = True,
 ) -> xr.Dataset:
-    """Get the corresponding ArcticDEM tile for the given geobox.
+    """Load the ArcticDEM for the given geobox, fetch new data from the STAC server if necessary.
 
     Args:
         geobox (GeoBox): The geobox for which the tile should be loaded.
-        data_dir (Path): The directory where the ArcticDEM data is stored.
+        data_dir (Path | str): The directory where the ArcticDEM data is stored.
         resolution (Literal[2, 10, 32]): The resolution of the ArcticDEM data in m.
         buffer (int, optional): The buffer around the projected (epsg:3413) geobox in pixels. Defaults to 0.
         persist (bool, optional): If the data should be persisted in memory.
@@ -274,8 +274,35 @@ def load_arcticdem_tile(
     Warning:
         Geobox must be in a meter based CRS.
 
-    """
+    Usage:
+        Since the API of the `load_arcticdem` is based on GeoBox, one can load a specific ROI based on an existing Xarray DataArray:
+
+        ```python
+        import xarray as xr
+        import odc.geo.xr
+
+        from darts_aquisition import load_arcticdem
+
+        # Assume "optical" is an already loaded s2 based dataarray
+
+        arcticdem = load_arcticdem(
+            optical.odc.geobox,
+            "/path/to/arcticdem-parent-directory",
+            resolution=2,
+            buffer=ceil(self.tpi_outer_radius / 2 * sqrt(2))
+        )
+
+        # Now we can for example match the resolution and extent of the optical data:
+        arcticdem = arcticdem.odc.reproject(optical.odc.geobox, resampling="cubic")
+        ```
+
+        The `buffer` parameter is used to extend the region of interest by a certain amount of pixels.
+        This comes handy when calculating e.g. the Topographic Position Index (TPI), which requires a buffer around the region of interest to remove edge effects.
+
+    """  # noqa: E501
     tick_fstart = time.perf_counter()
+
+    data_dir = Path(data_dir) if isinstance(data_dir, str) else data_dir
 
     datacube_fpath = data_dir / f"datacube_{resolution}m_v4.1.zarr"
     storage = zarr.storage.FSStore(datacube_fpath)

@@ -10,6 +10,7 @@ edit_uri: edit/main/docs/
 
 nav:
   - Home: index.md
+  - Getting Started: getting_started.md
   - Modules:
       - DARTS: ref/darts.md
       - Acquisition: ref/acquisition.md
@@ -24,6 +25,8 @@ nav:
   - Dev:
       - Contribute: contribute.md
       - Pipeline steps APIs: dev/arch.md
+      - Config: dev/config.md
+      - Datacubes: dev/aux.md
       - Logging: dev/logging.md
 
 theme:
@@ -82,6 +85,7 @@ theme:
     - content.code.copy
     - content.code.annotate
 plugins:
+  - glightbox
   - mkdocstrings:
       handlers:
         python:
@@ -161,6 +165,7 @@ markdown_extensions:
   - pymdownx.snippets
   - pymdownx.superfences
   - pymdownx.details
+  - attr_list
   - admonition
   - tables
   - def_list
