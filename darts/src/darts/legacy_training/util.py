@@ -33,7 +33,7 @@ def convert_lightning_checkpoint(
     import torch
 
     logger.debug(f"Loading checkpoint from {lightning_checkpoint.resolve()}")
-    lckpt = torch.load(lightning_checkpoint, weights_only=False)
+    lckpt = torch.load(lightning_checkpoint, weights_only=False, map_location=torch.device("cpu"))
 
     now = datetime.now()
     formatted_date = now.strftime("%Y-%m-%d")
