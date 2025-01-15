@@ -131,7 +131,7 @@ class SMPSegmenter(L.LightningModule):
 
         # Create figures for the samples (plot at maximum 24)
         is_last_batch = self.trainer.num_val_batches == (batch_idx + 1)
-        max_batch_idx = 6  # Does only work if NOT last batch, since last batch may be smaller
+        max_batch_idx = (24 // x.shape[0]) - 1  # Does only work if NOT last batch, since last batch may be smaller
         # If num_val_batches is 1 then this batch is the last one, but we still want to log it. despite its size
         # Will plot the first 24 samples of the first batch if batch-size is larger than 24
         should_log_batch = (

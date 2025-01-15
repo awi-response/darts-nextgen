@@ -68,7 +68,9 @@ class SMPSegmenter:
         self.device = device
         ckpt = torch.load(model_checkpoint, map_location=self.device)
         self.config = validate_config(ckpt["config"])
-        self.model = smp.create_model(**self.config["model"], encoder_weights=None)
+        # Overwrite the encoder weights with None, because we load our own
+        self.config["model"] |= {"encoder_weights": None}
+        self.model = smp.create_model(**self.config["model"])
         self.model.to(self.device)
         self.model.load_state_dict(ckpt["statedict"])
         self.model.eval()
