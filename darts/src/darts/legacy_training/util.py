@@ -43,6 +43,10 @@ def convert_lightning_checkpoint(
     config["name"] = checkpoint_name
     config["model_framework"] = framework
 
+    statedict = lckpt["state_dict"]
+    # Statedict has model. prefix before every weight. We need to remove them. This is an in-place function
+    torch.nn.modules.utils.consume_prefix_in_state_dict_if_present(statedict, "model.")
+
     own_ckpt = {
         "config": config,
         "statedict": lckpt["state_dict"],
