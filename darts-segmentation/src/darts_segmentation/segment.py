@@ -72,7 +72,10 @@ class SMPSegmenter:
         self.config["model"] |= {"encoder_weights": None}
         self.model = smp.create_model(**self.config["model"])
         self.model.to(self.device)
-        self.model.load_state_dict(ckpt["statedict"])
+
+        fix_statedict = {(k.removeprefix("model.")): v for k, v in ckpt["statedict"].items()}
+
+        self.model.load_state_dict(fix_statedict)
         self.model.eval()
 
         logger.debug(
