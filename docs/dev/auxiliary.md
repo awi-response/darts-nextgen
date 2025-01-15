@@ -56,7 +56,10 @@ There are currently two implementations of the procedural download used: a cloud
 Because the single tiles of the STAC mosaic can be overlapping and intersect with multiple Zarr chunks, the STAC download is slightly more complicated.
 Since Google Earth-Engine allows for exact geoboxes, download of the exact chunks is possible. This reduces the complexity of the download.
 
-![STAC vs Google Earth-Engine download](../assets/procdownload_comparison.png){ loading=lazy }
+|        | STAC                                                                                     | GEE                                                                                    |
+| -----: | ---------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
+| 1. ROI | ![STAC 1. ROI download](../assets/datacube_procdownload_stac_step_1.png){ loading=lazy } | ![GEE 1. ROI download](../assets/datacube_procdownload_gee_step_1.png){ loading=lazy } |
+| 2. ROI | ![STAC 2. ROI download](../assets/datacube_procdownload_stac_step_2.png){ loading=lazy } | ![GEE 2. ROI download](../assets/datacube_procdownload_gee_step_2.png){ loading=lazy } |
 
 The above graphics shows the difference between loading data from STAC (left) and Google Earth-Engine (right).
 With the STAC download, the data is downloaded from a mosaic of tiles, which can be overlapping with each other and cover multiple Zarr chunks.
