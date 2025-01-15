@@ -37,7 +37,8 @@ def convert_lightning_checkpoint(
 
     now = datetime.now()
     formatted_date = now.strftime("%Y-%m-%d")
-    config = lckpt["hyper_parameters"]
+    config = lckpt["hyper_parameters"]["config"]
+    del config["model"]["encoder_weights"]
     config["time"] = formatted_date
     config["name"] = checkpoint_name
     config["model_framework"] = framework
