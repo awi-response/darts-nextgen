@@ -53,12 +53,10 @@ class LegacyNativeSentinel2PipelineFast(_FastMixin, _S2Mixin, _BasePipeline):
     """
 
     def _get_data(self, fpath: Path):
-        from darts_acquisition.arcticdem import load_arcticdem_tile
-        from darts_acquisition.s2 import load_s2_masks, load_s2_scene
-        from darts_acquisition.tcvis import load_tcvis
+        from darts_acquisition import load_arcticdem, load_s2_masks, load_s2_scene, load_tcvis
 
         optical = load_s2_scene(fpath)
-        arcticdem = load_arcticdem_tile(
+        arcticdem = load_arcticdem(
             optical.odc.geobox, self.arcticdem_dir, resolution=10, buffer=ceil(self.tpi_outer_radius / 10 * sqrt(2))
         )
         tcvis = load_tcvis(optical.odc.geobox, self.tcvis_dir)

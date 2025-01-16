@@ -33,14 +33,19 @@ def convert_lightning_checkpoint(
     import torch
 
     logger.debug(f"Loading checkpoint from {lightning_checkpoint.resolve()}")
-    lckpt = torch.load(lightning_checkpoint, weights_only=False)
+    lckpt = torch.load(lightning_checkpoint, weights_only=False, map_location=torch.device("cpu"))
 
     now = datetime.now()
     formatted_date = now.strftime("%Y-%m-%d")
-    config = lckpt["hyper_parameters"]
+    config = lckpt["hyper_parameters"]["config"]
+    del config["model"]["encoder_weights"]
     config["time"] = formatted_date
     config["name"] = checkpoint_name
     config["model_framework"] = framework
+
+    statedict = lckpt["state_dict"]
+    # Statedict has model. prefix before every weight. We need to remove them. This is an in-place function
+    torch.nn.modules.utils.consume_prefix_in_state_dict_if_present(statedict, "model.")
 
     own_ckpt = {
         "config": config,

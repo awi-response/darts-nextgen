@@ -162,15 +162,15 @@ def procedural_download_datacube(storage: zarr.storage.Store, geobox: GeoBox):
 
 def load_tcvis(
     geobox: GeoBox,
-    data_dir: Path,
+    data_dir: Path | str,
     buffer: int = 0,
     persist: bool = True,
 ) -> xr.Dataset:
-    """Load the Landsat Trends (TCVIS) from Google Earth Engine.
+    """Load the TCVIS for the given geobox, fetch new data from GEE if necessary.
 
     Args:
         geobox (GeoBox): The geobox to load the data for.
-        data_dir (Path): The directory to store the downloaded data for faster access for consecutive calls.
+        data_dir (Path | str): The directory to store the downloaded data for faster access for consecutive calls.
         buffer (int, optional): The buffer around the geobox in pixels. Defaults to 0.
         persist (bool, optional): If the data should be persisted in memory.
             If not, this will return a Dask backed Dataset. Defaults to True.
@@ -178,8 +178,30 @@ def load_tcvis(
     Returns:
         xr.Dataset: The TCVIS dataset.
 
-    """
+    Usage:
+        Since the API of the `load_tcvis` is based on GeoBox, one can load a specific ROI based on an existing Xarray DataArray:
+
+        ```python
+        import xarray as xr
+        import odc.geo.xr
+
+        from darts_aquisition import load_tcvis
+
+        # Assume "optical" is an already loaded s2 based dataarray
+
+        tcvis = load_tcvis(
+            optical.odc.geobox,
+            "/path/to/tcvis-parent-directory",
+        )
+
+        # Now we can for example match the resolution and extent of the optical data:
+        tcvis = tcvis.odc.reproject(optical.odc.geobox, resampling="cubic")
+        ```
+
+    """  # noqa: E501
     tick_fstart = time.perf_counter()
+
+    data_dir = Path(data_dir) if isinstance(data_dir, str) else data_dir
 
     datacube_fpath = data_dir / "tcvis_2000-2019.zarr"
     storage = zarr.storage.FSStore(datacube_fpath)

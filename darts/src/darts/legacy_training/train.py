@@ -309,12 +309,13 @@ def wandb_sweep_smp(
         augment = wandb.config["augment"]
         focal_loss_alpha = wandb.config["focal_loss_alpha"]
         focal_loss_gamma = wandb.config["focal_loss_gamma"]
+        fold = wandb.config.get("fold", 0)
 
         train_smp(
             # Data config
             train_data_dir=train_data_dir,
             artifact_dir=artifact_dir,
-            current_fold=0,
+            current_fold=fold,
             # Hyperparameters
             model_arch=model_arch,
             model_encoder=model_encoder,

@@ -68,7 +68,9 @@ class SMPSegmenter:
         self.device = device
         ckpt = torch.load(model_checkpoint, map_location=self.device)
         self.config = validate_config(ckpt["config"])
-        self.model = smp.create_model(**self.config["model"], encoder_weights=None)
+        # Overwrite the encoder weights with None, because we load our own
+        self.config["model"] |= {"encoder_weights": None}
+        self.model = smp.create_model(**self.config["model"])
         self.model.to(self.device)
         self.model.load_state_dict(ckpt["statedict"])
         self.model.eval()
@@ -130,7 +132,7 @@ class SMPSegmenter:
             patch_size (int): The size of the patches. Defaults to 1024.
             overlap (int): The size of the overlap. Defaults to 16.
             batch_size (int): The batch size for the prediction, NOT the batch_size of input tiles.
-            Tensor will be sliced into patches and these again will be infered in batches. Defaults to 8.
+                Tensor will be sliced into patches and these again will be infered in batches. Defaults to 8.
             reflection (int): Reflection-Padding which will be applied to the edges of the tensor. Defaults to 0.
 
         Returns:
@@ -176,7 +178,7 @@ class SMPSegmenter:
             patch_size (int): The size of the patches. Defaults to 1024.
             overlap (int): The size of the overlap. Defaults to 16.
             batch_size (int): The batch size for the prediction, NOT the batch_size of input tiles.
-            Tensor will be sliced into patches and these again will be infered in batches. Defaults to 8.
+                Tensor will be sliced into patches and these again will be infered in batches. Defaults to 8.
             reflection (int): Reflection-Padding which will be applied to the edges of the tensor. Defaults to 0.
 
         Returns:
@@ -225,7 +227,7 @@ class SMPSegmenter:
             patch_size (int): The size of the patches. Defaults to 1024.
             overlap (int): The size of the overlap. Defaults to 16.
             batch_size (int): The batch size for the prediction, NOT the batch_size of input tiles.
-            Tensor will be sliced into patches and these again will be infered in batches. Defaults to 8.
+                Tensor will be sliced into patches and these again will be infered in batches. Defaults to 8.
             reflection (int): Reflection-Padding which will be applied to the edges of the tensor. Defaults to 0.
 
         Returns:

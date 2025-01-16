@@ -32,7 +32,7 @@ The following modules are planned or potential ideas for future expansion of the
 | `darts-train-utils` | Train | Shared utilities for training                                           | PyTorch                                |
 
 The packages should follow this architecture:
-![DARTS nextgen architecture](../assets/darts_nextgen_architecture.png)
+![DARTS nextgen architecture](../assets/darts_nextgen_architecture.png){ loading=lazy }
 
 The `darts-nextgen` is planned to utilize [Ray](https://docs.ray.io/en/latest/index.html) to automaticly parallize the different computations.
 However, each package should be designed so that one could build their own pipeline without Ray.
@@ -91,7 +91,7 @@ The following things needs to be updates:
 ## APIs between pipeline steps
 
 The following diagram visualizes the steps of the major `packages` of the pipeline:
-![DARTS nextgen pipeline steps](../assets/darts_nextgen_pipeline-steps.png)
+![DARTS nextgen pipeline steps](../assets/darts_nextgen_pipeline-steps.png){ loading=lazy }
 
 Each Tile should be represented as a single `xr.Dataset` with each feature / band as `DataVariable`.
 Each DataVariable should have their `data_source` documented in the `attrs`, aswell as `long_name` and `units` if any for plotting.
@@ -319,4 +319,4 @@ Ray expects batched data to be in either numpy or pandas format and can't work w
 Hence, a wrapper with custom stacking functions is needed.
 This tradeoff is not small, however, the benefits in terms of maintainability and readability are worth it.
 
-![Xarray overhead with Ray](../assets/xarray_ray_overhead.png)
+![Xarray overhead with Ray](../assets/xarray_ray_overhead.png){ loading=lazy }
