@@ -13,39 +13,27 @@ DEFAULT_DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
 class EnsembleV1:
-    """DARTS v1 ensemble based on two models, one trained with TCVIS data and the other without."""
+    """DARTS v1 ensemble based on a list of models."""
 
     def __init__(
         self,
-        rts_v6_tcvis_model_path: str | Path,
-        rts_v6_notcvis_model_path: str | Path,
+        model_dict,
         device: torch.device = DEFAULT_DEVICE,
     ):
         """Initialize the ensemble.
 
         Args:
-            rts_v6_tcvis_model_path (str | Path): Path to the model trained with TCVIS data.
-            rts_v6_notcvis_model_path (str | Path): Path to the model trained without TCVIS data.
+            model_dict (dict): The paths to model checkpoints to ensemble, the key is should be a model identifier
+                to be written to outputs.
             device (torch.device): The device to run the model on.
                 Defaults to torch.device("cuda") if cuda is available, else torch.device("cpu").
 
         """
-        rts_v6_tcvis_model_path = (
-            rts_v6_tcvis_model_path if isinstance(rts_v6_tcvis_model_path, Path) else Path(rts_v6_tcvis_model_path)
-        )
-        rts_v6_notcvis_model_path = (
-            rts_v6_notcvis_model_path
-            if isinstance(rts_v6_notcvis_model_path, Path)
-            else Path(rts_v6_notcvis_model_path)
-        )
+        model_paths = {k: Path(v) for k, v in model_dict.items()}
         logger.debug(
-            "Loading models:\n"
-            f"\tTCVIS Model: {rts_v6_tcvis_model_path.resolve()}\n"
-            f"\tNOTCVIS Model: {rts_v6_notcvis_model_path.resolve()}"
+            "Loading models:\n" + "\n".join([f" - {k.upper()} model: {v.resolve()}" for k, v in model_paths.items()])
         )
-
-        self.rts_v6_tcvis_model = SMPSegmenter(rts_v6_tcvis_model_path, device=device)
-        self.rts_v6_notcvis_model = SMPSegmenter(rts_v6_notcvis_model_path, device=device)
+        self.models = {k: SMPSegmenter(v, device=device) for k, v in model_paths.items()}
 
     def segment_tile(
         self,
@@ -71,18 +59,18 @@ class EnsembleV1:
             Input tile augmented by a predicted `probabilities` layer with type float32 and range [0, 1].
 
         """
-        tcvis_probabilities = self.rts_v6_tcvis_model.segment_tile(
-            tile, patch_size=patch_size, overlap=overlap, batch_size=batch_size, reflection=reflection
-        )["probabilities"].copy()
-        notcvis_probabilities = self.rts_v6_notcvis_model.segment_tile(
-            tile, patch_size=patch_size, overlap=overlap, batch_size=batch_size, reflection=reflection
-        )["probabilities"].copy()
+        probabilities = {}
+        for model_name, model in self.models.items():
+            probabilities[model_name] = model.segment_tile(
+                tile, patch_size=patch_size, overlap=overlap, batch_size=batch_size, reflection=reflection
+            )["probabilities"].copy()
 
-        tile["probabilities"] = (tcvis_probabilities + notcvis_probabilities) / 2
+        # calculate the mean
+        tile["probabilities"] = xr.concat(probabilities.values(), dim="model_probs").mean(dim="model_probs")
 
         if keep_inputs:
-            tile["probabilities-tcvis"] = tcvis_probabilities
-            tile["probabilities-notcvis"] = notcvis_probabilities
+            for k, v in probabilities.items():
+                tile[f"probabilities-{k}"] = v
 
         return tile
 
@@ -110,21 +98,14 @@ class EnsembleV1:
             A list of input tiles augmented by a predicted `probabilities` layer with type float32 and range [0, 1].
 
         """
-        for tile in tiles:  # Note that tile is still a reference -> tiles will be changed!
-            tcvis_probabilities = self.rts_v6_tcvis_model.segment_tile(
-                tile, patch_size=patch_size, overlap=overlap, batch_size=batch_size, reflection=reflection
-            )["probabilities"].copy()
-            notcvis_propabilities = self.rts_v6_notcvis_model.segment_tile(
-                tile, patch_size=patch_size, overlap=overlap, batch_size=batch_size, reflection=reflection
-            )["probabilities"].copy()
-
-            tile["probabilities"] = (tcvis_probabilities + notcvis_propabilities) / 2
-
-            if keep_inputs:
-                tile["probabilities-tcvis"] = tcvis_probabilities
-                tile["probabilities-notcvis"] = notcvis_propabilities
-
-        return tiles
+        kwargs = {
+            "patch_size": patch_size,
+            "overlap": overlap,
+            "batch_size": batch_size,
+            "reflection": reflection,
+            "keep_inputs": keep_inputs,
+        }
+        return [self.segment_tile(tile, **kwargs) for tile in tiles]
 
     def __call__(
         self,
