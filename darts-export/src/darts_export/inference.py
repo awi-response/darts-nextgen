@@ -17,6 +17,11 @@ class InferenceResultWriter:
         """Initialize the dataset."""
         self.ds: xarray.Dataset = ds
 
+        # find if there are any subsets to export:
+        self.subset_names = [
+            subset.removeprefix("probabilities-") for subset in self.ds.keys() if subset.startswith("probabilities-")
+        ]
+
     def export_geotiff(self, path: Path, filename: str, layername: str, tags={}):
         """Export a GeoTiff file from the inference result, specifying the layer to export.
 
@@ -50,13 +55,11 @@ class InferenceResultWriter:
             the Path of the written file
 
         """
-        # check if the ds as also the model outputs in it
-        for check_subset in ["tcvis", "notcvis"]:
-            check_layer_name = "probabilities-" + check_subset
-            if check_layer_name in self.ds:
-                fname_p = Path(filename)
-                fname = fname_p.stem + "-" + check_subset + ".tif"
-                self.export_geotiff(path, fname, check_layer_name, tags)
+        for subset in self.subset_names:
+            layer_name = f"probabilities-{subset}"
+            fname_p = Path(filename)
+            fname = fname_p.stem + "-" + subset + ".tif"
+            self.export_geotiff(path, fname, layer_name, tags)
 
         return self.export_geotiff(path, filename, "probabilities", tags)
 
@@ -75,13 +78,11 @@ class InferenceResultWriter:
             the Path of the written file
 
         """
-        # check if the ds as also the model outputs in it
-        for check_subset in ["tcvis", "notcvis"]:
-            check_layer_name = "binarized_segmentation-" + check_subset
-            if check_layer_name in self.ds:
-                fname_p = Path(filename)
-                fname = fname_p.stem + "-" + check_subset + ".tif"
-                self.export_geotiff(path, fname, check_layer_name, tags)
+        for subset in self.subset_names:
+            layer_name = f"binarized_segmentation-{subset}"
+            fname_p = Path(filename)
+            fname = fname_p.stem + "-" + subset + ".tif"
+            self.export_geotiff(path, fname, layer_name, tags)
 
         return self.export_geotiff(path, filename, "binarized_segmentation", tags)
 
@@ -108,9 +109,9 @@ class InferenceResultWriter:
         polygon_gdf.to_file(path_gpkg, layer=filename_prefix)
         polygon_gdf.to_parquet(path_parquet)
 
-        for subset_name in ["tcvis", "notcvis"]:
-            layer_name = "binarized_segmentation-" + subset_name
+        for subset in self.subset_names:
+            layer_name = f"binarized_segmentation-{subset}"
             if layer_name in self.ds:
                 polygon_gdf = vectorization.vectorize(self.ds, layer_name, minimum_mapping_unit=minimum_mapping_unit)
-                polygon_gdf.to_file(path_gpkg, layer=f"{filename_prefix} ({subset_name.upper()})")
-                polygon_gdf.to_parquet(path / f"{filename_prefix}-{subset_name}.parquet")
+                polygon_gdf.to_file(path_gpkg, layer=f"{filename_prefix} ({subset.upper()})")
+                polygon_gdf.to_parquet(path / f"{filename_prefix}-{subset}.parquet")
