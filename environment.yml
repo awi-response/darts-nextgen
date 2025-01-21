@@ -1,8 +1,8 @@
 name: darts_albedo
 channels:
+  - conda-forge
   - pytorch
   - nvidia
-  - conda-forge
 dependencies:
   - python=3.11
   - numpy[version='>=1.26.3,<2']
@@ -49,5 +49,7 @@ dependencies:
   - ipykernel
   - pip:
       - cucim-cu12==24.10.0
-      - darts-utils==0.1.0
+      - cupy-cuda12x==13.3.0
+      - fastrlock==0.8.2
+      - msgpack==1.1.0
       - ray==2.37.0
