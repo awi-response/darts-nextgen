@@ -3,7 +3,7 @@
 ee-project = "pdg-project-406720"
 
 [darts.paths]
-sentinel2-dir = "/home/toddn/pdg-files/ftp.awi.de/public/jokuep001/S2"
+sentinel2-dir = "/taiga/toddn/pdg-files/ftp.awi.de/public/jokuep001/S2"
 orthotiles-dir = "/home/toddn/darts-nextgen/data/input/planet/PSOrthoTile"
 scenes-dir = "/home/toddn/darts-nextgen/data/input/planet/PSScene"
 output-data-dir = "/home/toddn/darts-nextgen/rts_dataset01/output"
