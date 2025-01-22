@@ -3,16 +3,16 @@
 ee-project = "pdg-project-406720"
 
 [darts.paths]
-sentinel2-dir = "/taiga/toddn/pdg-files/ftp.awi.de/public/jokuep001/S2"
-orthotiles-dir = "/home/toddn/darts-nextgen/data/input/planet/PSOrthoTile"
-scenes-dir = "/home/toddn/darts-nextgen/data/input/planet/PSScene"
-output-data-dir = "/home/toddn/darts-nextgen/rts_dataset01/output"
-model-dir = "/home/toddn/darts-nextgen/rts_dataset01/models"
-tcvis-model-name = "/home/toddn/pdg-files/s2-tcvis-unetpp-resnext101-bestfromsweep_2025-01-15_fix.ckpt"
+sentinel2-dir = "/taiga/toddn/pdg-files/ftp_shared_files/public/jokuep001/S2"
+orthotiles-dir = "/taiga/toddn/data/input/planet/PSOrthoTile"
+scenes-dir = "/taiga/toddn/data/input/planet/PSScene"
+output-data-dir = "/taiga/toddn/rts_dataset01/rts_dataset01/output"
+model-dir = "/taiga/toddn/rts_dataset01/rts_dataset01/models"
+tcvis-model-name = "/taiga/toddn/pdg-files/s2-tcvis-unetpp-resnext101-bestfromsweep_2025-01-15_fix.ckpt"
 notcvis-model-name = "RTS_v6_notcvis.pt"
-arcticdem-slope-vrt = "/home/toddn/darts-nextgen/rts_dataset01/input/ArcticDEM/slope.vrt"
-arcticdem-elevation-vrt = "/home/toddn/darts-nextgen/rts_dataset01/input/ArcticDEM/elevation.vrt"
-arcticdem-dir =  "/home/toddn/darts-nextgen/rts_dataset01/input/ArcticDEM"
+arcticdem-slope-vrt = "/taiga/toddn/rts_dataset01/input/ArcticDEM/slope.vrt"
+arcticdem-elevation-vrt = "/taiga/toddn/rts_dataset01/input/ArcticDEM/elevation.vrt"
+arcticdem-dir =  "/taiga/toddn/rts_dataset01/input/ArcticDEM"
 tcvis-dir = "/home/toddn/darts-nextgen/tcvis_dir"
 
 [darts.preprocess]
