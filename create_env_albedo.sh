@@ -6,15 +6,15 @@ echo "${current_directory}"
 
 echo "${CONDA_ENVS}"
 
-conda env create -f environment.yml
+# conda env create -f environment.yml
 
-conda activate darts_albedo
+conda init
+
+conda activate darts_albedo_env
 
 
 CUR_PYTHON="$(which python)"
 
-# TODO this has to go last for darst cli to work!!!
-pip install '.[dev]'
 
 
 cd ${current_directory}/darts-acquisition
@@ -44,4 +44,8 @@ pip install '.[dev]'
 
 cd ${current_directory}/darts-utils
 pip install '.[dev]'
+
+cd ${current_directory}
+pip install '.[dev]'
 echo Created Environment
+

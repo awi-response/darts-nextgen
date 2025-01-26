@@ -1,6 +1,8 @@
-name: darts_albedo
+name: darts_albedo_env
 channels:
   - conda-forge
+  - pytorch
+  - nvidia
 dependencies:
   - python=3.11
   - pip
