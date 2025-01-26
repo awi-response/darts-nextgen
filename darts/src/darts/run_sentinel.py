@@ -68,7 +68,7 @@ if __name__ == "__main__":
         write_model_outputs = write_model_outputs,
     )
 
-    pipeline = LegacyNativeSentinel2PipelineFast(
+    sentinel_2_pipeline = LegacyNativeSentinel2PipelineFast(
         output_data_dir=output_data_dir,
         tcvis_dir=tcvis_dir,
         model_dir=model_dir,
@@ -94,5 +94,11 @@ if __name__ == "__main__":
     #     _S2Mixin = s2_mixin,
     #     _BasePipeline = base_pipeline
     # )
+
+    try:
+        sentinel_2_pipeline.run()
+    except Exception as e:
+        print(f"Failed running sentinel2 pipeline")
+        print(e)
 
     print('got pipeline')
