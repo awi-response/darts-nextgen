@@ -69,9 +69,30 @@ if __name__ == "__main__":
     )
 
     pipeline = LegacyNativeSentinel2PipelineFast(
-        _FastMixin = fast_mixin,
-        _S2Mixin = s2_mixin,
-        _BasePipeline = base_pipeline
+        output_data_dir=output_data_dir,
+        tcvis_dir=tcvis_dir,
+        model_dir=model_dir,
+        tcvis_model_name=tcvis_model_name,
+        notcvis_model_name=notcvis_model_name,
+        device=device,
+        dask_worker=dask_worker,  # noqa: RUF009
+        ee_project=ee_project,
+        ee_use_highvolume=ee_use_highvolume,
+        patch_size=patch_size,
+        overlap=overlap,
+        batch_size=batch_size,
+        reflection=reflection,
+        binarization_threshold=binarization_threshold,
+        mask_erosion_size=mask_erosion_size,
+        min_object_size=min_object_size,
+        use_quality_mask=use_quality_mask,
+        write_model_outputs=write_model_outputs,
     )
+
+    # pipeline = LegacyNativeSentinel2PipelineFast(
+    #     _FastMixin = fast_mixin,
+    #     _S2Mixin = s2_mixin,
+    #     _BasePipeline = base_pipeline
+    # )
 
     print('got pipeline')
