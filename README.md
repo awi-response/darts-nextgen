@@ -35,6 +35,11 @@ Prereq:
  - Begin by creating a conda environment `conda create -n darts-nextgen python=3.11`
  - Install dependencies from project.toml `pip install '.[dev]'`
  - Do the same in other packages (darts-acquisition to darts-superresolution)
+ - The following packages may be either installed with the wrong version, or not installed
+ - dask, dask-core
+ - xarray-spatial
+ - zarr
+ - cupy-xarray
 
 
 ## Environment setup

@@ -1,3 +1,4 @@
+import darts.legacy_pipeline
 from darts.legacy_pipeline.s2_fast import LegacyNativeSentinel2PipelineFast
 from darts.legacy_pipeline._base import AquisitionData, _BasePipeline, _FastMixin, _S2Mixin
 from pathlib import Path
@@ -6,6 +7,8 @@ from typing import Literal
 from collections import namedtuple
 
 if __name__ == "__main__":
+
+    # darts.legacy_pipeline.s2_fast.run_native_sentinel2_pipeline_fast()
 
     "read the input file"
     sentinel2_dir = Path("/taiga/toddn/pdg-files/ftp_shared_files/public/jokuep001/S2")
@@ -69,6 +72,7 @@ if __name__ == "__main__":
     )
 
     sentinel_2_pipeline = LegacyNativeSentinel2PipelineFast(
+        ee_project = "pdg-project-406720",
         output_data_dir=output_data_dir,
         tcvis_dir=tcvis_dir,
         model_dir=model_dir,
@@ -76,7 +80,6 @@ if __name__ == "__main__":
         notcvis_model_name=notcvis_model_name,
         device=device,
         dask_worker=dask_worker,  # noqa: RUF009
-        ee_project=ee_project,
         ee_use_highvolume=ee_use_highvolume,
         patch_size=patch_size,
         overlap=overlap,
@@ -87,6 +90,7 @@ if __name__ == "__main__":
         min_object_size=min_object_size,
         use_quality_mask=use_quality_mask,
         write_model_outputs=write_model_outputs,
+        sentinel2_dir=sentinel2_dir,
     )
 
     # pipeline = LegacyNativeSentinel2PipelineFast(
@@ -96,7 +100,8 @@ if __name__ == "__main__":
     # )
 
     try:
-        sentinel_2_pipeline.run()
+        darts.legacy_pipeline.run_native_sentinel2_pipeline_fast(pipeline=sentinel_2_pipeline)
+        # sentinel_2_pipeline.run()
     except Exception as e:
         print(f"Failed running sentinel2 pipeline")
         print(e)
