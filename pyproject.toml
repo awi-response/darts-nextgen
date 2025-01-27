@@ -39,7 +39,7 @@ dependencies = [
     "scikit-image>=0.20",
     "scipy>=1.14.1",
     "xarray-spatial>=0.4.0",
-    "dask>=2024.11.0",
+    "dask>=2024.11.0, <=2024.11.2",
     "distributed>=2024.12.0",
     "geocube>=0.7.0",
     # Visualization
