@@ -5,7 +5,7 @@ description = "Panarctic Database of Active Layer Detachment Slides and Retrogre
 dependencies = [
     # General
     "numpy>=1.26.3, <2",
-    "xarray>=2024.9.0",
+    "xarray>=2024.9.0, <=2024.9.0",
     "ray[data]>=2.37.0",
     "rich>=13.9.2",
     "cyclopts>=3.1.0",
@@ -38,7 +38,7 @@ dependencies = [
     # Processing
     "scikit-image>=0.20",
     "scipy>=1.14.1",
-    "xarray-spatial>=0.4.0",
+    "xarray-spatial==0.4.0",
     "dask>=2024.11.0, <=2024.11.2",
     "distributed>=2024.12.0",
     "geocube>=0.7.0",
