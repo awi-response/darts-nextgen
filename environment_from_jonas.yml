@@ -18,10 +18,7 @@ dependencies:
   - pytorch
   - torchvision
   - torchaudio
-  - xarray-spatial=0.4.0
-  - dask=2024.11.2
-  - dask-core=2024.11.2
-  - dask-expr=1.1.19
+  - pytorch-cuda=12.1
   - lovely-tensors[version='>=0.1.17']
   - lovely-numpy[version='>=0.2.13']
   - segmentation-models-pytorch[version='>=0.3.4']
@@ -39,4 +36,3 @@ dependencies:
     - fastrlock==0.8.2
     - msgpack==1.1.0
     - ray==2.37.0
-    - zarr==2.18.4
