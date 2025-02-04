@@ -4,10 +4,11 @@ from dataclasses import dataclass
 from math import ceil, sqrt
 from pathlib import Path
 from typing import Annotated
+import os, sys
 
 from cyclopts import Parameter
 
-from darts.legacy_pipeline._base import AquisitionData, _BasePipeline, _FastMixin, _S2Mixin
+from darts.src.darts.legacy_pipeline._base import AquisitionData, _BasePipeline, _FastMixin, _S2Mixin
 
 
 @dataclass

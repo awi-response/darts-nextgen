@@ -5,6 +5,7 @@ from collections.abc import Generator
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
+import os, sys
 
 logger = logging.getLogger(__name__)
 
@@ -58,11 +59,11 @@ class _BasePipeline:
         raise NotImplementedError
 
     def run(self):
-        from darts.utils.cuda import debug_info
+        from darts.src.darts.utils.cuda import debug_info
 
         debug_info()
 
-        from darts.utils.earthengine import init_ee
+        from darts.src.darts.utils.earthengine import init_ee
 
         init_ee(self.ee_project, self.ee_use_highvolume)
 
@@ -72,8 +73,7 @@ class _BasePipeline:
         from darts_postprocessing import prepare_export
         from dask.distributed import Client, LocalCluster
         from odc.stac import configure_rio
-
-        from darts.utils.cuda import decide_device
+        from darts.src.darts.utils.cuda import decide_device
 
         self.device = decide_device(self.device)
 
