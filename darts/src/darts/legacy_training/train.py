@@ -36,6 +36,7 @@ def train_smp(
     early_stopping_patience: int = 5,
     plot_every_n_val_epochs: int = 5,
     # Device and Manager config
+    random_seed: int = 42,
     num_workers: int = 0,
     device: int | str = "auto",
     wandb_entity: str | None = None,
@@ -56,11 +57,31 @@ def train_smp(
             Since plotting is quite costly, you can reduce the frequency. Works similar like early stopping.
             In epochs, this would be `check_val_every_n_epoch * plot_every_n_val_epochs`.
 
+    The data structure of the training data expects the "preprocessing" step to be done beforehand,
+    which results in the following data structure:
+
+    ```sh
+    preprocessed-data/ # the top-level directory
+    ├── cross-val/ # this directory contains the data for the training and validation
+    │   ├── x/
+    │   └── y/
+    ├── val-test/ # this directory contains the data for the random selected validation set
+    │   ├── x/
+    │   └── y/
+    └── test/ # this directory contians the data for the left-out-region test set
+        ├── x/
+        └── y/
+    ```
+
+    `x` and `y` are the directories which contain torch-tensor files (.pt) for the input and target data.
+
     Args:
-        train_data_dir (Path): Path to the training data directory.
+        train_data_dir (Path): Path to the training data directory (top-level).
         artifact_dir (Path, optional): Path to the training output directory.
             Will contain checkpoints and metrics. Defaults to Path("lightning_logs").
         current_fold (int, optional): The current fold to train on. Must be in [0, 4]. Defaults to 0.
+        continue_from_checkpoint (Path | None, optional): Path to a checkpoint to continue training from.
+            Defaults to None.
         model_arch (str, optional): Model architecture to use. Defaults to "Unet".
         model_encoder (str, optional): Encoder to use. Defaults to "dpn107".
         model_encoder_weights (str | None, optional): Path to the encoder weights. Defaults to None.
@@ -78,6 +99,7 @@ def train_smp(
         early_stopping_patience (int, optional): Number of epochs to wait for improvement before stopping.
             Defaults to 5.
         plot_every_n_val_epochs (int, optional): Plot validation samples every n epochs. Defaults to 5.
+        random_seed (int, optional): Random seed for deterministic training. Defaults to 42.
         num_workers (int, optional): Number of Dataloader workers. Defaults to 0.
         device (int | str, optional): The device to run the model on. Defaults to "auto".
         wandb_entity (str | None, optional): Weights and Biases Entity. Defaults to None.
@@ -93,8 +115,10 @@ def train_smp(
     import lovely_tensors
     import torch
     from darts_segmentation.segment import SMPSegmenterConfig
+    from darts_segmentation.training.callbacks import BinarySegmentationMetrics
     from darts_segmentation.training.data import DartsDataModule
     from darts_segmentation.training.module import SMPSegmenter
+    from lightning.pytorch import seed_everything
     from lightning.pytorch.callbacks import EarlyStopping, RichProgressBar
     from lightning.pytorch.loggers import CSVLogger, WandbLogger
     from names_generator import generate_name
@@ -123,7 +147,7 @@ def train_smp(
     lovely_tensors.monkey_patch()
 
     torch.set_float32_matmul_precision("medium")
-    torch.manual_seed(42)
+    seed_everything(random_seed, workers=True)
 
     preprocess_config = toml.load(train_data_dir / "config.toml")["darts"]
 
@@ -153,7 +177,10 @@ def train_smp(
         gamma=gamma,
         focal_loss_alpha=focal_loss_alpha,
         focal_loss_gamma=focal_loss_gamma,
-        plot_every_n_val_epochs=plot_every_n_val_epochs,
+        val_set=f"val{current_fold}",
+        # These are only stored in the hparams and are not used
+        run_id=run_id,
+        run_name=run_name,
     )
 
     # Loggers
@@ -165,9 +192,9 @@ def train_smp(
         wandb_logger = WandbLogger(
             save_dir=artifact_dir,
             name=run_name,
+            version=run_id,
             project=wandb_project,
             entity=wandb_entity,
-            run_id=run_id,
             resume="allow",
         )
         trainer_loggers.append(wandb_logger)
@@ -179,6 +206,11 @@ def train_smp(
     # Callbacks
     callbacks = [
         RichProgressBar(),
+        BinarySegmentationMetrics(
+            input_combination=config["input_combination"],
+            val_set=f"val{current_fold}",
+            plot_every_n_val_epochs=plot_every_n_val_epochs,
+        ),
     ]
     if early_stopping_patience:
         logger.debug(f"Using EarlyStopping with patience {early_stopping_patience}")
@@ -194,9 +226,9 @@ def train_smp(
         check_val_every_n_epoch=check_val_every_n_epoch,
         accelerator="gpu" if isinstance(device, int) else device,
         devices=[device] if isinstance(device, int) else device,
-        ckpt_path=continue_from_checkpoint,
+        deterministic=True,
     )
-    trainer.fit(model, datamodule)
+    trainer.fit(model, datamodule, ckpt_path=continue_from_checkpoint)
 
     tick_fend = time.perf_counter()
     logger.info(f"Finished training '{run_name}' in {tick_fend - tick_fstart:.2f}s.")
@@ -324,6 +356,7 @@ def wandb_sweep_smp(
         focal_loss_alpha = wandb.config["focal_loss_alpha"]
         focal_loss_gamma = wandb.config["focal_loss_gamma"]
         fold = wandb.config.get("fold", 0)
+        random_seed = wandb.config.get("random_seed", 42)
 
         train_smp(
             # Data config
@@ -347,6 +380,7 @@ def wandb_sweep_smp(
             check_val_every_n_epoch=check_val_every_n_epoch,
             plot_every_n_val_epochs=plot_every_n_val_epochs,
             # Device and Manager config
+            random_seed=random_seed,
             num_workers=num_workers,
             device=device,
             wandb_entity=wandb_entity,
