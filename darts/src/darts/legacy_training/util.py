@@ -1,6 +1,8 @@
 """Utility functions for legacy training."""
 
 import logging
+import secrets
+import string
 from datetime import datetime
 from pathlib import Path
 
@@ -159,3 +161,21 @@ def suggest_optuna_params_from_wandb_config(trial, config: dict):
             raise ValueError(f"Unknown distribution {distribution}")
 
     return conv
+
+
+def generate_id(length: int = 8) -> str:
+    """Generate a random base-36 string of `length` digits.
+
+    This method is taken from the wandb SDK.
+
+    There are ~2.8T base-36 8-digit strings. Generating 210k ids will have a ~1% chance of collision.
+
+    Args:
+        length (int, optional): The length of the string. Defaults to 8.
+
+    Returns:
+        str: A random base-36 string of `length` digits.
+
+    """
+    alphabet = string.ascii_lowercase + string.digits
+    return "".join(secrets.choice(alphabet) for _ in range(length))

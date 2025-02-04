@@ -18,6 +18,7 @@ def train_smp(
     train_data_dir: Path,
     artifact_dir: Path = Path("lightning_logs"),
     current_fold: int = 0,
+    continue_from_checkpoint: Path | None = None,
     # Hyperparameters
     model_arch: str = "Unet",
     model_encoder: str = "dpn107",
@@ -81,7 +82,8 @@ def train_smp(
         device (int | str, optional): The device to run the model on. Defaults to "auto".
         wandb_entity (str | None, optional): Weights and Biases Entity. Defaults to None.
         wandb_project (str | None, optional): Weights and Biases Project. Defaults to None.
-        run_name (str | None, optional): Name of this run, as a further grouping method for logs etc. Defaults to None.
+        run_name (str | None, optional): Name of this run, as a further grouping method for logs etc.
+            If None, will generate a random one. Defaults to None.
 
     Returns:
         Trainer: The trainer object used for training.
@@ -95,13 +97,22 @@ def train_smp(
     from darts_segmentation.training.module import SMPSegmenter
     from lightning.pytorch.callbacks import EarlyStopping, RichProgressBar
     from lightning.pytorch.loggers import CSVLogger, WandbLogger
+    from names_generator import generate_name
 
+    from darts.legacy_training.util import generate_id
     from darts.utils.logging import LoggingManager
 
     LoggingManager.apply_logging_handlers("lightning.pytorch")
 
     tick_fstart = time.perf_counter()
-    logger.info(f"Starting training '{run_name}' with data from {train_data_dir.resolve()}.")
+    # Generate a run name if none is given
+    if run_name is None:
+        run_name = generate_name(style="hyphen")
+        # Count the number of existing runs in the artifact_dir, increase the number by one and append it to the name
+        run_count = sum(1 for p in artifact_dir.glob("*") if p.is_dir())
+        run_name = f"{run_name}-{run_count + 1}"
+    run_id = generate_id()
+    logger.info(f"Starting training '{run_name}' ('{run_id}') with data from {train_data_dir.resolve()}.")
     logger.debug(
         f"Using config:\n\t{model_arch=}\n\t{model_encoder=}\n\t{model_encoder_weights=}\n\t{augment=}\n\t"
         f"{learning_rate=}\n\t{gamma=}\n\t{batch_size=}\n\t{max_epochs=}\n\t{log_every_n_steps=}\n\t"
@@ -147,7 +158,7 @@ def train_smp(
 
     # Loggers
     trainer_loggers = [
-        CSVLogger(save_dir=artifact_dir, name=run_name),
+        CSVLogger(save_dir=artifact_dir, name=run_name, version=run_id),
     ]
     logger.debug(f"Logging CSV to {Path(trainer_loggers[0].log_dir).resolve()}")
     if wandb_entity and wandb_project:
@@ -156,6 +167,8 @@ def train_smp(
             name=run_name,
             project=wandb_project,
             entity=wandb_entity,
+            run_id=run_id,
+            resume="allow",
         )
         trainer_loggers.append(wandb_logger)
         logger.debug(
@@ -181,6 +194,7 @@ def train_smp(
         check_val_every_n_epoch=check_val_every_n_epoch,
         accelerator="gpu" if isinstance(device, int) else device,
         devices=[device] if isinstance(device, int) else device,
+        ckpt_path=continue_from_checkpoint,
     )
     trainer.fit(model, datamodule)
 
