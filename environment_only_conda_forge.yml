@@ -5,7 +5,7 @@ dependencies:
   - python=3.11
   - pip
   - numpy[version='>=1.26.3,<2']
-  - xarray[version='>=2024.9.0']
+  - xarray[version==2024.9.0']
   - rich[version='>=13.9.2']
   - cyclopts[version='>=2.9.9']
   - h5netcdf[version='>=1.3.0']
