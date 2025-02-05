@@ -28,6 +28,7 @@ nav:
       - Config: dev/config.md
       - Datacubes: dev/auxiliary.md
       - Logging: dev/logging.md
+      - Training: dev/training.md
 
 theme:
   name: material

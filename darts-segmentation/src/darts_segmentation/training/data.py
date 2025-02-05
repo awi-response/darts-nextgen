@@ -127,8 +127,8 @@ class DartsDataModule(L.LightningDataModule):
         self,
         data_dir: Path,
         batch_size: int,
-        current_fold: int = 0,
-        augment: bool = True,
+        current_fold: int = 0,  # Not used for test
+        augment: bool = True,  # Not used for test
         num_workers: int = 0,
         in_memory: bool = False,
     ):
@@ -145,15 +145,22 @@ class DartsDataModule(L.LightningDataModule):
         self.nsamples = len(sorted((data_dir / "x").glob("*.pt")))
 
     def setup(self, stage: Literal["fit", "validate", "test", "predict"] | None = None):
-        kf = KFold(n_splits=5)
-        train_idx, val_idx = list(kf.split(range(self.nsamples)))[self.current_fold]
+        if stage in ["fit", "validate"]:
+            kf = KFold(n_splits=5)
+            train_idx, val_idx = list(kf.split(range(self.nsamples)))[self.current_fold]
 
-        dsclass = DartsDatasetInMemory if self.in_memory else DartsDataset
-        self.train = dsclass(self.data_dir, self.augment, train_idx)
-        self.val = dsclass(self.data_dir, False, val_idx)
+            dsclass = DartsDatasetInMemory if self.in_memory else DartsDataset
+            self.train = dsclass(self.data_dir, self.augment, train_idx)
+            self.val = dsclass(self.data_dir, False, val_idx)
+        if stage == "test":
+            dsclass = DartsDatasetInMemory if self.in_memory else DartsDataset
+            self.test = dsclass(self.data_dir, False)
 
     def train_dataloader(self):
         return DataLoader(self.train, batch_size=self.batch_size, num_workers=self.num_workers, shuffle=True)
 
     def val_dataloader(self):
         return DataLoader(self.val, batch_size=self.batch_size, num_workers=self.num_workers)
+
+    def test_dataloader(self):
+        return DataLoader(self.test, batch_size=self.batch_size, num_workers=self.num_workers)

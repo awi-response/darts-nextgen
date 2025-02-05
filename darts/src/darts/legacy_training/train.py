@@ -18,6 +18,7 @@ def train_smp(
     train_data_dir: Path,
     artifact_dir: Path = Path("lightning_logs"),
     current_fold: int = 0,
+    continue_from_checkpoint: Path | None = None,
     # Hyperparameters
     model_arch: str = "Unet",
     model_encoder: str = "dpn107",
@@ -35,6 +36,7 @@ def train_smp(
     early_stopping_patience: int = 5,
     plot_every_n_val_epochs: int = 5,
     # Device and Manager config
+    random_seed: int = 42,
     num_workers: int = 0,
     device: int | str = "auto",
     wandb_entity: str | None = None,
@@ -44,6 +46,13 @@ def train_smp(
     """Run the training of the SMP model.
 
     Please see https://smp.readthedocs.io/en/latest/index.html for model configurations.
+
+    Each training run is assigned a unique name and id pair.
+    The name, which the user _can_ provide, should be used as a grouping mechanism of equal hyperparameter and code.
+    Hence, different versions of the same name should only differ by random state or run settings parameter, like logs.
+    Each version is assigned a unique id. This id cannot be provided by the user.
+    Artifacts (metrics, checkpoints, etc.) are then stored under {artifact_dir}/{run_name}/{run_id}.
+    Both run_name and run_id are also stored in the hparams of each checkpoint.
 
     You can specify the frequency on how often logs will be written and validation will be performed.
         - `log_every_n_steps` specifies how often train-logs will be written. This does not affect validation.
@@ -55,11 +64,31 @@ def train_smp(
             Since plotting is quite costly, you can reduce the frequency. Works similar like early stopping.
             In epochs, this would be `check_val_every_n_epoch * plot_every_n_val_epochs`.
 
+    The data structure of the training data expects the "preprocessing" step to be done beforehand,
+    which results in the following data structure:
+
+    ```sh
+    preprocessed-data/ # the top-level directory
+    ├── cross-val/ # this directory contains the data for the training and validation
+    │   ├── x/
+    │   └── y/
+    ├── val-test/ # this directory contains the data for the random selected validation set
+    │   ├── x/
+    │   └── y/
+    └── test/ # this directory contians the data for the left-out-region test set
+        ├── x/
+        └── y/
+    ```
+
+    `x` and `y` are the directories which contain torch-tensor files (.pt) for the input and target data.
+
     Args:
-        train_data_dir (Path): Path to the training data directory.
+        train_data_dir (Path): Path to the training data directory (top-level).
         artifact_dir (Path, optional): Path to the training output directory.
             Will contain checkpoints and metrics. Defaults to Path("lightning_logs").
         current_fold (int, optional): The current fold to train on. Must be in [0, 4]. Defaults to 0.
+        continue_from_checkpoint (Path | None, optional): Path to a checkpoint to continue training from.
+            Defaults to None.
         model_arch (str, optional): Model architecture to use. Defaults to "Unet".
         model_encoder (str, optional): Encoder to use. Defaults to "dpn107".
         model_encoder_weights (str | None, optional): Path to the encoder weights. Defaults to None.
@@ -77,11 +106,13 @@ def train_smp(
         early_stopping_patience (int, optional): Number of epochs to wait for improvement before stopping.
             Defaults to 5.
         plot_every_n_val_epochs (int, optional): Plot validation samples every n epochs. Defaults to 5.
+        random_seed (int, optional): Random seed for deterministic training. Defaults to 42.
         num_workers (int, optional): Number of Dataloader workers. Defaults to 0.
         device (int | str, optional): The device to run the model on. Defaults to "auto".
         wandb_entity (str | None, optional): Weights and Biases Entity. Defaults to None.
         wandb_project (str | None, optional): Weights and Biases Project. Defaults to None.
-        run_name (str | None, optional): Name of this run, as a further grouping method for logs etc. Defaults to None.
+        run_name (str | None, optional): Name of this run, as a further grouping method for logs etc.
+            If None, will generate a random one. Defaults to None.
 
     Returns:
         Trainer: The trainer object used for training.
@@ -91,28 +122,38 @@ def train_smp(
     import lovely_tensors
     import torch
     from darts_segmentation.segment import SMPSegmenterConfig
+    from darts_segmentation.training.callbacks import BinarySegmentationMetrics
     from darts_segmentation.training.data import DartsDataModule
     from darts_segmentation.training.module import SMPSegmenter
+    from lightning.pytorch import seed_everything
     from lightning.pytorch.callbacks import EarlyStopping, RichProgressBar
     from lightning.pytorch.loggers import CSVLogger, WandbLogger
 
+    from darts.legacy_training.util import generate_id, get_generated_name
     from darts.utils.logging import LoggingManager
 
     LoggingManager.apply_logging_handlers("lightning.pytorch")
 
     tick_fstart = time.perf_counter()
-    logger.info(f"Starting training '{run_name}' with data from {train_data_dir.resolve()}.")
+
+    # Create unique run identification (name can be specified by user, id can be interpreded as a 'version')
+    if run_name is None:
+        # Generate a run name if none is given
+        run_name = get_generated_name(artifact_dir)
+    run_id = generate_id()
+
+    logger.info(f"Starting training '{run_name}' ('{run_id}') with data from {train_data_dir.resolve()}.")
     logger.debug(
         f"Using config:\n\t{model_arch=}\n\t{model_encoder=}\n\t{model_encoder_weights=}\n\t{augment=}\n\t"
         f"{learning_rate=}\n\t{gamma=}\n\t{batch_size=}\n\t{max_epochs=}\n\t{log_every_n_steps=}\n\t"
         f"{check_val_every_n_epoch=}\n\t{early_stopping_patience=}\n\t{plot_every_n_val_epochs=}\n\t{num_workers=}"
-        f"\n\t{device=}"
+        f"\n\t{device=}\n\t{random_seed}"
     )
 
     lovely_tensors.monkey_patch()
 
     torch.set_float32_matmul_precision("medium")
-    torch.manual_seed(42)
+    seed_everything(random_seed, workers=True)
 
     preprocess_config = toml.load(train_data_dir / "config.toml")["darts"]
 
@@ -142,20 +183,26 @@ def train_smp(
         gamma=gamma,
         focal_loss_alpha=focal_loss_alpha,
         focal_loss_gamma=focal_loss_gamma,
-        plot_every_n_val_epochs=plot_every_n_val_epochs,
+        val_set=f"val{current_fold}",
+        # These are only stored in the hparams and are not used
+        run_id=run_id,
+        run_name=run_name,
+        random_seed=random_seed,
     )
 
     # Loggers
     trainer_loggers = [
-        CSVLogger(save_dir=artifact_dir, name=run_name),
+        CSVLogger(save_dir=artifact_dir, name=run_name, version=run_id),
     ]
     logger.debug(f"Logging CSV to {Path(trainer_loggers[0].log_dir).resolve()}")
     if wandb_entity and wandb_project:
         wandb_logger = WandbLogger(
             save_dir=artifact_dir,
             name=run_name,
+            version=run_id,
             project=wandb_project,
             entity=wandb_entity,
+            resume="allow",
         )
         trainer_loggers.append(wandb_logger)
         logger.debug(
@@ -166,6 +213,11 @@ def train_smp(
     # Callbacks
     callbacks = [
         RichProgressBar(),
+        BinarySegmentationMetrics(
+            input_combination=config["input_combination"],
+            val_set=f"val{current_fold}",
+            plot_every_n_val_epochs=plot_every_n_val_epochs,
+        ),
     ]
     if early_stopping_patience:
         logger.debug(f"Using EarlyStopping with patience {early_stopping_patience}")
@@ -181,8 +233,9 @@ def train_smp(
         check_val_every_n_epoch=check_val_every_n_epoch,
         accelerator="gpu" if isinstance(device, int) else device,
         devices=[device] if isinstance(device, int) else device,
+        deterministic=True,
     )
-    trainer.fit(model, datamodule)
+    trainer.fit(model, datamodule, ckpt_path=continue_from_checkpoint)
 
     tick_fend = time.perf_counter()
     logger.info(f"Finished training '{run_name}' in {tick_fend - tick_fstart:.2f}s.")
@@ -217,6 +270,9 @@ def wandb_sweep_smp(
     """Create a sweep with wandb and run it on the specified cuda device, or continue an existing sweep.
 
     If `sweep_id` is None, a new sweep will be created. Otherwise, the sweep with the given ID will be continued.
+    All artifacts are gathered under nested directory based on the sweep id: {artifact_dir}/sweep-{sweep_id}.
+    Since each sweep-configuration has (currently) an own name and id, a single run can be found under:
+    {artifact_dir}/sweep-{sweep_id}/{run_name}/{run_id}. Read the training-docs for more info.
 
     If a `cuda_device` is specified, run an agent on this device. If None, do nothing.
 
@@ -263,7 +319,6 @@ def wandb_sweep_smp(
         device (int | str | None, optional): The device to run the model on. Defaults to None.
         wandb_entity (str | None, optional): Weights and Biases Entity. Defaults to None.
         wandb_project (str | None, optional): Weights and Biases Project. Defaults to None.
-        run_name (str | None, optional): Name of this run, as a further grouping method for logs etc. Defaults to None.
 
     """
     import wandb
@@ -310,6 +365,7 @@ def wandb_sweep_smp(
         focal_loss_alpha = wandb.config["focal_loss_alpha"]
         focal_loss_gamma = wandb.config["focal_loss_gamma"]
         fold = wandb.config.get("fold", 0)
+        random_seed = wandb.config.get("random_seed", 42)
 
         train_smp(
             # Data config
@@ -333,6 +389,7 @@ def wandb_sweep_smp(
             check_val_every_n_epoch=check_val_every_n_epoch,
             plot_every_n_val_epochs=plot_every_n_val_epochs,
             # Device and Manager config
+            random_seed=random_seed,
             num_workers=num_workers,
             device=device,
             wandb_entity=wandb_entity,

@@ -24,6 +24,7 @@ def split_dataset_paths(
         train_data_dir (Path): Output path.
         test_val_split (float): val-test ratio.
         test_regions (list[str] | None): test regions.
+        admin_dir (Path): The directory containing the admin level shape-files.
 
     Returns:
         [zip[tuple[Path, Path, str]]]: A generator with input-path, output-path and split/mode.
