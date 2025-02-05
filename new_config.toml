@@ -13,6 +13,7 @@ notcvis-model-name = "RTS_v6_notcvis.pt"
 arcticdem-slope-vrt = "/taiga/pdg-rts/rts_dataset01/input/ArcticDEM/slope.vrt"
 arcticdem-elevation-vrt = "/taiga/pdg-rts/rts_dataset01/input/ArcticDEM/elevation.vrt"
 arcticdem-dir =  "/taiga/pdg-rts/rts_dataset01/input/ArcticDEM"
+# change this to your directory
 tcvis-dir = "/home/toddn/darts-nextgen/tcvis_dir"
 
 [darts.preprocess]
