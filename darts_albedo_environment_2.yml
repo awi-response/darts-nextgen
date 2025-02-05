@@ -43,3 +43,4 @@ dependencies:
     - msgpack==1.1.0
     - ray==2.37.0
     - zarr==2.18.4
+    - git+https://github.com/xarray-contrib/cupy-xarray
