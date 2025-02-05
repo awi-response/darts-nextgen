@@ -47,6 +47,13 @@ def train_smp(
 
     Please see https://smp.readthedocs.io/en/latest/index.html for model configurations.
 
+    Each training run is assigned a unique name and id pair.
+    The name, which the user _can_ provide, should be used as a grouping mechanism of equal hyperparameter and code.
+    Hence, different versions of the same name should only differ by random state or run settings parameter, like logs.
+    Each version is assigned a unique id. This id cannot be provided by the user.
+    Artifacts (metrics, checkpoints, etc.) are then stored under {artifact_dir}/{run_name}/{run_id}.
+    Both run_name and run_id are also stored in the hparams of each checkpoint.
+
     You can specify the frequency on how often logs will be written and validation will be performed.
         - `log_every_n_steps` specifies how often train-logs will be written. This does not affect validation.
         - `check_val_every_n_epoch` specifies how often validation will be performed.
@@ -121,27 +128,26 @@ def train_smp(
     from lightning.pytorch import seed_everything
     from lightning.pytorch.callbacks import EarlyStopping, RichProgressBar
     from lightning.pytorch.loggers import CSVLogger, WandbLogger
-    from names_generator import generate_name
 
-    from darts.legacy_training.util import generate_id
+    from darts.legacy_training.util import generate_id, get_generated_name
     from darts.utils.logging import LoggingManager
 
     LoggingManager.apply_logging_handlers("lightning.pytorch")
 
     tick_fstart = time.perf_counter()
-    # Generate a run name if none is given
+
+    # Create unique run identification (name can be specified by user, id can be interpreded as a 'version')
     if run_name is None:
-        run_name = generate_name(style="hyphen")
-        # Count the number of existing runs in the artifact_dir, increase the number by one and append it to the name
-        run_count = sum(1 for p in artifact_dir.glob("*") if p.is_dir())
-        run_name = f"{run_name}-{run_count + 1}"
+        # Generate a run name if none is given
+        run_name = get_generated_name(artifact_dir)
     run_id = generate_id()
+
     logger.info(f"Starting training '{run_name}' ('{run_id}') with data from {train_data_dir.resolve()}.")
     logger.debug(
         f"Using config:\n\t{model_arch=}\n\t{model_encoder=}\n\t{model_encoder_weights=}\n\t{augment=}\n\t"
         f"{learning_rate=}\n\t{gamma=}\n\t{batch_size=}\n\t{max_epochs=}\n\t{log_every_n_steps=}\n\t"
         f"{check_val_every_n_epoch=}\n\t{early_stopping_patience=}\n\t{plot_every_n_val_epochs=}\n\t{num_workers=}"
-        f"\n\t{device=}"
+        f"\n\t{device=}\n\t{random_seed}"
     )
 
     lovely_tensors.monkey_patch()
@@ -181,6 +187,7 @@ def train_smp(
         # These are only stored in the hparams and are not used
         run_id=run_id,
         run_name=run_name,
+        random_seed=random_seed,
     )
 
     # Loggers
@@ -263,6 +270,9 @@ def wandb_sweep_smp(
     """Create a sweep with wandb and run it on the specified cuda device, or continue an existing sweep.
 
     If `sweep_id` is None, a new sweep will be created. Otherwise, the sweep with the given ID will be continued.
+    All artifacts are gathered under nested directory based on the sweep id: {artifact_dir}/sweep-{sweep_id}.
+    Since each sweep-configuration has (currently) an own name and id, a single run can be found under:
+    {artifact_dir}/sweep-{sweep_id}/{run_name}/{run_id}. Read the training-docs for more info.
 
     If a `cuda_device` is specified, run an agent on this device. If None, do nothing.
 
@@ -309,7 +319,6 @@ def wandb_sweep_smp(
         device (int | str | None, optional): The device to run the model on. Defaults to None.
         wandb_entity (str | None, optional): Weights and Biases Entity. Defaults to None.
         wandb_project (str | None, optional): Weights and Biases Project. Defaults to None.
-        run_name (str | None, optional): Name of this run, as a further grouping method for logs etc. Defaults to None.
 
     """
     import wandb
