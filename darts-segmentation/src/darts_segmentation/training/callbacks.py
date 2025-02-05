@@ -195,7 +195,12 @@ class BinarySegmentationMetrics(Callback):
                     "InstanceRecall": BinaryInstanceRecall(**instance_metric_kwargs),
                     "InstanceF1Score": BinaryInstanceF1Score(**instance_metric_kwargs),
                     "InstanceAveragePrecision": BinaryInstanceAveragePrecision(thresholds=20, **instance_metric_kwargs),
-                    "InstanceBoundaryIoU": BinaryBoundaryIoU(**instance_metric_kwargs),
+                }
+            )
+            boundary_metric_kwargs = {"validate_args": False, "ignore_index": 2}
+            pl_module.test_metrics.add_metrics(
+                {
+                    "InstanceBoundaryIoU": BinaryBoundaryIoU(**boundary_metric_kwargs),
                 }
             )
             pl_module.test_instance_prc = BinaryInstancePrecisionRecallCurve(thresholds=20, **instance_metric_kwargs)
