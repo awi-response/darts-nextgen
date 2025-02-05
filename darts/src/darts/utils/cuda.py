@@ -2,7 +2,8 @@
 
 import logging
 from typing import Literal
-
+import os
+os.environ['CUDA_HOME'] = '/taiga/toddn/conda/envs/darts_albedo_env_2'
 logger = logging.getLogger(__name__)
 
 

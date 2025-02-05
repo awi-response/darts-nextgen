@@ -156,7 +156,7 @@ init_ee("ee-project")  # Replace with your project
 
 currently running planet pipeline using this command 
 
-`darts run-native-planet-pipeline-fast --config-file=planet_config.toml`
+`darts run-native-planet-pipeline-fast --config-file=new_config.toml`
 
 currently trying to run s2 pipeline with command
 
