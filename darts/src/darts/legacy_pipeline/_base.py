@@ -32,8 +32,8 @@ class _BasePipeline:
     output_data_dir: Path = Path("data/output")
     tcvis_dir: Path = Path("data/download/tcvis")
     model_dir: Path = Path("models")
-    tcvis_model_name: str = "RTS_v6_tcvis_s2native.pt"
-    notcvis_model_name: str = "RTS_v6_notcvis_s2native.pt"
+    tcvis_model_name: str = None
+    notcvis_model_name: str = None
     device: Literal["cuda", "cpu", "auto"] | int | None = None
     dask_worker: int = min(16, mp.cpu_count() - 1)  # noqa: RUF009
     ee_project: str | None = None
@@ -77,9 +77,18 @@ class _BasePipeline:
 
         self.device = decide_device(self.device)
 
+        # determine models to use
+        models = {}
+        if self.tcvis_model_name is not None:
+            models["tcvis"] = self.model_dir / self.tcvis_model_name
+        if self.notcvis_model_name is not None:
+            models["notcvis"] = self.model_dir / self.notcvis_model_name
+
+        if len(models) < 1:
+            logger.exception("no models configured, please add TCVIS and/or NOTCVIS models")
+
         ensemble = EnsembleV1(
-            self.model_dir / self.tcvis_model_name,
-            self.model_dir / self.notcvis_model_name,
+            models,
             device=torch.device(self.device),
         )
 

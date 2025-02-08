@@ -197,9 +197,13 @@ def prepare_export(
         return tile
 
     tile = _prep_layer(tile, "probabilities", "binarized_segmentation")
-    if "probabilities-tcvis" in tile:
-        tile = _prep_layer(tile, "probabilities-tcvis", "binarized_segmentation-tcvis")
-    if "probabilities-notcvis" in tile:
-        tile = _prep_layer(tile, "probabilities-notcvis", "binarized_segmentation-notcvis")
+
+    # get the names of the model probabilities if available
+    # for example 'tcvis' from 'probabilities-tcvis'
+    aux_probabilities = [
+        name.removeprefix("probabilities-") for name in tile.keys() if name.startswith("probabilities-")
+    ]
+    for aux_prob in aux_probabilities:
+        tile = _prep_layer(tile, f"probabilities-{aux_prob}", f"binarized_segmentation-{aux_prob}")
 
     return tile
