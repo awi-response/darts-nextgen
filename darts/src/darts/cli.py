@@ -18,6 +18,7 @@ from darts.legacy_pipeline import (
 from darts.legacy_training import (
     convert_lightning_checkpoint,
     optuna_sweep_smp,
+    preprocess_planet_train_data,
     preprocess_s2_train_data,
     test_smp,
     train_smp,
@@ -76,6 +77,7 @@ app.command(group=pipeline_group)(run_native_planet_pipeline_fast)
 app.command(group=pipeline_group)(run_native_sentinel2_pipeline)
 app.command(group=pipeline_group)(run_native_sentinel2_pipeline_fast)
 
+app.command(group=train_group)(preprocess_planet_train_data)
 app.command(group=train_group)(preprocess_s2_train_data)
 app.command(group=train_group)(train_smp)
 app.command(group=train_group)(test_smp)

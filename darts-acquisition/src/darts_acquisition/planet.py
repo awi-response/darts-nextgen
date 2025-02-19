@@ -2,6 +2,7 @@
 
 import logging
 import time
+from datetime import datetime
 from pathlib import Path
 from typing import Literal
 
@@ -11,44 +12,62 @@ import xarray as xr
 logger = logging.getLogger(__name__.replace("darts_", "darts."))
 
 
+def _is_valid_date(date_str: str, format: str) -> bool:
+    try:
+        datetime.strptime(date_str, format)
+        return True
+    except ValueError:
+        return False
+
+
 def parse_planet_type(fpath: Path) -> Literal["orthotile", "scene"]:
-    """Parse the type of Planet data from the file path.
+    """Parse the type of Planet data from the directory path.
 
     Args:
-        fpath (Path): The file path to the Planet data.
+        fpath (Path): The directory path to the Planet data.
 
     Returns:
         Literal["orthotile", "scene"]: The type of Planet data.
 
     Raises:
-        FileNotFoundError: If no matching TIFF file is found in the specified path.
         ValueError: If the Planet data type cannot be parsed from the file path.
 
     """
-    # Check if the directory parents contains a "PSOrthoTile" or "PSScene"
-    if "PSOrthoTile" == fpath.parent.parent.stem:
-        return "orthotile"
-    elif "PSScene" == fpath.parent.stem:
-        return "scene"
+    # Cases for Scenes:
+    # - YYYYMMDD_HHMMSS_NN_XXXX
+    # - YYYYMMDD_HHMMSS_XXXX
 
-    # If not suceeds, check if the directory contains a file with id of the parent directory
+    # Cases for Orthotiles:
+    # NNNNNNN/NNNNNNN_NNNNNNN_YYYY-MM-DD_XXXX
+    # NNNNNNN_NNNNNNN_YYYY-MM-DD_XXXX
 
-    # Get imagepath
-    try:
-        ps_image_name_parts = next(fpath.glob("*_SR.tif")).split("_")
-    except StopIteration:
-        raise FileNotFoundError(f"No matching TIFF files found in {fpath.resolve()} (.glob('*_SR.tif'))")
+    assert fpath.is_dir(), "fpath must be the parent directory!"
 
-    if len(ps_image_name_parts) == 6:  # PSOrthoTile
-        _, tile_id, _, _, _, _ = ps_image_name_parts
-        if tile_id == fpath.parent.stem:
+    ps_name_parts = fpath.stem.split("_")
+
+    if len(ps_name_parts) == 3:
+        # Must be scene or invalid
+        date, time, ident = ps_name_parts
+        if _is_valid_date(date, "%Y%m%d") and _is_valid_date(time, "%H%M%S") and len(ident) == 4:
+            return "scene"
+
+    if len(ps_name_parts) == 4:
+        # Assume scene
+        date, time, n, ident = ps_name_parts
+        if _is_valid_date(date, "%Y%m%d") and _is_valid_date(time, "%H%M%S") and n.isdigit() and len(ident) == 4:
+            return "scene"
+        # Is not scene, assume orthotile
+        chunkid, tileid, date, ident = ps_name_parts
+        if chunkid.isdigit() and tileid.isdigit() and _is_valid_date(date, "%Y-%m-%d") and len(ident) == 4:
             return "orthotile"
-        else:
-            raise ValueError(f"Could not parse Planet data type from {fpath}")
-    elif len(ps_image_name_parts) == 7:  # PSScene
-        return "scene"
-    else:
-        raise ValueError(f"Could not parse Planet data type from {fpath}")
+
+    raise ValueError(
+        f"Could not parse Planet data type from {fpath}."
+        f"Expected a format of YYYYMMDD_HHMMSS_NN_XXXX or YYYYMMDD_HHMMSS_XXXX for scene, "
+        "or NNNNNNN/NNNNNNN_NNNNNNN_YYYY-MM-DD_XXXX or NNNNNNN_NNNNNNN_YYYY-MM-DD_XXXX for orthotile."
+        f"Got {fpath.stem} instead."
+        "Please ensure that the parent directory of the file is used, instead of the file itself."
+    )
 
 
 def load_planet_scene(fpath: str | Path) -> xr.Dataset:
@@ -74,9 +93,10 @@ def load_planet_scene(fpath: str | Path) -> xr.Dataset:
     logger.debug(f"Loading Planet PS {planet_type.capitalize()} from {fpath.resolve()}")
 
     # Get imagepath
-    try:
-        ps_image = next(fpath.glob("*_SR.tif"))
-    except StopIteration:
+    ps_image = next(fpath.glob("*_SR.tif"), None)
+    if not ps_image:
+        ps_image = next(fpath.glob("*_SR_clip.tif"), None)
+    if not ps_image:
         raise FileNotFoundError(f"No matching TIFF files found in {fpath.resolve()} (.glob('*_SR.tif'))")
 
     # Define band names and corresponding indices
@@ -124,7 +144,9 @@ def load_planet_masks(fpath: str | Path) -> xr.Dataset:
     logger.debug(f"Loading data masks from {fpath.resolve()}")
 
     # Get imagepath
-    udm_path = next(fpath.glob("*_udm2.tif"))
+    udm_path = next(fpath.glob("*_udm2.tif"), None)
+    if not udm_path:
+        udm_path = next(fpath.glob("*_udm2_clip.tif"), None)
     if not udm_path:
         raise FileNotFoundError(f"No matching UDM-2 TIFF files found in {fpath.resolve()} (.glob('*_udm2.tif'))")
 
