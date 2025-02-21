@@ -17,6 +17,8 @@ logs
 wandb
 lightning_logs
 artifacts
+cufile.log
+.nfs*
 
 # Mkdocs
 .cache
