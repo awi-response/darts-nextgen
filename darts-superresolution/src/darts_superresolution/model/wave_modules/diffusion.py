@@ -105,12 +105,12 @@ class DWSR(nn.Module):
 
 
 class GaussianDiffusion(nn.Module):
-    def __init__(self, denoise_fn, image_size, channels=3, loss_type="l1", conditional=True, schedule_opt=None):
+    def __init__(self, denoise_fn, image_size, channels=4, loss_type="l1", conditional=True, schedule_opt=None):
         super().__init__()
         self.channels = channels
         self.image_size = image_size
         self.denoise_fn = denoise_fn
-        self.dwsr = DWSR(12, 64, 12, depth=10)
+        self.dwsr = DWSR(16, 64, 16, depth=10)
         self.loss_type = loss_type
         self.conditional = conditional
         self.xfm = DWTForward(J=1, mode="zero", wave="haar")
@@ -267,7 +267,7 @@ class GaussianDiffusion(nn.Module):
 
     @torch.no_grad()
     def super_resolution(self, x_in, continous=False, sample_inter=None):
-        #print("Shape 4: ", x_in.shape)
+        # print("Shape 4: ", x_in.shape)
         logger.debug(f"Super resolution for {x_in.shape} with continous={continous}")
         return self.p_sample_loop(x_in, continous, sample_inter)
 
