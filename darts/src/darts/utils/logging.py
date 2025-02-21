@@ -14,6 +14,8 @@ DARTS_LEVEL = logging.DEBUG
 
 logger = logging.getLogger(__name__)
 
+# Console singleton to access the console from anywhere
+console = Console()
 
 class LoggingManagerSingleton:
     """A singleton class to manage logging handlers for the application."""

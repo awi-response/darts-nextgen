@@ -11,6 +11,7 @@ from typing import Literal
 import albumentations as A  # noqa: N812
 import lightning as L  # noqa: N812
 import torch
+import zarr
 from sklearn.model_selection import KFold
 from torch.utils.data import DataLoader, Dataset
 
@@ -57,6 +58,54 @@ class DartsDataset(Dataset):
 
         x = torch.load(xfile).numpy()
         y = torch.load(yfile).int().numpy()
+
+        # Apply augmentations
+        if self.transform is not None:
+            augmented = self.transform(image=x.transpose(1, 2, 0), mask=y)
+            x = augmented["image"].transpose(2, 0, 1)
+            y = augmented["mask"]
+
+        return x, y
+
+
+class DartsDatasetZarr(Dataset):
+    def __init__(self, data_dir: Path | str, augment: bool, indices: list[int] | None = None):
+        if isinstance(data_dir, str):
+            data_dir = Path(data_dir)
+
+        store = zarr.storage.DirectoryStore(data_dir)
+        self.zroot = zarr.group(store=store)
+
+        assert (
+            "x" in self.zroot and "y" in self.zroot
+        ), f"Dataset corrupted! {self.zroot.info=} must contain 'x' or 'y' arrays!"
+
+        self.indices = indices if indices is not None else list(range(len(self.zroot["x"])))
+
+        self.transform = (
+            A.Compose(
+                [
+                    A.HorizontalFlip(),
+                    A.VerticalFlip(),
+                    A.RandomRotate90(),
+                    # A.Blur(),
+                    A.RandomBrightnessContrast(),
+                    A.MultiplicativeNoise(per_channel=True, elementwise=True),
+                    # ToTensorV2(),
+                ]
+            )
+            if augment
+            else None
+        )
+
+    def __len__(self):
+        return len(self.indices)
+
+    def __getitem__(self, idx):
+        i = self.indices[idx]
+
+        x = self.zroot["x"][i]
+        y = self.zroot["y"][i]
 
         # Apply augmentations
         if self.transform is not None:
@@ -142,18 +191,21 @@ class DartsDataModule(L.LightningDataModule):
         self.in_memory = in_memory
 
         data_dir = Path(data_dir)
-        self.nsamples = len(sorted((data_dir / "x").glob("*.pt")))
+
+        store = zarr.storage.DirectoryStore(data_dir)
+        zroot = zarr.group(store=store)
+        self.nsamples = len(zroot["x"])
 
     def setup(self, stage: Literal["fit", "validate", "test", "predict"] | None = None):
         if stage in ["fit", "validate"]:
             kf = KFold(n_splits=5)
             train_idx, val_idx = list(kf.split(range(self.nsamples)))[self.current_fold]
 
-            dsclass = DartsDatasetInMemory if self.in_memory else DartsDataset
+            dsclass = DartsDatasetInMemory if self.in_memory else DartsDatasetZarr
             self.train = dsclass(self.data_dir, self.augment, train_idx)
             self.val = dsclass(self.data_dir, False, val_idx)
         if stage == "test":
-            dsclass = DartsDatasetInMemory if self.in_memory else DartsDataset
+            dsclass = DartsDatasetInMemory if self.in_memory else DartsDatasetZarr
             self.test = dsclass(self.data_dir, False)
 
     def train_dataloader(self):

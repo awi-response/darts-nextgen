@@ -25,11 +25,10 @@ from darts.legacy_training import (
     wandb_sweep_smp,
 )
 from darts.utils.config import ConfigParser
-from darts.utils.logging import LoggingManager
+from darts.utils.logging import LoggingManager, console
 
 root_file = Path(__file__).resolve()
 logger = logging.getLogger(__name__)
-console = Console()
 
 config_parser = ConfigParser()
 app = cyclopts.App(

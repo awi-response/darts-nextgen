@@ -87,12 +87,12 @@ def test_smp(
 
     # Data and model
     datamodule_val_test = DartsDataModule(
-        data_dir=train_data_dir / "val-test",
+        data_dir=train_data_dir / "val-test.zarr",
         batch_size=batch_size,
         num_workers=num_workers,
     )
     datamodule_test = DartsDataModule(
-        data_dir=train_data_dir / "test",
+        data_dir=train_data_dir / "test.zarr",
         batch_size=batch_size,
         num_workers=num_workers,
     )
