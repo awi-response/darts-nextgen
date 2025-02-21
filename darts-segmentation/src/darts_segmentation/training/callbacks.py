@@ -70,6 +70,7 @@ class BinarySegmentationMetrics(Callback):
         val_set: str = "val",
         test_set: str = "test",
         plot_every_n_val_epochs: int = 5,
+        is_crossval: bool = False,
     ):
         """Initialize the ValidationCallback.
 
@@ -79,6 +80,10 @@ class BinarySegmentationMetrics(Callback):
                 Defaults to "val".
             test_set (str, optional): Name of the test set. Only used for naming the test metrics. Defaults to "test".
             plot_every_n_val_epochs (int, optional): Plot validation samples every n epochs. Defaults to 5.
+            is_crossval (bool, optional): Whether the training is done with cross-validation.
+                This will change the logging behavior of scalar metrics from logging to {val_set} to just "val".
+                The logging behaviour of the samples is not affected.
+                Defaults to False.
 
         """
         assert "/" not in val_set, "val_set must not contain '/'"
@@ -87,6 +92,11 @@ class BinarySegmentationMetrics(Callback):
         self.test_set = test_set
         self.plot_every_n_val_epochs = plot_every_n_val_epochs
         self.input_combination = input_combination
+        self.is_crossval = is_crossval
+
+    @property
+    def _val_prefix(self):
+        return "val" if self.is_crossval else self.val_set
 
     def is_val_plot_epoch(self, current_epoch: int, check_val_every_n_epoch: int | None):
         """Check if the current epoch is an epoch where validation samples should be plotted.
@@ -160,7 +170,7 @@ class BinarySegmentationMetrics(Callback):
             added_metrics += list(pl_module.train_metrics.keys())
         # Validation metrics and visualizations for the fit and validate stages
         if stage == "fit" or stage == "validate":
-            pl_module.val_metrics = metrics.clone(prefix=f"{pl_module.val_set}/")
+            pl_module.val_metrics = metrics.clone(prefix=f"{self._val_prefix}/")
             pl_module.val_metrics.add_metrics(
                 {
                     "AUROC": AUROC(thresholds=20, **metric_kwargs),
@@ -171,7 +181,7 @@ class BinarySegmentationMetrics(Callback):
             pl_module.val_prc = PrecisionRecallCurve(thresholds=20, **metric_kwargs)
             pl_module.val_cmx = ConfusionMatrix(normalize="true", **metric_kwargs)
             added_metrics += list(pl_module.val_metrics.keys())
-            added_metrics += [f"{self.val_set}/{m}" for m in ["roc", "prc", "cmx"]]
+            added_metrics += [f"{self._val_prefix}/{m}" for m in ["roc", "prc", "cmx"]]
 
         # Test metrics and visualizations for the test stage
         if stage == "test":
@@ -239,6 +249,7 @@ class BinarySegmentationMetrics(Callback):
             del pl_module.test_cmx
 
     def on_train_batch_end(self, trainer: Trainer, pl_module: LightningModule, outputs, batch, batch_idx):  # noqa: D102
+        pl_module.log("train/loss", outputs["loss"])
         _, y = batch
         # Expect the output to has a tensor called "y_hat"
         assert "y_hat" in outputs, (
@@ -257,6 +268,7 @@ class BinarySegmentationMetrics(Callback):
     def on_validation_batch_end(  # noqa: D102
         self, trainer: Trainer, pl_module: LightningModule, outputs, batch, batch_idx, dataloader_idx=0
     ):
+        pl_module.log(f"{self._val_prefix}/loss", outputs["loss"])
         x, y = batch
         # Expect the output to has a tensor called "y_hat"
         assert "y_hat" in outputs, (
@@ -316,16 +328,16 @@ class BinarySegmentationMetrics(Callback):
             # Check for a wandb or csv logger to log the images
             for pllogger in pl_module.loggers:
                 if isinstance(pllogger, CSVLogger):
-                    fig_dir = Path(pllogger.log_dir) / "figures" / f"{self.val_set}-samples"
+                    fig_dir = Path(pllogger.log_dir) / "figures" / f"{self._val_prefix}-samples"
                     fig_dir.mkdir(exist_ok=True, parents=True)
                     fig_cmx.savefig(fig_dir / f"cmx_{pl_module.global_step}png")
                     fig_roc.savefig(fig_dir / f"roc_{pl_module.global_step}png")
                     fig_prc.savefig(fig_dir / f"prc_{pl_module.global_step}.png")
                 if isinstance(pllogger, WandbLogger):
                     wandb_run: Run = pllogger.experiment
-                    wandb_run.log({f"{self.val_set}/cmx": wandb.Image(fig_cmx)}, commit=False)
-                    wandb_run.log({f"{self.val_set}/roc": wandb.Image(fig_roc)}, commit=False)
-                    wandb_run.log({f"{self.val_set}/prc": wandb.Image(fig_prc)}, commit=False)
+                    wandb_run.log({f"{self._val_prefix}/cmx": wandb.Image(fig_cmx)}, commit=False)
+                    wandb_run.log({f"{self._val_prefix}/roc": wandb.Image(fig_roc)}, commit=False)
+                    wandb_run.log({f"{self._val_prefix}/prc": wandb.Image(fig_prc)}, commit=False)
 
             fig_cmx.clear()
             fig_roc.clear()
@@ -343,6 +355,7 @@ class BinarySegmentationMetrics(Callback):
     def on_test_batch_end(  # noqa: D102
         self, trainer: Trainer, pl_module: LightningModule, outputs, batch, batch_idx, dataloader_idx=0
     ):
+        pl_module.log(f"{self.test_set}/loss", outputs["loss"])
         x, y = batch
         assert "y_hat" in outputs, (
             "Output does not contain 'y_hat' tensor."

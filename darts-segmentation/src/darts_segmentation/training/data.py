@@ -176,7 +176,7 @@ class DartsDataModule(L.LightningDataModule):
         self,
         data_dir: Path,
         batch_size: int,
-        current_fold: int = 0,  # Not used for test
+        fold: int = 0,  # Not used for test
         augment: bool = True,  # Not used for test
         num_workers: int = 0,
         in_memory: bool = False,
@@ -185,7 +185,7 @@ class DartsDataModule(L.LightningDataModule):
         self.save_hyperparameters()
         self.data_dir = data_dir
         self.batch_size = batch_size
-        self.current_fold = current_fold
+        self.fold = fold
         self.augment = augment
         self.num_workers = num_workers
         self.in_memory = in_memory
@@ -199,7 +199,7 @@ class DartsDataModule(L.LightningDataModule):
     def setup(self, stage: Literal["fit", "validate", "test", "predict"] | None = None):
         if stage in ["fit", "validate"]:
             kf = KFold(n_splits=5)
-            train_idx, val_idx = list(kf.split(range(self.nsamples)))[self.current_fold]
+            train_idx, val_idx = list(kf.split(range(self.nsamples)))[self.fold]
 
             dsclass = DartsDatasetInMemory if self.in_memory else DartsDatasetZarr
             self.train = dsclass(self.data_dir, self.augment, train_idx)
