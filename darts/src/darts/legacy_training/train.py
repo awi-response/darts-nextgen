@@ -42,6 +42,7 @@ def train_smp(
     wandb_entity: str | None = None,
     wandb_project: str | None = None,
     run_name: str | None = None,
+    run_id: str | None = None,
 ):
     """Run the training of the SMP model.
 
@@ -50,7 +51,7 @@ def train_smp(
     Each training run is assigned a unique name and id pair.
     The name, which the user _can_ provide, should be used as a grouping mechanism of equal hyperparameter and code.
     Hence, different versions of the same name should only differ by random state or run settings parameter, like logs.
-    Each version is assigned a unique id. This id cannot be provided by the user.
+    Each version is assigned a unique id.
     Artifacts (metrics, checkpoints, etc.) are then stored under {artifact_dir}/{run_name}/{run_id}.
     Both run_name and run_id are also stored in the hparams of each checkpoint.
 
@@ -113,6 +114,7 @@ def train_smp(
         wandb_project (str | None, optional): Weights and Biases Project. Defaults to None.
         run_name (str | None, optional): Name of this run, as a further grouping method for logs etc.
             If None, will generate a random one. Defaults to None.
+        run_id (str | None, optional): ID of the run. If None, will generate a random one. Defaults to None.
 
     Returns:
         Trainer: The trainer object used for training.
@@ -137,17 +139,15 @@ def train_smp(
     tick_fstart = time.perf_counter()
 
     # Create unique run identification (name can be specified by user, id can be interpreded as a 'version')
-    if run_name is None:
-        # Generate a run name if none is given
-        run_name = get_generated_name(artifact_dir)
-    run_id = generate_id()
+    run_name = run_name or get_generated_name(artifact_dir)
+    run_id = run_id or generate_id()
 
     logger.info(f"Starting training '{run_name}' ('{run_id}') with data from {train_data_dir.resolve()}.")
     logger.debug(
         f"Using config:\n\t{model_arch=}\n\t{model_encoder=}\n\t{model_encoder_weights=}\n\t{augment=}\n\t"
         f"{learning_rate=}\n\t{gamma=}\n\t{batch_size=}\n\t{max_epochs=}\n\t{log_every_n_steps=}\n\t"
         f"{check_val_every_n_epoch=}\n\t{early_stopping_patience=}\n\t{plot_every_n_val_epochs=}\n\t{num_workers=}"
-        f"\n\t{device=}\n\t{random_seed}"
+        f"\n\t{device=}\n\t{random_seed=}"
     )
 
     lovely_tensors.monkey_patch()
@@ -171,7 +171,7 @@ def train_smp(
 
     # Data and model
     datamodule = DartsDataModule(
-        data_dir=train_data_dir / "cross-val",
+        data_dir=train_data_dir / "cross-val.zarr",
         batch_size=batch_size,
         current_fold=current_fold,
         augment=augment,
@@ -233,7 +233,7 @@ def train_smp(
         check_val_every_n_epoch=check_val_every_n_epoch,
         accelerator="gpu" if isinstance(device, int) else device,
         devices=[device] if isinstance(device, int) else device,
-        deterministic=True,
+        deterministic=False,
     )
     trainer.fit(model, datamodule, ckpt_path=continue_from_checkpoint)
 
@@ -343,6 +343,9 @@ def wandb_sweep_smp(
         logger.info("To start a sweep agents, use the following command:")
         logger.info(f"$ rye run darts sweep_smp --sweep-id {sweep_id}")
 
+    artifact_dir = artifact_dir / f"sweep-{sweep_id}"
+    artifact_dir.mkdir(parents=True, exist_ok=True)
+
     def run():
         run = wandb.init(config=sweep_configuration)
         # We need to manually log the run data since the wandb logger only logs to its own logs and click
@@ -395,6 +398,7 @@ def wandb_sweep_smp(
             wandb_entity=wandb_entity,
             wandb_project=wandb_project,
             run_name=wandb.run.name,
+            run_id=wandb.run.id,
         )
 
     if device is None:

@@ -7,10 +7,6 @@ from typing import TYPE_CHECKING, Literal
 
 logger = logging.getLogger(__name__)
 
-import logging
-
-logger = logging.getLogger(__name__)
-
 if TYPE_CHECKING:
     import geopandas as gpd
 
@@ -46,9 +42,6 @@ def split_dataset_paths(
     from sklearn.model_selection import train_test_split
 
     train_data_dir.mkdir(exist_ok=True, parents=True)
-    output_dir_cross_val = train_data_dir / "cross-val"
-    output_dir_val_test = train_data_dir / "val-test"
-    output_dir_test = train_data_dir / "test"
 
     # 1. Split regions
     test_paths: list[Path] = []
@@ -101,18 +94,13 @@ def split_dataset_paths(
     )
 
     fpathgen = chain(cross_val_paths, val_test_paths, test_paths)
-    outpathgen = chain(
-        repeat(output_dir_cross_val, len(cross_val_paths)),
-        repeat(output_dir_val_test, len(val_test_paths)),
-        repeat(output_dir_test, len(test_paths)),
-    )
     modegen = chain(
         repeat("cross-val", len(cross_val_paths)),
         repeat("val-test", len(val_test_paths)),
         repeat("test", len(test_paths)),
     )
 
-    return zip(fpathgen, outpathgen, modegen)
+    return zip(fpathgen, modegen)
 
 
 def _legacy_path_gen(data_dir: Path):
@@ -200,17 +188,21 @@ def preprocess_planet_train_data(
     import geopandas as gpd
     import pandas as pd
     import toml
-    import torch
     import xarray as xr
+    import zarr
     from darts_acquisition import load_arcticdem, load_planet_masks, load_planet_scene, load_tcvis
     from darts_preprocessing import preprocess_legacy_fast
     from darts_segmentation.training.prepare_training import create_training_patches
     from dask.distributed import Client, LocalCluster
     from lovely_tensors import monkey_patch
+    from numcodecs import Blosc
     from odc.stac import configure_rio
+    from zarr.storage import DirectoryStore
+    from rich.progress import track
 
     from darts.utils.cuda import debug_info, decide_device
     from darts.utils.earthengine import init_ee
+    from darts.utils.logging import console
 
     monkey_patch()
     debug_info()
@@ -247,6 +239,30 @@ def preprocess_planet_train_data(
 
         train_data_dir.mkdir(exist_ok=True, parents=True)
 
+        zgroups = {
+            "cross-val": zarr.group(store=DirectoryStore(train_data_dir / "cross-val.zarr"), overwrite=True),
+            "val-test": zarr.group(store=DirectoryStore(train_data_dir / "val-test.zarr"), overwrite=True),
+            "test": zarr.group(store=DirectoryStore(train_data_dir / "test.zarr"), overwrite=True),
+        }
+        # We need do declare the number of patches to 0, because we can't know the final number of patches
+        for root in zgroups.values():
+            root.create(
+                name="x",
+                shape=(0, len(bands), patch_size, patch_size),
+                # shards=(100, len(bands), patch_size, patch_size),
+                chunks=(1, len(bands), patch_size, patch_size),
+                dtype="float32",
+                compressor=Blosc(cname="lz4", clevel=9),
+            )
+            root.create(
+                name="y",
+                shape=(0, patch_size, patch_size),
+                # shards=(100, patch_size, patch_size),
+                chunks=(1, patch_size, patch_size),
+                dtype="uint8",
+                compressor=Blosc(cname="lz4", clevel=9),
+            )
+
         # Find all Sentinel 2 scenes and split into train+val (cross-val), val-test (variance) and test (region)
         n_patches = 0
         n_patches_by_mode = {"cross-val": 0, "val-test": 0, "test": 0}
@@ -257,7 +273,7 @@ def preprocess_planet_train_data(
             planet_paths, footprints, train_data_dir, test_val_split, test_regions, admin_dir
         )
 
-        for i, (fpath, output_dir, mode) in enumerate(path_gen):
+        for i, (fpath, mode) in track(enumerate(path_gen), description="Processing samples", total=len(planet_paths), console=console):
             try:
                 planet_id = fpath.stem
                 logger.debug(
@@ -313,14 +329,12 @@ def preprocess_planet_train_data(
                     mask_erosion_size=mask_erosion_size,
                 )
 
-                outdir_x = output_dir / "x"
-                outdir_y = output_dir / "y"
-                outdir_x.mkdir(exist_ok=True, parents=True)
-                outdir_y.mkdir(exist_ok=True, parents=True)
+                zx = zgroups[mode]["x"]
+                zy = zgroups[mode]["y"]
                 patch_id = None
                 for patch_id, (x, y) in enumerate(gen):
-                    torch.save(x, outdir_x / f"{planet_id}_pid{patch_id}.pt")
-                    torch.save(y, outdir_y / f"{planet_id}_pid{patch_id}.pt")
+                    zx.append(x.unsqueeze(0).numpy().astype("float32"))
+                    zy.append(y.unsqueeze(0).numpy().astype("uint8"))
                     n_patches += 1
                     n_patches_by_mode[mode] += 1
                 if n_patches > 0 and len(labels) > 0:
