@@ -1,0 +1,43 @@
+# Note: The sub-headings / sections are optional and are removed from the config parser anyway. The only important thing is the [darts] heading
+[darts]
+ee-project = "your-project-here"
+
+[darts.paths]
+sentinel2-dir = "data/input/sentinel2"
+orthotiles-dir = "data/input/planet/PSOrthoTile"
+scenes-dir = "data/input/planet/PSScene"
+output-data-dir = "data/output"
+model-dir = "models"
+tcvis-model-name = "RTS_v6_tcvis.pt"
+notcvis-model-name = "RTS_v6_notcvis.pt"
+arcticdem-slope-vrt = "data/input/ArcticDEM/slope.vrt"
+arcticdem-elevation-vrt = "data/input/ArcticDEM/elevation.vrt"
+arcticdem-dir = "data/download/arcticdem"
+tcvis-dir = "data/download/tcvis"
+
+[darts.preprocess]
+tpi-outer-radius = 100
+tpi-inner-radius = 0
+
+[darts.segmentation]
+patch-size = 1024
+overlap = 256
+batch-size = 2
+reflection = 32
+
+[darts.training]
+bands = [
+    'blue',
+    'green',
+    'red',
+    'nir',
+    'ndvi',
+    'tc_brightness',
+    'tc_greenness',
+    'tc_wetness',
+    'relative_elevation',
+    'slope',
+]
+train-data-dir = "data/training"
+include-allzero = false
+include-nan-edges = true

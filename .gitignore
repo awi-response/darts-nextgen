@@ -14,6 +14,9 @@ wheels/
 models
 data
 logs
+wandb
+lightning_logs
+artifacts
 
 # Mkdocs
 .cache
@@ -30,3 +33,8 @@ requirements-dev.lock
 
 # Editor files
 .vscode/
+
+# Config files
+config.toml
+.env
+configs/

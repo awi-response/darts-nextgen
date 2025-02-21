@@ -61,7 +61,7 @@ rye add --optional=gdal384 "gdal==3.8.4"
 
 > IMPORTANT! If you installed any of clang or gdal with conda, please ensure that while installing dependencies and working on the project to have the conda environment activated in which you installed clang and or gdal.
 
-Another option is to install the windows GDAL binary wheels compiled by cgoehlke from https://github.com/cgohlke/geospatial-wheels:
+Another option is to install the windows GDAL binary wheels compiled by cgoehlke from <https://github.com/cgohlke/geospatial-wheels>:
 
 ```cmd
 rye sync -f --features gdal384_win64
@@ -104,3 +104,27 @@ Please see these issues:
 
 - [Rye: Can't specify per-dependency package index / can't specify uv behavior in config file](https://github.com/astral-sh/rye/issues/1210#issuecomment-2263761535)
 - [UV: Add support for pinning a package to a specific index](https://github.com/astral-sh/uv/issues/171)
+
+## Recommended Notebook header
+
+The following code snipped can be put in the very first cell of a notebook to already to add logging and initialize earth engine.
+
+```python
+import logging
+
+from rich.logging import RichHandler
+from rich.traceback import install
+
+from darts.utils.earthengine import init_ee
+from darts.utils.logging import LoggingManager
+
+LoggingManager.setup_logging()
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(message)s",
+    datefmt="[%X]",
+    handlers=[RichHandler(rich_tracebacks=True)],
+)
+install(show_locals=True)  # Change to False if you encounter too large tracebacks
+init_ee("ee-project")  # Replace with your project
+```

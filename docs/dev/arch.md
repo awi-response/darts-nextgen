@@ -3,7 +3,7 @@
 
 This repository is a workspace repository, managed by [Rye](https://rye.astral.sh/).
 Read more about workspaces at the [Rye docs](https://rye.astral.sh/guide/workspaces/).
-Each workspace-member starts with `darts-*` and can be seen as an own package or module, except the `darts-nextgen` directory which is the top-level package.
+Each workspace-member starts with `darts-*` and can be seen as an own package or module, except the `darts` directory which is the top-level package.
 Each package has it's own internal functions and it's public facing API.
 The public facing API of each package MUST follow the following section [API paradigms](#api-paradigms).
 
@@ -13,30 +13,30 @@ The public facing API of each package MUST follow the following section [API par
 
 | Package Name            | Type     | Description                                                                           | (Major) Dependencies - all need Xarray |
 | ----------------------- | -------- | ------------------------------------------------------------------------------------- | -------------------------------------- |
-| `darts-preprocessing`   | Data     | Loads data and combines the features to a Xarray Dataset                              | GDAL                                   |
+| `darts-acquisition`     | Data     | Fetches data from the data sources                                                    | GEE, rasterio, ODC-Geo                 |
+| `darts-preprocessing`   | Data     | Loads data and combines the features to a Xarray Dataset                              | Cupy, Xarray-Spatial                   |
 | `darts-superresolution` | Train    | Trains a supper resolution model to scale Sentinel 2 images from 10m to 3m resolution | PyTorch                                |
 | `darts-segmentation`    | Train    | Trains an segmentation model                                                          | PyTorch, segmentation_models_pytorch   |
 | `darts-ensemble`        | Ensemble | Ensembles the different models and run the multi-stage inference pipeline.            | PyTorch                                |
-| `darts-postprocessing`  | Data     | Further refines the output from an ensemble or segmentaion and binarizes the probs    | PyTorch                                |
-| `darts-export`          | Data     | Saves the results from inference and combines the result to the final DARTS dataset   | GeoPandas, Scipy, Cucim                |
+| `darts-postprocessing`  | Data     | Further refines the output from an ensemble or segmentaion and binarizes the probs    | Scipy, Cucim                           |
+| `darts-export`          | Data     | Saves the results from inference and combines the result to the final DARTS dataset   | GeoPandas                              |
+| `darts-utils`           | Data     | Shared utilities for data processing                                                  |                                        |
 
 The following modules are planned or potential ideas for future expansion of the project:
 
 | Package Name        | Type  | Description                                                             | (Major) Dependencies - all need Xarray |
 | ------------------- | ----- | ----------------------------------------------------------------------- | -------------------------------------- |
-| `darts-acquisition` | Data  | Fetches data from the data sources                                      | GEE, rasterio, ?                       |
 | `darts-detection`   | Train | Trains an object detection model                                        | PyTorch                                |
 | `darts-?`           | Train | Trains a ? model for more complex multi-stage ensembles                 | ?                                      |
 | `darts-evaluation`  | Test  | Evaluates the end-to-end process on a test dataset and external dataset | GeoPandas                              |
-| `darts-utils`       | Data  | Shared utilities for data processing                                    | Scipy, Cucim, GeoPandas                |
 | `darts-train-utils` | Train | Shared utilities for training                                           | PyTorch                                |
 
 The packages should follow this architecture:
-![DARTS nextgen architecture](../assets/darts_nextgen_architecture.png)
+![DARTS nextgen architecture](../assets/darts_nextgen_architecture.png){ loading=lazy }
 
-The `darts-nextgen` utilizes [Ray](https://docs.ray.io/en/latest/index.html) to automaticly parallize the different computations.
+The `darts-nextgen` is planned to utilize [Ray](https://docs.ray.io/en/latest/index.html) to automaticly parallize the different computations.
 However, each package should be designed so that one could build their own pipeline without Ray.
-Hence, all Ray-related functions / transformations etc. should be defined in the `darts-nextgen` sub-directory.
+Hence, all Ray-related functions / transformations etc. should be defined in the toplevel `darts` sub-directory.
 
 The packages can decide to wrap their public functions into a CLI with typer.
 
@@ -91,39 +91,40 @@ The following things needs to be updates:
 ## APIs between pipeline steps
 
 The following diagram visualizes the steps of the major `packages` of the pipeline:
-![DARTS nextgen pipeline steps](../assets/darts_nextgen_pipeline-steps.png)
+![DARTS nextgen pipeline steps](../assets/darts_nextgen_pipeline-steps.png){ loading=lazy }
 
 Each Tile should be represented as a single `xr.Dataset` with each feature / band as `DataVariable`.
-Each DataVariable should have their `source` documented in the `attrs`.
+Each DataVariable should have their `data_source` documented in the `attrs`, aswell as `long_name` and `units` if any for plotting.
+A `_FillValue` should also be set for no-data with `.rio.write_nodata("no-data-value")`
 
 ### Preprocessing Output
 
 Coordinates: `x`, `y` and `spatial_ref` (from rioxarray)
 
-| DataVariable         | shape  | dtype   | attrs    |
-| -------------------- | ------ | ------- | -------- |
-| `blue`               | (x, y) | uint16  | - source |
-| `green`              | (x, y) | uint16  | - source |
-| `red`                | (x, y) | uint16  | - source |
-| `nir`                | (x, y) | uint16  | - source |
-| `ndvi`               | (x, y) | float32 | - source |
-| `relative_elevation` | (x, y) | float32 | - source |
-| `slope`              | (x, y) | float32 | - source |
-| `tc_brightness`      | (x, y) | uint8   | - source |
-| `tc_greenness`       | (x, y) | uint8   | - source |
-| `tc_wetness`         | (x, y) | uint8   | - source |
-| `valid_data_mask`    | (x, y) | bool    | - source |
-| `quality_data_mask`  | (x, y) | bool    | - source |
+| DataVariable         | shape  | dtype   | no-data | attrs                         | note                               |
+| -------------------- | ------ | ------- | ------- | ----------------------------- | ---------------------------------- |
+| `blue`               | (x, y) | uint16  | 0       | data_source, long_name, units |                                    |
+| `green`              | (x, y) | uint16  | 0       | data_source, long_name, units |                                    |
+| `red`                | (x, y) | uint16  | 0       | data_source, long_name, units |                                    |
+| `nir`                | (x, y) | uint16  | 0       | data_source, long_name, units |                                    |
+| `ndvi`               | (x, y) | uint16  | 0       | data_source, long_name        | Values between 0-20.000 (+1, *1e4) |
+| `relative_elevation` | (x, y) | int16   | 0       | data_source, long_name, units |                                    |
+| `slope`              | (x, y) | float32 | nan     | data_source, long_name        |                                    |
+| `tc_brightness`      | (x, y) | uint8   | -       | data_source, long_name        |                                    |
+| `tc_greenness`       | (x, y) | uint8   | -       | data_source, long_name        |                                    |
+| `tc_wetness`         | (x, y) | uint8   | -       | data_source, long_name        |                                    |
+| `valid_data_mask`    | (x, y) | bool    | -       | data_source, long_name        |                                    |
+| `quality_data_mask`  | (x, y) | bool    | -       | data_source, long_name        |                                    |
 
 ### Segmentation / Ensemble Output
 
 Coordinates: `x`, `y` and `spatial_ref` (from rioxarray)
 
-| DataVariable                | shape  | dtype   | attrs |
-| --------------------------- | ------ | ------- | ----- |
-| [Output from Preprocessing] |        |         |       |
-| `probabilities`             | (x, y) | float32 |       |
-| `probabilities-model-X*`    | (x, y) | bool    |       |
+| DataVariable                | shape  | dtype   | no-data | attrs     |
+| --------------------------- | ------ | ------- | ------- | --------- |
+| [Output from Preprocessing] |        |         |         |           |
+| `probabilities`             | (x, y) | float32 | nan     | long_name |
+| `probabilities-model-X*`    | (x, y) | float32 | nan     | long_name |
 
 \*: optional intermedia probabilities in an ensemble
 
@@ -131,11 +132,11 @@ Coordinates: `x`, `y` and `spatial_ref` (from rioxarray)
 
 Coordinates: `x`, `y` and `spatial_ref` (from rioxarray)
 
-| DataVariable                | shape  | dtype | attrs | note                             |
-| --------------------------- | ------ | ----- | ----- | -------------------------------- |
-| [Output from Preprocessing] |        |       |       |                                  |
-| `probabilities_percent`     | (x, y) | uint8 |       | Values between 0-100, nodata:255 |
-| `binarized_segmentation`    | (x, y) | uint8 |       |                                  |
+| DataVariable                | shape  | dtype | no-data | attrs            | note                 |
+| --------------------------- | ------ | ----- | ------- | ---------------- | -------------------- |
+| [Output from Preprocessing] |        |       |         |                  |                      |
+| `probabilities_percent`     | (x, y) | uint8 | 255     | long_name, units | Values between 0-100 |
+| `binarized_segmentation`    | (x, y) | uint8 | -       | long_name        |                      |
 
 ### PyTorch Model checkpoints
 
@@ -318,4 +319,4 @@ Ray expects batched data to be in either numpy or pandas format and can't work w
 Hence, a wrapper with custom stacking functions is needed.
 This tradeoff is not small, however, the benefits in terms of maintainability and readability are worth it.
 
-![Xarray overhead with Ray](../assets/xarray_ray_overhead.png)
+![Xarray overhead with Ray](../assets/xarray_ray_overhead.png){ loading=lazy }
