@@ -98,14 +98,17 @@ class EnsembleV1:
             A list of input tiles augmented by a predicted `probabilities` layer with type float32 and range [0, 1].
 
         """
-        kwargs = {
-            "patch_size": patch_size,
-            "overlap": overlap,
-            "batch_size": batch_size,
-            "reflection": reflection,
-            "keep_inputs": keep_inputs,
-        }
-        return [self.segment_tile(tile, **kwargs) for tile in tiles]
+        return [
+            self.segment_tile(
+                tile,
+                patch_size=patch_size,
+                overlap=overlap,
+                batch_size=batch_size,
+                reflection=reflection,
+                keep_inputs=keep_inputs,
+            )
+            for tile in tiles
+        ]
 
     def __call__(
         self,
