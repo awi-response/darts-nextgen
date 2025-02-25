@@ -161,3 +161,5 @@ currently running planet pipeline using this command
 currently trying to run s2 pipeline with command
 
 `darts run-native-sentinel2-pipeline-fast --config-file=new_config.toml`
+
+Run as background process and redirect

@@ -10,7 +10,8 @@ echo "${CONDA_ENVS}"
 
 conda init
 
-conda activate darts_albedo_forge_only_2
+conda activate darts_albedo_env_3
+
 
 
 CUR_PYTHON="$(which python)"
