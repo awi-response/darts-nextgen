@@ -198,7 +198,7 @@ def load_s2_from_gee(
     )
 
     # quality data mask: high quality = 1, low quality = 0
-    ds_s2 = ds_s2["quality_data_mask"] = (
+    ds_s2["quality_data_mask"] = (
         ds_s2["scl"].isin([4, 5, 6]).assign_attrs({"data_source": "s2", "long_name": "Quality Data Mask"})
     )
 
@@ -287,6 +287,7 @@ def get_s2ids_from_shape_ee(
     )
     tick_fstart = time.perf_counter()
     aoi = gpd.read_file(aoi_shapefile)
+    aoi = aoi.to_crs("EPSG:4326")
     s2ids = set()
     for i, row in aoi.iterrows():
         geom = ee.Geometry.Polygon(list(row.geometry.exterior.coords))

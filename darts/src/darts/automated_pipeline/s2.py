@@ -11,10 +11,14 @@ logger = logging.getLogger(__name__)
 
 def run_native_sentinel2_pipeline_from_aoi(
     aoi_shapefile: Path,
+    model_file: Path,
+    start_date: str,
+    end_date: str,
+    max_cloud_cover: int = 10,
+    input_cache: Path = Path("data/cache/input"),
     output_data_dir: Path = Path("data/output"),
     tcvis_dir: Path = Path("data/download/tcvis"),
     arcticdem_dir: Path = Path("data/download/arcticdem"),
-    model_dir: Path = Path("models"),
     tcvis_model_name: str = "RTS_v6_tcvis_s2native.pt",
     notcvis_model_name: str = "RTS_v6_notcvis_s2native.pt",
     device: Literal["cuda", "cpu", "auto"] | int | None = None,
@@ -37,12 +41,17 @@ def run_native_sentinel2_pipeline_from_aoi(
 
     Args:
         aoi_shapefile (Path): The path to the shapefile containing the AOI. Can be anything readable by geopandas.
+        model_file (Path): The path to the model to use for segmentation.
+        start_date (str): The start date for the Sentinel-2 data.
+        end_date (str): The end date for the Sentinel-2 data.
+        max_cloud_cover (int, optional): The maximum cloud cover to use for the Sentinel-2 data. Defaults to 10.
+        input_cache(Path): The directory to use for the cache. Stores the downloaded optical data here.
+            Defaults to Path("data/cache/input").
         output_data_dir (Path): The "output" directory. Defaults to Path("data/output").
         arcticdem_dir (Path): The directory containing the ArcticDEM data (the datacube and the extent files).
             Will be created and downloaded if it does not exist.
             Defaults to Path("data/download/arcticdem").
         tcvis_dir (Path): The directory containing the TCVis data. Defaults to Path("data/download/tcvis").
-        model_dir (Path): The path to the models to use for segmentation. Defaults to Path("models").
         tcvis_model_name (str, optional): The name of the model to use for TCVis. Defaults to "RTS_v6_tcvis.pt".
         notcvis_model_name (str, optional): The name of the model to use for not TCVis. Defaults to "RTS_v6_notcvis.pt".
         device (Literal["cuda", "cpu"] | int, optional): The device to run the model on.
@@ -83,6 +92,7 @@ def run_native_sentinel2_pipeline_from_aoi(
     init_ee(ee_project, ee_use_highvolume)
 
     import torch
+    import xarray as xr
     from darts_acquisition import load_arcticdem, load_tcvis
     from darts_acquisition.s2 import get_s2ids_from_shape_ee, load_s2_from_gee
     from darts_ensemble.ensemble_v1 import EnsembleV1
@@ -94,12 +104,12 @@ def run_native_sentinel2_pipeline_from_aoi(
     from rich.progress import track
 
     from darts.utils.cuda import decide_device
+    from darts.utils.logging import console
 
     device = decide_device(device)
 
     ensemble = EnsembleV1(
-        model_dir / tcvis_model_name,
-        model_dir / notcvis_model_name,
+        {"tcvis": model_file},
         device=torch.device(device),
     )
 
@@ -113,12 +123,17 @@ def run_native_sentinel2_pipeline_from_aoi(
         # Iterate over all the data (_path_generator)
         n_tiles = 0
         # paths = sorted(self._path_generator())
-        s2ids = get_s2ids_from_shape_ee(aoi_shapefile)
+        s2ids = get_s2ids_from_shape_ee(aoi_shapefile, start_date, end_date, max_cloud_cover)
         logger.info(f"Found {len(s2ids)} tiles to process.")
-        for i, s2id in track(enumerate(s2ids)):
+        for i, s2id in track(enumerate(s2ids), console=console, total=len(s2ids)):
             try:
                 outpath = output_data_dir / s2id
-                optical = load_s2_from_gee(s2id)
+                cache_file = input_cache / f"{s2id}.nc"
+                if cache_file.exists():
+                    optical = xr.open_dataset(cache_file, engine="h5netcdf").set_coords("spatial_ref")
+                else:
+                    optical = load_s2_from_gee(s2id)
+                    optical.to_netcdf(cache_file, engine="h5netcdf")
                 arcticdem = load_arcticdem(
                     optical.odc.geobox, arcticdem_dir, resolution=10, buffer=ceil(tpi_outer_radius / 10 * sqrt(2))
                 )
