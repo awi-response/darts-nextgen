@@ -6,9 +6,9 @@ from pathlib import Path
 from typing import Annotated
 
 import cyclopts
-from rich.console import Console
 
 from darts import __version__
+from darts.automated_pipeline.s2 import run_native_sentinel2_pipeline_from_aoi
 from darts.legacy_pipeline import (
     run_native_planet_pipeline,
     run_native_planet_pipeline_fast,
@@ -75,6 +75,7 @@ app.command(group=pipeline_group)(run_native_planet_pipeline)
 app.command(group=pipeline_group)(run_native_planet_pipeline_fast)
 app.command(group=pipeline_group)(run_native_sentinel2_pipeline)
 app.command(group=pipeline_group)(run_native_sentinel2_pipeline_fast)
+app.command(group=pipeline_group)(run_native_sentinel2_pipeline_from_aoi)
 
 app.command(group=train_group)(preprocess_planet_train_data)
 app.command(group=train_group)(preprocess_s2_train_data)

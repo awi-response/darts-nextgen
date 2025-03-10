@@ -1,3 +1,5 @@
+"""Preprocess Planet data for training."""
+
 import logging
 import multiprocessing as mp
 from itertools import chain, repeat
@@ -27,6 +29,7 @@ def split_dataset_paths(
 
     Args:
         data_paths (list[Path]): All paths found with tiffs.
+        footprints (gpd.GeoDataFrame): The footprints of the images.
         train_data_dir (Path): Output path.
         test_val_split (float): val-test ratio.
         test_regions (list[str] | None): test regions.
@@ -197,8 +200,8 @@ def preprocess_planet_train_data(
     from lovely_tensors import monkey_patch
     from numcodecs import Blosc
     from odc.stac import configure_rio
-    from zarr.storage import DirectoryStore
     from rich.progress import track
+    from zarr.storage import DirectoryStore
 
     from darts.utils.cuda import debug_info, decide_device
     from darts.utils.earthengine import init_ee
@@ -273,7 +276,9 @@ def preprocess_planet_train_data(
             planet_paths, footprints, train_data_dir, test_val_split, test_regions, admin_dir
         )
 
-        for i, (fpath, mode) in track(enumerate(path_gen), description="Processing samples", total=len(planet_paths), console=console):
+        for i, (fpath, mode) in track(
+            enumerate(path_gen), description="Processing samples", total=len(planet_paths), console=console
+        ):
             try:
                 planet_id = fpath.stem
                 logger.debug(

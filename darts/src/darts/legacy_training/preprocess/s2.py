@@ -170,8 +170,8 @@ def preprocess_s2_train_data(
     from lovely_tensors import monkey_patch
     from numcodecs import Blosc
     from odc.stac import configure_rio
-    from zarr.storage import DirectoryStore
     from rich.progress import track
+    from zarr.storage import DirectoryStore
 
     from darts.utils.cuda import debug_info, decide_device
     from darts.utils.earthengine import init_ee
@@ -237,7 +237,9 @@ def preprocess_s2_train_data(
         s2_paths = sorted(sentinel2_dir.glob("*/"))
         logger.info(f"Found {len(s2_paths)} Sentinel 2 scenes in {sentinel2_dir}")
         path_gen = split_dataset_paths(s2_paths, train_data_dir, test_val_split, test_regions, admin_dir)
-        for i, (fpath, mode) in track(enumerate(path_gen), description="Processing samples", total=len(s2_paths), console=console):
+        for i, (fpath, mode) in track(
+            enumerate(path_gen), description="Processing samples", total=len(s2_paths), console=console
+        ):
             try:
                 _, s2_tile_id, tile_id = parse_s2_tile_id(fpath)
 

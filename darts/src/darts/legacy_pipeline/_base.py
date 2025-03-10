@@ -151,9 +151,11 @@ class _VRTMixin:
     arcticdem_elevation_vrt: Path = Path("data/input/ArcticDEM/elevation.vrt")
 
     def _preprocess(self, aqdata: AquisitionData):
+        import xarray as xr
         from darts_preprocessing import preprocess_legacy
 
-        return preprocess_legacy(aqdata.optical, aqdata.arcticdem, aqdata.tcvis, aqdata.data_masks)
+        tile = xr.merge([aqdata.optical, aqdata.data_masks])
+        return preprocess_legacy(tile, aqdata.arcticdem, aqdata.tcvis)
 
 
 @dataclass
@@ -163,13 +165,14 @@ class _FastMixin:
     tpi_inner_radius: int = 0
 
     def _preprocess(self, aqdata: AquisitionData):
+        import xarray as xr
         from darts_preprocessing import preprocess_legacy_fast
 
+        tile = xr.merge([aqdata.optical, aqdata.data_masks])
         return preprocess_legacy_fast(
-            aqdata.optical,
+            tile,
             aqdata.arcticdem,
             aqdata.tcvis,
-            aqdata.data_masks,
             self.tpi_outer_radius,
             self.tpi_inner_radius,
             self.device,

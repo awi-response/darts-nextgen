@@ -30,7 +30,6 @@ def preprocess_legacy(
     ds_optical: xr.Dataset,
     ds_arcticdem: xr.Dataset,
     ds_tcvis: xr.Dataset,
-    ds_data_masks: xr.Dataset,
 ) -> xr.Dataset:
     """Preprocess optical data with legacy (DARTS v1) preprocessing steps.
 
@@ -42,7 +41,6 @@ def preprocess_legacy(
         ds_optical (xr.Dataset): The Planet scene optical data or Sentinel 2 scene optical data.
         ds_arcticdem (xr.Dataset): The ArcticDEM data.
         ds_tcvis (xr.Dataset): The TCVIS data.
-        ds_data_masks (xr.Dataset): The data masks, based on the optical data.
 
     Returns:
         xr.Dataset: The preprocessed dataset.
@@ -58,7 +56,7 @@ def preprocess_legacy(
     # we dont need to calculate them here
 
     # merge to final dataset
-    ds_merged = xr.merge([ds_optical, ds_ndvi, ds_arcticdem, ds_tcvis, ds_data_masks])
+    ds_merged = xr.merge([ds_optical, ds_ndvi, ds_arcticdem, ds_tcvis])
 
     return ds_merged
 
@@ -115,10 +113,9 @@ def preprocess_legacy_arcticdem_fast(
 
 
 def preprocess_legacy_fast(
-    ds_optical: xr.Dataset,
+    ds_merged: xr.Dataset,
     ds_arcticdem: xr.Dataset,
     ds_tcvis: xr.Dataset,
-    ds_data_masks: xr.Dataset,
     tpi_outer_radius: int = 100,
     tpi_inner_radius: int = 0,
     device: Literal["cuda", "cpu"] | int = DEFAULT_DEVICE,
@@ -135,10 +132,9 @@ def preprocess_legacy_fast(
     arcticdem data and calculates slope and relative elevation on the fly.
 
     Args:
-        ds_optical (xr.Dataset): The Planet scene optical data or Sentinel 2 scene optical dataset.
+        ds_merged (xr.Dataset): The Planet scene optical data or Sentinel 2 scene optical dataset including data_masks.
         ds_arcticdem (xr.Dataset): The ArcticDEM dataset.
         ds_tcvis (xr.Dataset): The TCVIS dataset.
-        ds_data_masks (xr.Dataset): The data masks, based on the optical data.
         tpi_outer_radius (int, optional): The outer radius of the annulus kernel for the tpi calculation
             in m. Defaults to 100m.
         tpi_inner_radius (int, optional): The inner radius of the annulus kernel for the tpi calculation
@@ -154,15 +150,12 @@ def preprocess_legacy_fast(
     tick_fstart = time.perf_counter()
     logger.info("Starting fast v1 preprocessing.")
 
-    # merge to final dataset
-    ds_merged = xr.merge([ds_optical, ds_data_masks])
-
     # Calculate NDVI
     ds_merged["ndvi"] = calculate_ndvi(ds_merged).ndvi
 
     # Reproject TCVIS to optical data
     tick_sproj = time.perf_counter()
-    ds_tcvis = ds_tcvis.odc.reproject(ds_optical.odc.geobox, resampling="cubic")
+    ds_tcvis = ds_tcvis.odc.reproject(ds_merged.odc.geobox, resampling="cubic")
     tick_eproj = time.perf_counter()
     logger.debug(f"Reprojection of TCVIS done in {tick_eproj - tick_sproj:.2f} seconds.")
 
@@ -172,19 +165,19 @@ def preprocess_legacy_fast(
 
     # Calculate TPI and slope from ArcticDEM
     tick_sproj = time.perf_counter()
-    ds_arcticdem = ds_arcticdem.odc.reproject(ds_optical.odc.geobox.buffered(tpi_outer_radius), resampling="cubic")
+    ds_arcticdem = ds_arcticdem.odc.reproject(ds_merged.odc.geobox.buffered(tpi_outer_radius), resampling="cubic")
     tick_eproj = time.perf_counter()
     logger.debug(f"Reprojection of ArcticDEM done in {tick_eproj - tick_sproj:.2f} seconds.")
 
     ds_arcticdem = preprocess_legacy_arcticdem_fast(ds_arcticdem, tpi_outer_radius, tpi_inner_radius, device)
-    ds_arcticdem = ds_arcticdem.odc.crop(ds_optical.odc.geobox.extent)
+    ds_arcticdem = ds_arcticdem.odc.crop(ds_merged.odc.geobox.extent)
     ds_merged["dem"] = ds_arcticdem.dem
     ds_merged["relative_elevation"] = ds_arcticdem.tpi
     ds_merged["slope"] = ds_arcticdem.slope
 
     # Update datamask with arcticdem mask
     with xr.set_options(keep_attrs=True):
-        ds_merged["quality_data_mask"] = ds_data_masks.quality_data_mask * ds_arcticdem.datamask
+        ds_merged["quality_data_mask"] = ds_merged.quality_data_mask * ds_arcticdem.datamask
     ds_merged.quality_data_mask.attrs["data_source"] += " + ArcticDEM"
 
     tick_fend = time.perf_counter()
