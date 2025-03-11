@@ -2,6 +2,7 @@
 
 import logging
 import multiprocessing as mp
+import time
 from math import ceil, sqrt
 from pathlib import Path
 from typing import Literal
@@ -34,7 +35,7 @@ def run_native_sentinel2_pipeline_from_aoi(
     binarization_threshold: float = 0.5,
     mask_erosion_size: int = 10,
     min_object_size: int = 32,
-    use_quality_mask: bool = False,
+    quality_level: int | Literal["high_quality", "low_quality", "none"] = 0,
     write_model_outputs: bool = False,
 ):
     """Pipeline for Sentinel 2 data with optimized preprocessing.
@@ -74,8 +75,8 @@ def run_native_sentinel2_pipeline_from_aoi(
         mask_erosion_size (int, optional): The size of the disk to use for mask erosion and the edge-cropping.
             Defaults to 10.
         min_object_size (int, optional): The minimum object size to keep in pixel. Defaults to 32.
-        use_quality_mask (bool, optional): Whether to use the "quality" mask instead of the "valid" mask
-            to mask the output.
+        quality_level (int | str, optional): The quality level to use for the mask. If a string maps to int.
+            high_quality -> 2, low_quality=1, none=0 (apply no masking). Defaults to 0.
         write_model_outputs (bool, optional): Also save the model outputs, not only the ensemble result.
             Defaults to False.
 
@@ -91,8 +92,8 @@ def run_native_sentinel2_pipeline_from_aoi(
 
     init_ee(ee_project, ee_use_highvolume)
 
+    import odc.geo.xr  # noqa: F401
     import torch
-    import xarray as xr
     from darts_acquisition import load_arcticdem, load_tcvis
     from darts_acquisition.s2 import get_s2ids_from_shape_ee, load_s2_from_gee
     from darts_ensemble.ensemble_v1 import EnsembleV1
@@ -101,10 +102,8 @@ def run_native_sentinel2_pipeline_from_aoi(
     from darts_preprocessing import preprocess_legacy_fast
     from dask.distributed import Client, LocalCluster
     from odc.stac import configure_rio
-    from rich.progress import track
 
     from darts.utils.cuda import decide_device
-    from darts.utils.logging import console
 
     device = decide_device(device)
 
@@ -125,15 +124,12 @@ def run_native_sentinel2_pipeline_from_aoi(
         # paths = sorted(self._path_generator())
         s2ids = get_s2ids_from_shape_ee(aoi_shapefile, start_date, end_date, max_cloud_cover)
         logger.info(f"Found {len(s2ids)} tiles to process.")
-        for i, s2id in track(enumerate(s2ids), console=console, total=len(s2ids)):
+        for i, s2id in enumerate(s2ids):
             try:
+                tick_start = time.perf_counter()
                 outpath = output_data_dir / s2id
-                cache_file = input_cache / f"{s2id}.nc"
-                if cache_file.exists():
-                    optical = xr.open_dataset(cache_file, engine="h5netcdf").set_coords("spatial_ref")
-                else:
-                    optical = load_s2_from_gee(s2id)
-                    optical.to_netcdf(cache_file, engine="h5netcdf")
+                optical = load_s2_from_gee(s2id, cache=input_cache)
+
                 arcticdem = load_arcticdem(
                     optical.odc.geobox, arcticdem_dir, resolution=10, buffer=ceil(tpi_outer_radius / 10 * sqrt(2))
                 )
@@ -157,11 +153,11 @@ def run_native_sentinel2_pipeline_from_aoi(
                 )
                 tile = prepare_export(
                     tile,
-                    binarization_threshold,
-                    mask_erosion_size,
-                    min_object_size,
-                    use_quality_mask,
-                    device,
+                    bin_threshold=binarization_threshold,
+                    mask_erosion_size=mask_erosion_size,
+                    min_object_size=min_object_size,
+                    quality_level=quality_level,
+                    device=device,
                 )
 
                 outpath.mkdir(parents=True, exist_ok=True)
@@ -170,12 +166,13 @@ def run_native_sentinel2_pipeline_from_aoi(
                 writer.export_binarized(outpath)
                 writer.export_polygonized(outpath)
                 n_tiles += 1
-                logger.info(f"Processed sample {i + 1} of {len(s2ids)} '{s2id=}'.")
+                tick_end = time.perf_counter()
+                logger.info(f"Processed sample {i + 1} of {len(s2ids)} {s2id=} in {tick_end - tick_start:.2f}s.")
             except KeyboardInterrupt:
                 logger.warning("Keyboard interrupt detected.\nExiting...")
                 raise KeyboardInterrupt
             except Exception as e:
-                logger.warning(f"Could not process sample '{s2id=}'.\nSkipping...")
+                logger.warning(f"Could not process sample {s2id=}.\nSkipping...")
                 logger.exception(e)
         else:
             logger.info(f"Processed {n_tiles} tiles to {output_data_dir.resolve()}.")

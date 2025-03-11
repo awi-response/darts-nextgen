@@ -151,7 +151,7 @@ def prepare_export(
     bin_threshold: float = 0.5,
     mask_erosion_size: int = 10,
     min_object_size: int = 32,
-    use_quality_mask: bool = False,
+    quality_level: int | Literal["high_quality", "low_quality", "none"] = 0,
     device: Literal["cuda", "cpu"] | int = DEFAULT_DEVICE,
 ) -> xr.Dataset:
     """Prepare the export, e.g. binarizes the data and convert the float probabilities to uint8.
@@ -162,8 +162,8 @@ def prepare_export(
         mask_erosion_size (int, optional): The size of the disk to use for mask erosion and the edge-cropping.
             Defaults to 10.
         min_object_size (int, optional): The minimum object size to keep in pixel. Defaults to 32.
-        use_quality_mask (bool, optional): Whether to use the "quality" mask instead of the
-            "valid" mask to mask the output. Defaults to False.
+        quality_level (int | str, optional): The quality level to use for the mask. If a string maps to int.
+            high_quality -> 2, low_quality=1, none=0 (apply no masking). Defaults to 0.
         device (Literal["cuda", "cpu"] | int, optional): The device to use for dilation.
             Defaults to "cuda" if cuda for cucim is available, else "cpu".
 
@@ -171,12 +171,18 @@ def prepare_export(
         xr.Dataset: Output tile.
 
     """
-    mask_name = "quality_data_mask" if use_quality_mask else "valid_data_mask"
-    tile[mask_name] = erode_mask(tile[mask_name], mask_erosion_size, device)  # 0=positive, 1=negative
+    quality_level = (
+        quality_level
+        if isinstance(quality_level, int)
+        else {"high_quality": 2, "low_quality": 1, "none": 0}[quality_level]
+    )
+    mask = tile["quality_data_mask"] >= quality_level
+    if quality_level < 0:
+        mask = erode_mask(mask, mask_erosion_size, device)  # 0=positive, 1=negative
 
     def _prep_layer(tile, layername, binarized_layer_name):
         # Binarize the segmentation
-        tile[binarized_layer_name] = binarize(tile[layername], bin_threshold, min_object_size, tile[mask_name], device)
+        tile[binarized_layer_name] = binarize(tile[layername], bin_threshold, min_object_size, mask, device)
         tile[binarized_layer_name].attrs = {
             "long_name": "Binarized Segmentation",
         }
@@ -188,7 +194,7 @@ def prepare_export(
             return tile
 
         intprobs = (tile[layername] * 100).fillna(255).astype("uint8")
-        tile[layername] = xr.where(tile[mask_name], intprobs, 255)
+        tile[layername] = xr.where(mask, intprobs, 255)
         tile[layername].attrs = {
             "long_name": "Probabilities",
             "units": "%",

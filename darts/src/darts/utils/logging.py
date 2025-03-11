@@ -5,7 +5,7 @@ import time
 from pathlib import Path
 
 import cyclopts
-from rich.console import Console
+from darts_utils.rich import RichManager
 from rich.logging import RichHandler
 
 # A global level to easy change the log level for interal darts modules
@@ -15,7 +15,7 @@ DARTS_LEVEL = logging.DEBUG
 logger = logging.getLogger(__name__)
 
 # Console singleton to access the console from anywhere
-console = Console()
+# console = Console()
 
 
 class LoggingManagerSingleton:
@@ -42,12 +42,11 @@ class LoggingManagerSingleton:
         logging.getLogger("darts").setLevel(DARTS_LEVEL)
         logging.captureWarnings(True)
 
-    def add_logging_handlers(self, command: str, console: Console, log_dir: Path, tracebacks_show_locals: bool = False):
+    def add_logging_handlers(self, command: str, log_dir: Path, tracebacks_show_locals: bool = False):
         """Add logging handlers (rich-console and file) to the application.
 
         Args:
             command (str): The command that is run.
-            console (Console): The rich console to log everything to.
             log_dir (Path): The directory to save the logs to.
             tracebacks_show_locals (bool): Whether to show local variables in tracebacks.
 
@@ -67,7 +66,7 @@ class LoggingManagerSingleton:
 
         # Configure the rich console handler
         rich_handler = RichHandler(
-            console=console,
+            console=RichManager.console,
             rich_tracebacks=True,
             tracebacks_suppress=[cyclopts, L, torch, torch.utils.data, xr, distributed],
             tracebacks_show_locals=tracebacks_show_locals,

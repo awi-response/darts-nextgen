@@ -153,21 +153,17 @@ def load_planet_masks(fpath: str | Path) -> xr.Dataset:
     # See udm classes here: https://developers.planet.com/docs/data/udm-2/
     da_udm = xr.open_dataarray(udm_path)
 
-    # valid data mask: valid data = 1, no data = 0
-    valid_data_mask = (
-        (da_udm.sel(band=8) == 0)
-        .assign_attrs({"data_source": "planet", "long_name": "Valid data mask"})
-        .to_dataset(name="valid_data_mask")
-        .drop_vars("band")
+    invalids = da_udm.sel(band=8).fillna(0) != 0
+    low_quality = da_udm.sel(band=[2, 3, 4, 5, 6]).max(axis=0) == 1
+    high_quality = ~low_quality & ~invalids
+    qa_ds = xr.Dataset(coords={c: da_udm.coords[c] for c in da_udm.coords})
+    qa_ds["quality_data_mask"] = (
+        xr.zeros_like(da_udm.sel(band=8)).where(invalids, 0).where(low_quality, 1).where(high_quality, 2)
     )
-
-    # quality data mask: high quality = 1, low quality = 0
-    quality_data_mask = (
-        (da_udm.sel(band=[2, 3, 4, 5, 6]).max(axis=0) != 1)
-        .assign_attrs({"data_source": "planet", "long_name": "Quality data mask"})
-        .to_dataset(name="quality_data_mask")
-    )
-
-    qa_ds = xr.merge([valid_data_mask, quality_data_mask])
+    qa_ds["quality_data_mask"].attrs = {
+        "data_source": "planet",
+        "long_name": "Quality data mask",
+        "description": "0 = Invalid, 1 = Low Quality, 2 = High Quality",
+    }
     logger.debug(f"Loaded data masks in {time.time() - start_time} seconds.")
     return qa_ds

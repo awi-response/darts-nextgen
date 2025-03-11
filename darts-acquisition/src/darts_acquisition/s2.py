@@ -15,6 +15,43 @@ from pystac_client import Client
 logger = logging.getLogger(__name__.replace("darts_", "darts."))
 
 
+def convert_masks(ds_s2: xr.Dataset) -> xr.Dataset:
+    """Convert the Sentinel 2 scl mask into our own mask format inplace.
+
+    Invalid: S2 SCL → 0,1
+    Low Quality S2: S2 SCL != 0,1 → 3,8,9,11
+    High Quality: S2 SCL != 0,1,3,8,9,11 → Alles andere
+
+    Args:
+        ds_s2 (xr.Dataset): The Sentinel 2 dataset containing the SCL band.
+
+    Returns:
+        xr.Dataset: The modified dataset.
+
+    """
+    assert "scl" in ds_s2.data_vars, "The dataset does not contain the SCL band."
+
+    ds_s2["quality_data_mask"] = xr.zeros_like(ds_s2["scl"], dtype="uint8").assign_attrs(
+        {
+            "data_source": "s2",
+            "long_name": "Quality Data Mask",
+            "description": "0 = Invalid, 1 = Low Quality, 2 = High Quality",
+        }
+    )
+    # TODO: What about nan values?
+    invalids = ds_s2["scl"].fillna(0).isin([0, 1])
+    low_quality = ds_s2["scl"].isin([3, 8, 9, 11])
+    high_quality = ~invalids & ~low_quality
+    # ds_s2["quality_data_mask"] = ds_s2["quality_data_mask"].where(invalids, 0)
+    ds_s2["quality_data_mask"] = xr.where(low_quality, 1, ds_s2["quality_data_mask"])
+    ds_s2["quality_data_mask"] = xr.where(high_quality, 2, ds_s2["quality_data_mask"])
+
+    # TODO: Delete this?
+    # ds_s2 = ds_s2.drop_vars("scl")
+
+    return ds_s2
+
+
 def parse_s2_tile_id(fpath: str | Path) -> tuple[str, str, str]:
     """Parse the Sentinel 2 tile ID from a file path.
 
@@ -126,30 +163,20 @@ def load_s2_masks(fpath: str | Path, reference_geobox: GeoBox) -> xr.Dataset:
     # Match crs
     da_scl = da_scl.rio.write_crs(reference_geobox.crs)
 
-    # valid data mask: valid data = 1, no data = 0
-    valid_data_mask = (
-        (1 - da_scl.sel(band=1).fillna(0).isin([0, 1]))
-        .assign_attrs({"data_source": "s2", "long_name": "Valid Data Mask"})
-        .to_dataset(name="valid_data_mask")
-        .drop_vars("band")
-    )
+    # TODO: new masking method
+    qa_ds = xr.Dataset(coords={c: da_scl.coords[c] for c in da_scl.coords})
+    qa_ds = da_scl.sel(band=1).fillna(0)
+    qa_ds = convert_masks(qa_ds)
 
-    # quality data mask: high quality = 1, low quality = 0
-    quality_data_mask = (
-        da_scl.sel(band=1)
-        .isin([4, 5, 6])
-        .assign_attrs({"data_source": "s2", "long_name": "Quality Data Mask"})
-        .to_dataset(name="quality_data_mask")
-        .drop_vars("band")
-    )
-
-    qa_ds = xr.merge([valid_data_mask, quality_data_mask])
     logger.debug(f"Loaded data masks in {time.time() - start_time} seconds.")
     return qa_ds
 
 
 def load_s2_from_gee(
-    img: str | ee.Image, bands_mapping: dict = {"B2": "blue", "B3": "green", "B4": "red", "B8": "nir"}
+    img: str | ee.Image,
+    bands_mapping: dict = {"B2": "blue", "B3": "green", "B4": "red", "B8": "nir"},
+    scale_and_offset: bool | tuple[float, float] = True,
+    cache: Path | None = None,
 ) -> xr.Dataset:
     """Load a Sentinel 2 scene from Google Earth Engine and return it as an xarray dataset.
 
@@ -158,6 +185,12 @@ def load_s2_from_gee(
         bands_mapping (dict[str, str], optional): A mapping from bands to obtain.
             Will be renamed to the corresponding band names.
             Defaults to {"B2": "blue", "B3": "green", "B4": "red", "B8": "nir"}.
+        scale_and_offset (bool | tuple[float, float], optional): Whether to apply the scale and offset to the bands.
+            If a tuple is provided, it will be used as the (`scale`, `offset`) values with `band * scale + offset`.
+            If True, use the default values of `scale` = 0.0001 and `offset` = 0, taken from ee_extra.
+            Defaults to True.
+        cache (Path | None, optional): The path to the cache directory. If None, no caching will be done.
+            Defaults to None.
 
     Returns:
         xr.Dataset: The loaded dataset
@@ -170,39 +203,62 @@ def load_s2_from_gee(
         img = ee.Image(f"COPERNICUS/S2_SR_HARMONIZED/{s2id}")
     else:
         s2id = img.id().getInfo().split("/")[-1]
-    logger.debug(f"Loading Sentinel 2 scene from GEE with ID {s2id}")
+    logger.debug(f"Loading Sentinel 2 tile {s2id=} from GEE")
 
     if "SCL" not in bands_mapping.keys():
         bands_mapping["SCL"] = "scl"
-    img = img.select(list(bands_mapping.keys()))
-    ds_s2 = xr.open_dataset(
-        img,
-        engine="ee",
-        geometry=img.geometry(),
-        crs=img.select(0).projection().crs().getInfo(),
-        scale=10,
-    )
-    ds_s2 = ds_s2.isel(time=0).drop_vars("time").rename({"X": "x", "Y": "y"}).transpose("y", "x")
+
+    if cache is not None:
+        cache_file = cache / f"gee-s2srh-{s2id}-{''.join(bands_mapping.keys())}.nc"
+    else:
+        cache_file = None
+
+    if cache_file is not None and cache_file.exists():
+        ds_s2 = xr.open_dataset(cache_file, engine="h5netcdf").set_coords("spatial_ref")
+        ds_s2.load()
+        logger.debug(f"Loaded {s2id=} from cache.")
+    else:
+        img = img.select(list(bands_mapping.keys()))
+        ds_s2 = xr.open_dataset(
+            img,
+            engine="ee",
+            geometry=img.geometry(),
+            crs=img.select(0).projection().crs().getInfo(),
+            scale=10,
+        )
+        ds_s2.attrs["time"] = str(ds_s2.time.values[0])
+        ds_s2 = ds_s2.isel(time=0).drop_vars("time").rename({"X": "x", "Y": "y"}).transpose("y", "x")
+        ds_s2 = ds_s2.odc.assign_crs(ds_s2.attrs["crs"])
+        tick_send = time.perf_counter()
+        logger.debug(f"Found dataset with shape {ds_s2.sizes} for tile {s2id=} in {tick_send - tick_fstart} seconds.")
+
+        logger.debug(f"Start downloading {s2id=} from GEE. This may take a while.")
+        tick_dstart = time.perf_counter()
+        ds_s2.load()
+        if cache_file is not None:
+            ds_s2.to_netcdf(cache_file, engine="h5netcdf")
+        tick_dend = time.perf_counter()
+        logger.debug(f"Downloaded and cached the data for tile {s2id=} in {tick_dend - tick_dstart} seconds.")
+
     ds_s2 = ds_s2.rename_vars(bands_mapping)
-    tick_send = time.perf_counter()
-    logger.debug(f"Found a dataset with shape {ds_s2.sizes} for tile {s2id} in {tick_send - tick_fstart} seconds.")
 
-    tick_dstart = time.perf_counter()
-    ds_s2 = ds_s2.compute()
-    tick_dend = time.perf_counter()
-    logger.debug(f"Downloaded the data for tile {s2id} in {tick_dend - tick_dstart} seconds.")
+    for var in ds_s2.data_vars:
+        ds_s2[var].assign_attrs(
+            {"data_source": "s2-gee", "long_name": f"Sentinel 2 {var.capitalize()}", "units": "Reflectance"}
+        )
 
-    # valid data mask: valid data = 1, no data = 0
-    ds_s2["valid_data_mask"] = (1 - ds_s2["scl"].fillna(0).isin([0, 1])).assign_attrs(
-        {"data_source": "s2", "long_name": "Valid Data Mask"}
-    )
+    ds_s2 = convert_masks(ds_s2)
 
-    # quality data mask: high quality = 1, low quality = 0
-    ds_s2["quality_data_mask"] = (
-        ds_s2["scl"].isin([4, 5, 6]).assign_attrs({"data_source": "s2", "long_name": "Quality Data Mask"})
-    )
+    if scale_and_offset:
+        if isinstance(scale_and_offset, tuple):
+            scale, offset = scale_and_offset
+        else:
+            scale, offset = 0.0001, 0
+        for band in set(bands_mapping.values()) - {"scl"}:
+            ds_s2[band] = ds_s2[band] * scale + offset
 
-    ds_s2 = ds_s2.drop_vars("scl")
+    ds_s2.attrs["s2_tile_id"] = s2id
+    ds_s2.attrs["tile_id"] = s2id
 
     return ds_s2
 
@@ -210,6 +266,8 @@ def load_s2_from_gee(
 def load_s2_from_stac(
     s2id: str,
     bands_mapping: dict = {"B02_10m": "blue", "B03_10m": "green", "B04_10m": "red", "B08_10m": "nir"},
+    scale_and_offset: bool | tuple[float, float] = True,
+    cache: Path | None = None,
 ) -> xr.Dataset:
     """Load a Sentinel 2 scene from the Copernicus STAC API and return it as an xarray dataset.
 
@@ -233,33 +291,54 @@ def load_s2_from_stac(
         collections=["sentinel-2-l2a"],
         ids=[s2id],
     )
-    ds_s2 = xr.open_dataset(
-        search,
-        engine="stac",
-        backend_kwargs={"crs": "utm", "resolution": 10, "bands": list(bands_mapping.keys())},
-    )
 
-    ds_s2 = ds_s2.max("time")
+    if cache is not None:
+        cache_file = cache / f"copernicus-s2l2a-{s2id}-{''.join(bands_mapping.keys())}.nc"
+    else:
+        cache_file = None
+
+    if cache_file is not None and cache_file.exists():
+        ds_s2 = xr.open_dataset(cache_file, engine="h5netcdf").set_coords("spatial_ref")
+        ds_s2.load()
+        logger.debug(f"Loaded {s2id=} from cache.")
+    else:
+        ds_s2 = xr.open_dataset(
+            search,
+            engine="stac",
+            backend_kwargs={"crs": "utm", "resolution": 10, "bands": list(bands_mapping.keys())},
+        )
+        ds_s2.attrs["time"] = str(ds_s2.time.values[0])
+        ds_s2 = ds_s2.isel(time=0).drop_vars("time")
+        tick_send = time.perf_counter()
+        logger.debug(f"Found a dataset with shape {ds_s2.sizes} for tile {s2id=} in {tick_send - tick_fstart} seconds.")
+
+        logger.debug(f"Start downloading {s2id=} from S3. This may take a while.")
+        tick_dstart = time.perf_counter()
+        ds_s2.load().load()  # Need double loading since the first load transforms lazy-stac to dask and second actually downloads the data
+        if cache_file is not None:
+            ds_s2.to_netcdf(cache_file, engine="h5netcdf")
+        tick_dend = time.perf_counter()
+        logger.debug(f"Downloaded and cached the data for tile {s2id=} in {tick_dend - tick_dstart} seconds.")
+
     ds_s2 = ds_s2.rename_vars(bands_mapping)
-    tick_send = time.perf_counter()
-    logger.debug(f"Found a dataset with shape {ds_s2.sizes} for tile {s2id} in {tick_send - tick_fstart} seconds.")
+    for var in ds_s2.data_vars:
+        ds_s2[var].assign_attrs(
+            {"data_source": "s2-gee", "long_name": f"Sentinel 2 {var.capitalize()}", "units": "Reflectance"}
+        )
 
-    tick_dstart = time.perf_counter()
-    ds_s2.load().load()
-    tick_dend = time.perf_counter()
-    logger.debug(f"Downloaded the data for tile {s2id} in {tick_dend - tick_dstart} seconds.")
+    ds_s2 = convert_masks(ds_s2)
 
-    # valid data mask: valid data = 1, no data = 0
-    ds_s2["valid_data_mask"] = (1 - ds_s2["scl"].fillna(0).isin([0, 1])).assign_attrs(
-        {"data_source": "s2", "long_name": "Valid Data Mask"}
-    )
+    if scale_and_offset:
+        if isinstance(scale_and_offset, tuple):
+            scale, offset = scale_and_offset
+        else:
+            scale, offset = 0.0001, 0
+        for band in set(bands_mapping.values()) - {"scl"}:
+            ds_s2[band] = ds_s2[band] * scale + offset
 
-    # quality data mask: high quality = 1, low quality = 0
-    ds_s2["quality_data_mask"] = (
-        ds_s2["scl"].isin([4, 5, 6]).assign_attrs({"data_source": "s2", "long_name": "Quality Data Mask"})
-    )
+    ds_s2.attrs["s2_tile_id"] = s2id
+    ds_s2.attrs["tile_id"] = s2id
 
-    ds_s2 = ds_s2.drop_vars("scl")
     return ds_s2
 
 

@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Annotated
 
 import cyclopts
+from darts_utils.rich import RichManager
 
 from darts import __version__
 from darts.automated_pipeline.s2 import run_native_sentinel2_pipeline_from_aoi
@@ -25,7 +26,7 @@ from darts.legacy_training import (
     wandb_sweep_smp,
 )
 from darts.utils.config import ConfigParser
-from darts.utils.logging import LoggingManager, console
+from darts.utils.logging import LoggingManager
 
 root_file = Path(__file__).resolve()
 logger = logging.getLogger(__name__)
@@ -33,7 +34,7 @@ logger = logging.getLogger(__name__)
 config_parser = ConfigParser()
 app = cyclopts.App(
     version=__version__,
-    console=console,
+    console=RichManager.console,
     config=config_parser,
     help_format="plaintext",
     version_format="plaintext",
@@ -110,7 +111,7 @@ def launcher(  # noqa: D103
     tracebacks_show_locals: bool = False,
 ):
     command, bound, _ = app.parse_args(tokens)
-    LoggingManager.add_logging_handlers(command.__name__, console, log_dir, tracebacks_show_locals)
+    LoggingManager.add_logging_handlers(command.__name__, log_dir, tracebacks_show_locals)
     logger.debug(f"Running on Python version {sys.version} from {__name__} ({root_file})")
     return command(*bound.args, **bound.kwargs)
 

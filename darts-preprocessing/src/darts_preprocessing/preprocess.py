@@ -148,7 +148,7 @@ def preprocess_legacy_fast(
 
     """
     tick_fstart = time.perf_counter()
-    logger.info("Starting fast v1 preprocessing.")
+    logger.debug("Starting fast v1 preprocessing.")
 
     # Calculate NDVI
     ds_merged["ndvi"] = calculate_ndvi(ds_merged).ndvi
@@ -171,14 +171,19 @@ def preprocess_legacy_fast(
 
     ds_arcticdem = preprocess_legacy_arcticdem_fast(ds_arcticdem, tpi_outer_radius, tpi_inner_radius, device)
     ds_arcticdem = ds_arcticdem.odc.crop(ds_merged.odc.geobox.extent)
+    # For some reason, we need to reindex, because the reproject + crop of the arcticdem sometimes results
+    # in floating point errors. These error are at the order of 1e-10, hence, way below millimeter precision.
+    ds_arcticdem = ds_arcticdem.reindex_like(ds_merged)
+
     ds_merged["dem"] = ds_arcticdem.dem
     ds_merged["relative_elevation"] = ds_arcticdem.tpi
     ds_merged["slope"] = ds_arcticdem.slope
+    ds_merged["arcticdem_data_mask"] = ds_arcticdem.datamask
 
     # Update datamask with arcticdem mask
-    with xr.set_options(keep_attrs=True):
-        ds_merged["quality_data_mask"] = ds_merged.quality_data_mask * ds_arcticdem.datamask
-    ds_merged.quality_data_mask.attrs["data_source"] += " + ArcticDEM"
+    # with xr.set_options(keep_attrs=True):
+    #     ds_merged["quality_data_mask"] = ds_merged.quality_data_mask * ds_arcticdem.datamask
+    # ds_merged.quality_data_mask.attrs["data_source"] += " + ArcticDEM"
 
     tick_fend = time.perf_counter()
     logger.info(f"Preprocessing done in {tick_fend - tick_fstart:.2f} seconds.")
