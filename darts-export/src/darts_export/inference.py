@@ -5,11 +5,12 @@ import time
 from pathlib import Path
 
 import xarray as xr
+from darts_utils.stopuhr import stopuhr
 
 from darts_export import vectorization
 from darts_export.miniviz import thumbnail
 
-logger = logging.getLogger(__name__).replace("darts_", "darts.")
+logger = logging.getLogger(__name__.replace("darts_", "darts."))
 
 
 def _get_subset_names(ds: xr.Dataset):
@@ -41,11 +42,9 @@ def export_probabilities(tile: xr.Dataset, out_dir: Path, export_ensemble_inputs
             tick_eend = time.perf_counter()
             logger.debug(f"Exported probabilities for {subset} to {fpath} in {tick_eend - tick_estart:.2f}s")
 
-    tick_estart = time.perf_counter()
     fpath = out_dir / "probabilities.tif"
-    tile["probabilities"].rio.to_raster(fpath, driver="GTiff", tags=tags, compress="LZW")
-    tick_eend = time.perf_counter()
-    logger.debug(f"Exported probabilities to {fpath} in {tick_eend - tick_estart:.2f}s")
+    with stopuhr(f"Exporting probabilities to {fpath}", logger.debug):
+        tile["probabilities"].rio.to_raster(fpath, driver="GTiff", tags=tags, compress="LZW")
 
 
 def export_binarized(tile: xr.Dataset, out_dir: Path, export_ensemble_inputs: bool = False, tags: dict = {}):
@@ -73,11 +72,9 @@ def export_binarized(tile: xr.Dataset, out_dir: Path, export_ensemble_inputs: bo
             tick_eend = time.perf_counter()
             logger.debug(f"Exported binarized segmentation for {subset} to {fpath} in {tick_eend - tick_estart:.2f}s")
 
-    tick_estart = time.perf_counter()
-    fpath = out_dir / "probabilities.tif"
-    tile["binarized_segmentation"].rio.to_raster(fpath, driver="GTiff", tags=tags, compress="LZW")
-    tick_eend = time.perf_counter()
-    logger.debug(f"Exported binarized segmentation to {fpath} in {tick_eend - tick_estart:.2f}s")
+    fpath = out_dir / "binarized.tif"
+    with stopuhr(f"Exporting binarized segmentation to {fpath}", logger.debug):
+        tile["binarized_segmentation"].rio.to_raster(fpath, driver="GTiff", tags=tags, compress="LZW")
 
 
 def export_polygonized(
@@ -113,16 +110,12 @@ def export_polygonized(
                 f" in {tick_eend - tick_estart:.2f}s"
             )
 
-    tick_estart = time.perf_counter()
-    polygon_gdf = vectorization.vectorize(tile, "binarized_segmentation", minimum_mapping_unit=minimum_mapping_unit)
     fpath_gpkg = out_dir / "prediction_segments.gpkg"
     fpath_parquet = out_dir / "prediction_segments.parquet"
-    polygon_gdf.to_file(fpath_gpkg, layer="prediction_segments")
-    polygon_gdf.to_parquet(fpath_parquet)
-    tick_eend = time.perf_counter()
-    logger.debug(
-        f"Exported binarized segmentation to {fpath_gpkg} and {fpath_parquet} in {tick_eend - tick_estart:.2f}s"
-    )
+    with stopuhr(f"Exporting binarized segmentation to {fpath_gpkg} and {fpath_parquet}", logger.debug):
+        polygon_gdf = vectorization.vectorize(tile, "binarized_segmentation", minimum_mapping_unit=minimum_mapping_unit)
+        polygon_gdf.to_file(fpath_gpkg, layer="prediction_segments")
+        polygon_gdf.to_parquet(fpath_parquet)
 
 
 def export_datamask(tile: xr.Dataset, out_dir: Path):
@@ -133,11 +126,9 @@ def export_datamask(tile: xr.Dataset, out_dir: Path):
         out_dir (Path): The path where to export to.
 
     """
-    tick_estart = time.perf_counter()
     fpath = out_dir / "data_mask.tif"
-    tile["quality_data_mask"].rio.to_raster(fpath, driver="GTiff", compress="LZW")
-    tick_eend = time.perf_counter()
-    logger.debug(f"Exported data mask to {fpath} in {tick_eend - tick_estart:.2f}s")
+    with stopuhr(f"Exporting data mask to {fpath}", logger.debug):
+        tile["quality_data_mask"].rio.to_raster(fpath, driver="GTiff", compress="LZW")
 
 
 def export_arcticdem_datamask(tile: xr.Dataset, out_dir: Path):
@@ -148,11 +139,9 @@ def export_arcticdem_datamask(tile: xr.Dataset, out_dir: Path):
         out_dir (Path): The path where to export to.
 
     """
-    tick_estart = time.perf_counter()
     fpath = out_dir / "arcticdem_data_mask.tif"
-    tile["arcticdem_data_mask"].rio.to_raster(fpath, driver="GTiff", compress="LZW")
-    tick_eend = time.perf_counter()
-    logger.debug(f"Exported arcticdem data mask to {fpath} in {tick_eend - tick_estart:.2f}s")
+    with stopuhr(f"Exporting arcticdem data mask to {fpath}", logger.debug):
+        tile["arcticdem_data_mask"].rio.to_raster(fpath, driver="GTiff", compress="LZW")
 
 
 def export_extent(tile: xr.Dataset, out_dir: Path):
@@ -163,14 +152,12 @@ def export_extent(tile: xr.Dataset, out_dir: Path):
         out_dir (Path): The path where to export to.
 
     """
-    tick_estart = time.perf_counter()
-    polygon_gdf = vectorization.vectorize(tile, "quality_data_mask", minimum_mapping_unit=0)
     fpath_gpkg = out_dir / "prediction_extent.gpkg"
     fpath_parquet = out_dir / "prediction_extent.parquet"
-    polygon_gdf.to_file(fpath_gpkg, layer="prediction_extent")
-    polygon_gdf.to_parquet(fpath_parquet)
-    tick_eend = time.perf_counter()
-    logger.debug(f"Exported extent to {fpath_gpkg} and {fpath_parquet} in {tick_eend - tick_estart:.2f}s")
+    with stopuhr(f"Exporting extent to {fpath_gpkg} and {fpath_parquet}", logger.debug):
+        polygon_gdf = vectorization.vectorize(tile, "quality_data_mask", minimum_mapping_unit=0)
+        polygon_gdf.to_file(fpath_gpkg, layer="prediction_extent")
+        polygon_gdf.to_parquet(fpath_parquet)
 
 
 def export_optical(tile: xr.Dataset, out_dir: Path):
@@ -181,11 +168,9 @@ def export_optical(tile: xr.Dataset, out_dir: Path):
         out_dir (Path): The path where to export to.
 
     """
-    tick_estart = time.perf_counter()
     fpath = out_dir / "optical.tif"
-    tile[["red", "green", "blue", "nir"]].rio.to_raster(fpath, driver="GTiff", compress="LZW")
-    tick_eend = time.perf_counter()
-    logger.debug(f"Exported optical data to {fpath} in {tick_eend - tick_estart:.2f}s")
+    with stopuhr(f"Exporting optical data to {fpath}", logger.debug):
+        tile[["red", "green", "blue", "nir"]].rio.to_raster(fpath, driver="GTiff", compress="LZW")
 
 
 def export_dem(tile: xr.Dataset, out_dir: Path):
@@ -196,11 +181,9 @@ def export_dem(tile: xr.Dataset, out_dir: Path):
         out_dir (Path): The path where to export to.
 
     """
-    tick_estart = time.perf_counter()
     fpath = out_dir / "dem.tif"
-    tile[["slope", "relative_elevation"]].rio.to_raster(fpath, driver="GTiff", compress="LZW")
-    tick_eend = time.perf_counter()
-    logger.debug(f"Exported DEM data to {fpath} in {tick_eend - tick_estart:.2f}s")
+    with stopuhr(f"Exporting DEM data to {fpath}", logger.debug):
+        tile[["slope", "relative_elevation"]].rio.to_raster(fpath, driver="GTiff", compress="LZW")
 
 
 def export_tcvis(tile: xr.Dataset, out_dir: Path):
@@ -211,11 +194,9 @@ def export_tcvis(tile: xr.Dataset, out_dir: Path):
         out_dir (Path): The path where to export to.
 
     """
-    tick_estart = time.perf_counter()
     fpath = out_dir / "tcvis.tif"
-    tile[["tc_brightness", "tc_greenness", "tc_wetness"]].rio.to_raster(fpath, driver="GTiff", compress="LZW")
-    tick_eend = time.perf_counter()
-    logger.debug(f"Exported TCVIS data to {fpath} in {tick_eend - tick_estart:.2f}s")
+    with stopuhr(f"Exporting TCVIS data to {fpath}", logger.debug):
+        tile[["tc_brightness", "tc_greenness", "tc_wetness"]].rio.to_raster(fpath, driver="GTiff", compress="LZW")
 
 
 def export_thumbnail(tile: xr.Dataset, out_dir: Path):
@@ -226,10 +207,8 @@ def export_thumbnail(tile: xr.Dataset, out_dir: Path):
         out_dir (Path): The path where to export to.
 
     """
-    tick_estart = time.perf_counter()
-    fig = thumbnail(tile)
     fpath = out_dir / "thumbnail.jpg"
-    fig.savefig(fpath)
-    fig.clear()
-    tick_eend = time.perf_counter()
-    logger.debug(f"Exported thumbnail to {fpath} in {tick_eend - tick_estart:.2f}s")
+    with stopuhr(f"Exporting thumbnail to {fpath}", logger.debug):
+        fig = thumbnail(tile)
+        fig.savefig(fpath)
+        fig.clear()

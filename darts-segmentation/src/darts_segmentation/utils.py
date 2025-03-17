@@ -153,13 +153,26 @@ def predict_in_patches(
     # TODO: check with ingmar and jonas if moving all patches to the device at the same time is a good idea
     patched_probabilities = torch.zeros_like(patches[:, 0, :, :])
     patches = patches.split(batch_size)
+    n_skipped = 0
     for i, batch in enumerate(patches):
+        # If batch contains only nans, skip it
+        # TODO: This doesn't work as expected -> check if torch.isnan(batch).all() is correct
+        if torch.isnan(batch).all(axis=0).any():
+            patched_probabilities[i * batch_size : (i + 1) * batch_size] = 0
+            n_skipped += 1
+            continue
+        # If batch contains some nans, replace them with zeros
+        batch[torch.isnan(batch)] = 0
+
         batch = batch.to(device)
         # logger.debug(f"Predicting on batch {i + 1}/{len(patches)}")
         patched_probabilities[i * batch_size : (i + 1) * batch_size] = (
             torch.sigmoid(model(batch)).squeeze(1).to(patched_probabilities.device)
         )
         batch = batch.to(patched_probabilities.device)  # Transfer back to the original device to avoid memory leaks
+
+    if n_skipped > 0:
+        logger.debug(f"Skipped {n_skipped} batches because they only contained NaNs")
 
     patched_probabilities = patched_probabilities.view(bs, nh, nw, patch_size, patch_size)
 

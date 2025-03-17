@@ -177,7 +177,7 @@ def prepare_export(
         else {"high_quality": 2, "low_quality": 1, "none": 0}[quality_level]
     )
     mask = tile["quality_data_mask"] >= quality_level
-    if quality_level < 0:
+    if quality_level > 0:
         mask = erode_mask(mask, mask_erosion_size, device)  # 0=positive, 1=negative
 
     def _prep_layer(tile, layername, binarized_layer_name):

@@ -1,5 +1,6 @@
 """Automated legacy pipeline for Sentinel-2 data."""
 
+import json
 import logging
 import multiprocessing as mp
 import time
@@ -20,8 +21,6 @@ def run_native_sentinel2_pipeline_from_aoi(
     output_data_dir: Path = Path("data/output"),
     tcvis_dir: Path = Path("data/download/tcvis"),
     arcticdem_dir: Path = Path("data/download/arcticdem"),
-    tcvis_model_name: str = "RTS_v6_tcvis_s2native.pt",
-    notcvis_model_name: str = "RTS_v6_notcvis_s2native.pt",
     device: Literal["cuda", "cpu", "auto"] | int | None = None,
     dask_worker: int = min(16, mp.cpu_count() - 1),
     ee_project: str | None = None,
@@ -35,8 +34,7 @@ def run_native_sentinel2_pipeline_from_aoi(
     binarization_threshold: float = 0.5,
     mask_erosion_size: int = 10,
     min_object_size: int = 32,
-    quality_level: int | Literal["high_quality", "low_quality", "none"] = 0,
-    write_model_outputs: bool = False,
+    quality_level: int | Literal["high_quality", "low_quality", "none"] = 1,
 ):
     """Pipeline for Sentinel 2 data with optimized preprocessing.
 
@@ -53,8 +51,6 @@ def run_native_sentinel2_pipeline_from_aoi(
             Will be created and downloaded if it does not exist.
             Defaults to Path("data/download/arcticdem").
         tcvis_dir (Path): The directory containing the TCVis data. Defaults to Path("data/download/tcvis").
-        tcvis_model_name (str, optional): The name of the model to use for TCVis. Defaults to "RTS_v6_tcvis.pt".
-        notcvis_model_name (str, optional): The name of the model to use for not TCVis. Defaults to "RTS_v6_notcvis.pt".
         device (Literal["cuda", "cpu"] | int, optional): The device to run the model on.
             If "cuda" take the first device (0), if int take the specified device.
             If "auto" try to automatically select a free GPU (<50% memory usage).
@@ -77,40 +73,58 @@ def run_native_sentinel2_pipeline_from_aoi(
         min_object_size (int, optional): The minimum object size to keep in pixel. Defaults to 32.
         quality_level (int | str, optional): The quality level to use for the mask. If a string maps to int.
             high_quality -> 2, low_quality=1, none=0 (apply no masking). Defaults to 0.
-        write_model_outputs (bool, optional): Also save the model outputs, not only the ensemble result.
-            Defaults to False.
 
     Raises:
         KeyboardInterrupt: If the user interrupts the process.
 
     """
-    from darts.utils.cuda import debug_info
+    run_id = f"{aoi_shapefile.stem}-{start_date}_{end_date}"
+    logger.info(f"Starting processing run {run_id}.")
 
-    debug_info()
+    # Storing the configuration as JSON file
+    config = {k: v if isinstance(v, int | float | str | bool) else str(v) for k, v in locals().items()}
+    with open(output_data_dir / f"{run_id}.config.json", "w") as f:
+        json.dump(config, f)
 
-    from darts.utils.earthengine import init_ee
+    from darts_utils.stopuhr import StopUhr
 
-    init_ee(ee_project, ee_use_highvolume)
+    stopuhr = StopUhr(logger=logger)
 
-    import odc.geo.xr  # noqa: F401
-    import torch
-    from darts_acquisition import load_arcticdem, load_tcvis
-    from darts_acquisition.s2 import get_s2ids_from_shape_ee, load_s2_from_gee
-    from darts_ensemble.ensemble_v1 import EnsembleV1
-    from darts_export.inference import InferenceResultWriter
-    from darts_postprocessing import prepare_export
-    from darts_preprocessing import preprocess_legacy_fast
-    from dask.distributed import Client, LocalCluster
-    from odc.stac import configure_rio
+    with stopuhr("Print debug info"):
+        from darts.utils.cuda import debug_info
 
-    from darts.utils.cuda import decide_device
+        debug_info()
 
-    device = decide_device(device)
+    with stopuhr("Importing libraries"):
+        from darts.utils.earthengine import init_ee
 
-    ensemble = EnsembleV1(
-        {"tcvis": model_file},
-        device=torch.device(device),
-    )
+        init_ee(ee_project, ee_use_highvolume)
+
+        import odc.geo.xr  # noqa: F401
+        import pandas as pd
+        import torch
+        from darts_acquisition import load_arcticdem, load_tcvis
+        from darts_acquisition.s2 import get_s2ids_from_shape_ee, load_s2_from_gee
+        from darts_export import (
+            export_binarized,
+            export_extent,
+            export_polygonized,
+            export_probabilities,
+            export_thumbnail,
+        )
+        from darts_postprocessing import prepare_export
+        from darts_preprocessing import preprocess_legacy_fast
+        from darts_segmentation.segment import SMPSegmenter
+        from dask.distributed import Client, LocalCluster
+        from odc.stac import configure_rio
+
+        from darts.utils.cuda import decide_device
+
+    with stopuhr("Decide device"):
+        device = decide_device(device)
+
+    with stopuhr("Load model"):
+        segmenter = SMPSegmenter(model_file, device=torch.device(device))
 
     # Init Dask stuff with a context manager
     with LocalCluster(n_workers=dask_worker) as cluster, Client(cluster) as client:
@@ -124,50 +138,67 @@ def run_native_sentinel2_pipeline_from_aoi(
         # paths = sorted(self._path_generator())
         s2ids = get_s2ids_from_shape_ee(aoi_shapefile, start_date, end_date, max_cloud_cover)
         logger.info(f"Found {len(s2ids)} tiles to process.")
+
+        tile_infos = []
         for i, s2id in enumerate(s2ids):
             try:
                 tick_start = time.perf_counter()
-                outpath = output_data_dir / s2id
-                optical = load_s2_from_gee(s2id, cache=input_cache)
+                with stopuhr("Loading optical data"):
+                    outpath = output_data_dir / s2id
+                    optical = load_s2_from_gee(s2id, cache=input_cache)
 
-                arcticdem = load_arcticdem(
-                    optical.odc.geobox, arcticdem_dir, resolution=10, buffer=ceil(tpi_outer_radius / 10 * sqrt(2))
-                )
-                tcvis = load_tcvis(optical.odc.geobox, tcvis_dir)
+                with stopuhr("Loading ArcticDEM"):
+                    arcticdem = load_arcticdem(
+                        optical.odc.geobox, arcticdem_dir, resolution=10, buffer=ceil(tpi_outer_radius / 10 * sqrt(2))
+                    )
+                with stopuhr("Loading TCVis"):
+                    tcvis = load_tcvis(optical.odc.geobox, tcvis_dir)
 
-                tile = preprocess_legacy_fast(
-                    optical,
-                    arcticdem,
-                    tcvis,
-                    tpi_outer_radius,
-                    tpi_inner_radius,
-                    device,
-                )
-                tile = ensemble.segment_tile(
-                    tile,
-                    patch_size=patch_size,
-                    overlap=overlap,
-                    batch_size=batch_size,
-                    reflection=reflection,
-                    keep_inputs=write_model_outputs,
-                )
-                tile = prepare_export(
-                    tile,
-                    bin_threshold=binarization_threshold,
-                    mask_erosion_size=mask_erosion_size,
-                    min_object_size=min_object_size,
-                    quality_level=quality_level,
-                    device=device,
-                )
+                with stopuhr("Preprocessing"):
+                    tile = preprocess_legacy_fast(
+                        optical,
+                        arcticdem,
+                        tcvis,
+                        tpi_outer_radius,
+                        tpi_inner_radius,
+                        device,
+                    )
+                with stopuhr("Segmenting"):
+                    tile = segmenter.segment_tile(
+                        tile,
+                        patch_size=patch_size,
+                        overlap=overlap,
+                        batch_size=batch_size,
+                        reflection=reflection,
+                    )
+                with stopuhr("Postprocessing"):
+                    tile = prepare_export(
+                        tile,
+                        bin_threshold=binarization_threshold,
+                        mask_erosion_size=mask_erosion_size,
+                        min_object_size=min_object_size,
+                        quality_level=quality_level,
+                        device=device,
+                    )
 
-                outpath.mkdir(parents=True, exist_ok=True)
-                writer = InferenceResultWriter(tile)
-                writer.export_probabilities(outpath)
-                writer.export_binarized(outpath)
-                writer.export_polygonized(outpath)
+                with stopuhr("Exporting"):
+                    outpath.mkdir(parents=True, exist_ok=True)
+                    export_probabilities(tile, outpath)
+                    export_binarized(tile, outpath)
+                    export_polygonized(tile, outpath)
+                    export_extent(tile, outpath)
+                    export_thumbnail(tile, outpath)
+                    # export_datamask(tile, outpath)
+                    # export_arcticdem_datamask(tile, outpath)
+                    # export_optical(tile, outpath)
+                    # export_tcvis(tile, outpath)
+                    # export_dem(tile, outpath)
+
                 n_tiles += 1
                 tick_end = time.perf_counter()
-                logger.info(f"Processed sample {i + 1} of {len(s2ids)} {s2id=} in {tick_end - tick_start:.2f}s.")
+                duration = tick_end - tick_start
+                tile_infos.append({"s2id": s2id, "path": outpath, "successfull": True, "duration": duration})
+                logger.info(f"Processed sample {i + 1} of {len(s2ids)} {s2id=} in {duration:.2f}s.")
             except KeyboardInterrupt:
                 logger.warning("Keyboard interrupt detected.\nExiting...")
                 raise KeyboardInterrupt
@@ -176,3 +207,8 @@ def run_native_sentinel2_pipeline_from_aoi(
                 logger.exception(e)
         else:
             logger.info(f"Processed {n_tiles} tiles to {output_data_dir.resolve()}.")
+
+        tile_infos = pd.DataFrame(tile_infos)
+        tile_infos.to_parquet(output_data_dir / f"{run_id}.tile_infos.parquet")
+        stopuhr.summary()
+        stopuhr.export().to_parquet(output_data_dir / f"{run_id}.stopuhr.parquet")

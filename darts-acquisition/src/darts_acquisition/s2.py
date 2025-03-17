@@ -249,6 +249,16 @@ def load_s2_from_gee(
 
     ds_s2 = convert_masks(ds_s2)
 
+    # For some reason, there are some spatially random nan values in the data, not only at the borders
+    # To workaround this, set all nan values to 0 and add this information to the quality_data_mask
+    # This workaround is quite computational expensive, but it works for now
+    # TODO: Find other solutions for this problem!
+    for band in set(bands_mapping.values()) - {"scl"}:
+        ds_s2["quality_data_mask"] = xr.where(ds_s2[band].isnull(), 0, ds_s2["quality_data_mask"])
+        ds_s2[band] = ds_s2[band].fillna(0)
+        # Turn real nan values (scl is nan) into invalid data
+        ds_s2[band] = ds_s2[band].where(~ds_s2["scl"].isnull())
+
     if scale_and_offset:
         if isinstance(scale_and_offset, tuple):
             scale, offset = scale_and_offset
