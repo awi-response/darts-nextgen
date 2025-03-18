@@ -1,6 +1,6 @@
 # Training
 
-!!! info "Incomplete docs"
+!!! danger "Old documentation"
     This page is still under construction.
 
 ## Simple SMP train and test
