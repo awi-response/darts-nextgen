@@ -6,7 +6,6 @@ dependencies = [
     # General & Utils
     "rich>=13.9.2",
     "cyclopts>=3.1.0",
-    "lovely-tensors>=0.1.17",
     "lovely-numpy>=0.2.13",
     "setuptools>=75.5.0",
     "names-generator>=0.2.0",
@@ -28,13 +27,9 @@ dependencies = [
     "toml>=0.10.2",
     "zarr[jupyter]>=2.18.3, <3",
     # Training and Inference
-    "segmentation-models-pytorch>=0.4.0",
-    "lightning>=2.4.0",
     "albumentations>=1.4.21",
     "wandb>=0.18.7",
     "optuna>=4.1.0",
-    "torchmetrics>=1.6.0",
-    "timm>=1.0.13",
     # Processing
     "scikit-image>=0.20",
     "scipy>=1.14.1",
@@ -74,11 +69,28 @@ authors = [
     { name = "Lucas von Chamier", email = "lucas.chamier@awi.de" }
 ]
 
+# We need to move all torch-dependent packages to the optional-dependencies section
+# to ensure that they use the correct version of torch.
+# I opened an issue about this topic: https://github.com/astral-sh/uv/issues/12290
 [project.optional-dependencies]
-cpu = ["torch==2.2.0", "torchvision==0.17.0"]
+cpu = [
+    "torch>=2.2.0",
+    "torchvision>=0.17.0",
+    "lightning>=2.4.0",
+    "segmentation-models-pytorch>=0.4.0",
+    "lovely-tensors>=0.1.17",
+    "timm>=1.0.13",
+    "torchmetrics>=1.6.0",
+]
 cuda118 = [
     "torch>=2.2.0",
     "torchvision>=0.17.0",
+    "lightning>=2.4.0",
+    "segmentation-models-pytorch>=0.4.0",
+    "lovely-tensors>=0.1.17",
+    "timm>=1.0.13",
+    "torchmetrics>=1.6.0",
+    # CUDA-only
     "cucim-cu11>=24.8",
     "cupy-cuda11x>=13.3.0",
     "cupy-xarray",
@@ -88,6 +100,12 @@ cuda118 = [
 cuda121 = [
     "torch>=2.2.0",
     "torchvision>=0.17.0",
+    "lightning>=2.4.0",
+    "segmentation-models-pytorch>=0.4.0",
+    "lovely-tensors>=0.1.17",
+    "timm>=1.0.13",
+    "torchmetrics>=1.6.0",
+    # CUDA-only
     "cucim-cu12>=24.8",
     "cupy-cuda12x>=13.3.0",
     "cupy-xarray",
@@ -97,6 +115,12 @@ cuda121 = [
 cuda124 = [
     "torch>=2.2.0",
     "torchvision>=0.17.0",
+    "lightning>=2.4.0",
+    "segmentation-models-pytorch>=0.4.0",
+    "lovely-tensors>=0.1.17",
+    "timm>=1.0.13",
+    "torchmetrics>=1.6.0",
+    # CUDA-only
     "cucim-cu12>=24.8",
     "cupy-cuda12x>=13.3.0",
     "cupy-xarray",
@@ -106,6 +130,12 @@ cuda124 = [
 cuda126 = [
     "torch>=2.2.0",
     "torchvision>=0.17.0",
+    "lightning>=2.4.0",
+    "segmentation-models-pytorch>=0.4.0",
+    "lovely-tensors>=0.1.17",
+    "timm>=1.0.13",
+    "torchmetrics>=1.6.0",
+    # CUDA-only
     "cucim-cu12>=24.8",
     "cupy-cuda12x>=13.3.0",
     "cupy-xarray",
