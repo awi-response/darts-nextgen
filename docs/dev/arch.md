@@ -1,6 +1,9 @@
 
 # Architecture describtion
 
+!!! danger "Old documentation"
+    This document is not up-to-date. E.g. Rye is not used anymore.
+
 This repository is a workspace repository, managed by [Rye](https://rye.astral.sh/).
 Read more about workspaces at the [Rye docs](https://rye.astral.sh/guide/workspaces/).
 Each workspace-member starts with `darts-*` and can be seen as an own package or module, except the `darts` directory which is the top-level package.

@@ -25,8 +25,8 @@ nav:
   - Dev:
       - Contribute: contribute.md
       - Pipeline steps APIs: dev/arch.md
-      - Config: dev/config.md
       - Datacubes: dev/auxiliary.md
+      - Config Files: dev/config.md
       - Logging: dev/logging.md
       - Training: dev/training.md
 

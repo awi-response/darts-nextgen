@@ -24,20 +24,3 @@ patch-size = 1024
 overlap = 256
 batch-size = 2
 reflection = 32
-
-[darts.training]
-bands = [
-    'blue',
-    'green',
-    'red',
-    'nir',
-    'ndvi',
-    'tc_brightness',
-    'tc_greenness',
-    'tc_wetness',
-    'relative_elevation',
-    'slope',
-]
-train-data-dir = "data/training"
-include-allzero = false
-include-nan-edges = true
