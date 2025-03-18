@@ -3,17 +3,16 @@ name = "darts-nextgen"
 version = "0.3.2"
 description = "Panarctic Database of Active Layer Detachment Slides and Retrogressive Thaw Slumps from Deep Learning on High Resolution Satellite Imagery."
 dependencies = [
-    # General
-    "numpy>=1.26.3, <2",
-    "xarray>=2024.9.0",
-    "ray[data]>=2.37.0",
+    # General & Utils
     "rich>=13.9.2",
     "cyclopts>=3.1.0",
-    # Utils
     "lovely-tensors>=0.1.17",
     "lovely-numpy>=0.2.13",
     "setuptools>=75.5.0",
+    "names-generator>=0.2.0",
     # IO
+    "boto3>=1.37.7",
+    "psycopg2>=2.9.10",
     "h5netcdf>=1.3.0",
     "rasterio>=1.4.0",
     "rioxarray>=0.17.0",
@@ -43,6 +42,9 @@ dependencies = [
     "dask>=2024.11.0",
     "distributed>=2024.12.0",
     "geocube>=0.7.0",
+    "numpy>=1.26.3, <2",
+    "xarray>=2024.9.0",
+    "ray[data]>=2.37.0",
     # Visualization
     "cartopy>=0.24.1",
     "hvplot>=0.11.1",
@@ -52,9 +54,15 @@ dependencies = [
     "bokeh>=3.5.2",
     "jupyter-bokeh>=4.0.5",
     "seaborn>=0.13.2",
-    "names-generator>=0.2.0",
-    "psycopg2>=2.9.10",
-    "boto3>=1.37.7",
+    # Workspace
+    "darts-acquisition",
+    "darts-ensemble",
+    "darts-export",
+    "darts-postprocessing",
+    "darts-preprocessing",
+    "darts-segmentation",
+    "darts-superresolution",
+    "darts-utils"
 ]
 readme = "README.md"
 requires-python = ">= 3.11"
@@ -67,35 +75,68 @@ authors = [
 ]
 
 [project.optional-dependencies]
-cpu = ["torch==2.2.0+cpu", "torchvision==0.17.0+cpu"]
-cuda11 = [
-    "torch==2.2.0+cu118",
-    "torchvision==0.17.0+cu118",
-    "cucim-cu11>=24.8.0",
+cpu = ["torch==2.2.0", "torchvision==0.17.0"]
+cuda118 = [
+    "torch>=2.2.0",
+    "torchvision>=0.17.0",
+    "cucim-cu11>=24.8",
     "cupy-cuda11x>=13.3.0",
-    "cupy-xarray @ git+https://github.com/xarray-contrib/cupy-xarray",
+    "cupy-xarray",
     "cuda-python>=12.6.2.post1",
     "pynvml==11.4.1",
 ]
-cuda12 = [
-    "torch==2.2.0+cu121",
-    "torchvision==0.17.0+cu121",
-    "cucim-cu12==24.8.*",
+cuda121 = [
+    "torch>=2.2.0",
+    "torchvision>=0.17.0",
+    "cucim-cu12>=24.8",
     "cupy-cuda12x>=13.3.0",
-    "cupy-xarray @ git+https://github.com/xarray-contrib/cupy-xarray",
+    "cupy-xarray",
     "cuda-python>=12.6.2.post1",
     "pynvml==11.4.1",
 ]
-gdal393 = ["gdal==3.9.3"]
-gdal39 = ["gdal==3.9.2"]
-gdal38 = ["gdal==3.8.5"]
-gdal384 = ["gdal==3.8.4"]
-gdal37 = ["gdal==3.7.3"]
-gdal36 = ["gdal==3.6.4"]
-gdal384_win64 = ["gdal @ https://github.com/cgohlke/geospatial-wheels/releases/download/v2024.2.18/GDAL-3.8.4-cp311-cp311-win_amd64.whl"]
+cuda124 = [
+    "torch>=2.2.0",
+    "torchvision>=0.17.0",
+    "cucim-cu12>=24.8",
+    "cupy-cuda12x>=13.3.0",
+    "cupy-xarray",
+    "cuda-python>=12.6.2.post1",
+    "pynvml==11.4.1",
+]
+cuda126 = [
+    "torch>=2.2.0",
+    "torchvision>=0.17.0",
+    "cucim-cu12>=24.8",
+    "cupy-cuda12x>=13.3.0",
+    "cupy-xarray",
+    "cuda-python>=12.6.2.post1",
+    "pynvml==11.4.1",
+]
 
 [project.scripts]
 darts = "darts.cli:start_app"
+
+[dependency-groups]
+dev = [
+    "ipykernel>=6.29.5",
+    "matplotlib>=3.9.2",
+    "ruff>=0.8.3",
+    "pyright>=1.1.384",
+    "pytest>=8",
+    "ipywidgets>=8.1.5",
+    "folium>=0.17.0",
+    "mapclassify>=2.8.1",
+]
+
+docs = [
+    "mkdocs>=1.6.1",
+    "mkdocs-material[imaging]>=9.5.38",
+    "mike>=2.1.3",
+    "mkdocstrings[python]>=0.26.1",
+    "mkdocs-git-revision-date-localized-plugin>=1.2.9",
+    "mkdocs-git-committers-plugin-2>=2.3.0",
+    "mkdocs-glightbox>=0.4.0",
+]
 
 # ==============================================================================
 # Build System Configuration
@@ -111,106 +152,72 @@ allow-direct-references = true
 packages = ["darts/src/darts"]
 
 # ==============================================================================
-# uv Configuration (Not used yet!)
+# uv Configuration
 # ==============================================================================
 
-# Problems with uv:
-# 1. gdal extra needs to be explicit deactivated. Otherwise, uv will try to build all gdal versions from source to get their requirements. This results in an error, because gdal expects the exact version of itself installed.
-# 2. It is impossible to maintain both rye and uv, because rye needs the torch-endings "+cpu" or "+cu118" or "+cu121" to install the correct pytorch version. uv does handles these endings by itself.
-# 3. UV toml syntax can't be read by Rye.
-# [tool.uv]
-# conflicts = [
-#   [
-#     { extra = "cpu" },
-#     { extra = "cuda11" },
-#     { extra = "cuda12" },
-#   ],
-#   [
-#     { extra = "gdal393" },
-#     { extra = "gdal39" },
-#     { extra = "gdal38" },
-#     { extra = "gdal384" },
-#     { extra = "gdal37" },
-#     { extra = "gdal36" },
-#     { extra = "gdal384_win64" },
-#   ]
-# ]
-# dependency-metadata = [
-#     { name = "gdal", requires-dist = ["setuptools"], requires-python = ">=3.9" },
-# ]
-# # TODO: Disable macos for now, fix later
-# environments = [
-#     "platform_system != 'Darwin' or extra != 'cpu'"
-# ]
-
-# [tool.uv.sources]
-# torch = [
-#   { index = "pytorch-cpu", extra = "cpu", marker = "platform_system != 'Darwin'" },
-#   { index = "pytorch-cu118", extra = "cuda11" },
-#   { index = "pytorch-cu121", extra = "cuda12" },
-# ]
-# torchvision = [
-#   { index = "pytorch-cpu", extra = "cpu", marker = "platform_system != 'Darwin'" },
-#   { index = "pytorch-cu118", extra = "cuda11" },
-#   { index = "pytorch-cu121", extra = "cuda12" },
-# ]
-
-#[[tool.uv.index]]
-#name = "pytorch-cpu"
-#url = "https://download.pytorch.org/whl/cpu"
-#explicit = true
-
-# [[tool.uv.index]]
-# name = "pytorch-cu118"
-# url = "https://download.pytorch.org/whl/cu118"
-# explicit = true
-
-# [[tool.uv.index]]
-# name = "pytorch-cu121"
-# url = "https://download.pytorch.org/whl/cu121"
-# explicit = true
-
-# ==============================================================================
-# Rye Configuration
-# ==============================================================================
-[tool.rye]
-managed = true
-dev-dependencies = [
-    "ipykernel>=6.29.5",
-    "matplotlib>=3.9.2",
-    "ruff>=0.8.3",
-    "mkdocs>=1.6.1",
-    "mkdocs-material[imaging]>=9.5.38",
-    "mike>=2.1.3",
-    "mkdocstrings[python]>=0.26.1",
-    "mkdocs-git-revision-date-localized-plugin>=1.2.9",
-    "mkdocs-git-committers-plugin-2>=2.3.0",
-    "pyright>=1.1.384",
-    "pytest>=8",
-    "ipywidgets>=8.1.5",
-    "folium>=0.17.0",
-    "mapclassify>=2.8.1",
-    "mkdocs-glightbox>=0.4.0",
+[tool.uv]
+conflicts = [
+  [
+    { extra = "cpu" },
+    { extra = "cuda118" },
+    { extra = "cuda121" },
+    { extra = "cuda124" },
+    { extra = "cuda126" },
+  ],
 ]
 
-[tool.rye.workspace]
-members = ["darts-*"]
+[tool.uv.sources]
+cupy-xarray = { git = "https://github.com/xarray-contrib/cupy-xarray", branch = "main" }
+torch = [
+  { index = "pytorch-cpu", extra = "cpu" },
+  { index = "pytorch-cu118", extra = "cuda118" },
+  { index = "pytorch-cu121", extra = "cuda121" },
+  { index = "pytorch-cu124", extra = "cuda124" },
+  { index = "pytorch-cu126", extra = "cuda126" },
+]
+torchvision = [
+  { index = "pytorch-cpu", extra = "cpu" },
+  { index = "pytorch-cu118", extra = "cuda118" },
+  { index = "pytorch-cu121", extra = "cuda121" },
+  { index = "pytorch-cu124", extra = "cuda124" },
+  { index = "pytorch-cu126", extra = "cuda126" },
+]
+darts-acquisition = { workspace = true }
+darts-ensemble = { workspace = true }
+darts-export = { workspace = true }
+darts-postprocessing = { workspace = true }
+darts-preprocessing = { workspace = true }
+darts-segmentation = { workspace = true }
+darts-superresolution = { workspace = true }
+darts-utils = { workspace = true }
 
-[[tool.rye.sources]]
-name = "nvidia"
-url = "https://pypi.nvidia.com"
-
-[[tool.rye.sources]]
+[[tool.uv.index]]
 name = "pytorch-cpu"
 url = "https://download.pytorch.org/whl/cpu"
+explicit = true
 
-[[tool.rye.sources]]
-name = "pytorch-cu11"
+[[tool.uv.index]]
+name = "pytorch-cu118"
 url = "https://download.pytorch.org/whl/cu118"
+explicit = true
 
-[[tool.rye.sources]]
-name = "pytorch-cu12"
+[[tool.uv.index]]
+name = "pytorch-cu121"
 url = "https://download.pytorch.org/whl/cu121"
+explicit = true
+
+[[tool.uv.index]]
+name = "pytorch-cu124"
+url = "https://download.pytorch.org/whl/cu124"
+explicit = true
+
+[[tool.uv.index]]
+name = "pytorch-cu126"
+url = "https://download.pytorch.org/whl/cu126"
+explicit = true
+
+[tool.uv.workspace]
+members = ["darts-*"]
 
 # ==============================================================================
 # Ruff Configuration
@@ -230,14 +237,13 @@ indent-width = 4  # This is the default
 # N: pip8-naming (naming conventions)
 # D: pydocstyle (docstring formatting) <- this should help us to write documentation
 # UP: pyupgrade <- this should help writing up-to-date code
-# PD: pandas-vet <- this should help writing better pandas code
 # FLY: flynt <- write f-strings
 # NPY: numpy <- this should help writing better numpy code
 # FURB: refurb <- this should help writing up-to-date code
 # DOC: pydoclint <- this should help writing better docstrings
 # RUF: ruff
 preview = true
-select = ["F", "E", "W", "C", "I", "N", "D", "UP", "PD", "FLY", "NPY", "FURB", "DOC", "RUF"]
+select = ["F", "E", "W", "C", "I", "N", "D", "UP", "FLY", "NPY", "FURB", "DOC", "RUF"]
 
 
 # Ignore `E402` (import violations) in all `__init__.py` files, and in selected subdirectories.
@@ -247,3 +253,6 @@ select = ["F", "E", "W", "C", "I", "N", "D", "UP", "PD", "FLY", "NPY", "FURB", "
 
 [tool.ruff.lint.pep8-naming]
 extend-ignore-names = ["test_*"]
+
+[tool.ruff.lint.pyflakes]
+allowed-unused-imports = ["hvplot.pandas", "hvplot.xarray", "rioxarray", "odc.geo.xr"]
