@@ -3,7 +3,7 @@ hide:
   - navigation
 ---
 
-# Getting Started
+# Overview
 
 This is a guide to help you, as a user / data engineer, get started with the project.
 
@@ -15,7 +15,7 @@ To setup the environment for the project, you need to install [uv](https://docs.
 uv sync --extra cuda126
 ```
 
-For other CUDA versions, see the [contribution guide](contribute.md).
+For other CUDA versions, see the [installation guide](guides/installation.md).
 
 Training specific dependencies are optional and therefore not installed by default.
 To install them, add `--extra training` to the `uv sync` command, e.g.:
@@ -27,7 +27,7 @@ uv sync --extra cuda126 --extra training
 To see if the installation was successful, you can run the following command:
 
 ```sh
-uv run darts --version
+uv run darts env-info
 ```
 
 ## Running stuff via the CLI
