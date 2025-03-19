@@ -44,6 +44,16 @@ uv sync --extra cuda126
 
 > Sometimes the CUDA version must not match exactly, but it is recommended to use the exact version.
 
+Training specific dependencies are optional and therefore not installed by default.
+To install them, add `--extra training` to the `uv sync` command, e.g.:
+
+```sh
+uv sync --extra cuda126 --extra training
+```
+
+!!! info "psycopg2"
+    The training dependencies depend on psycopg2, which requires postgresql installed on your system.
+
 To see if the installation was successful, you can run the following command:
 
 ```sh
@@ -58,6 +68,9 @@ The documentation related dependencies are separated from the main dependencies 
 ```sh
 uv sync --group docs
 ```
+
+!!! note
+    You should combine the `--group docs` with the extras you previously used, e.g. `uv sync --extra training --extra cuda126 --group docs`.
 
 To start the documentation server for live-update, run:
 

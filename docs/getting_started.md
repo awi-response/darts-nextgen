@@ -17,6 +17,13 @@ uv sync --extra cuda126
 
 For other CUDA versions, see the [contribution guide](contribute.md).
 
+Training specific dependencies are optional and therefore not installed by default.
+To install them, add `--extra training` to the `uv sync` command, e.g.:
+
+```sh
+uv sync --extra cuda126 --extra training
+```
+
 To see if the installation was successful, you can run the following command:
 
 ```sh
@@ -159,3 +166,10 @@ Finally run the pipeline with the following command. Additional parameters can b
 ```sh
 rye run darts run-native-planet-pipeline-fast --config-file path/to/your/config.toml
 ```
+
+## Creating your own pipeline
+
+The project was build with the idea in mind, that it is easy to create a new pipeline, with e.g. different parallelisation techniques.
+The [architecture guide](dev/arch.md) provides an overview of the project structure and the key components.
+A good starting point to understand the components is the [intro to components](components/intro.md).
+The build-in pipelines are a good example how the components can be used and put together to create a new pipeline.

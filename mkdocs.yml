@@ -11,7 +11,16 @@ edit_uri: edit/main/docs/
 nav:
   - Home: index.md
   - Getting Started: getting_started.md
-  - Modules:
+  - Components:
+      - Intro to components: components/intro.md
+  - Dev:
+      - Contribute: contribute.md
+      - Pipeline steps APIs: dev/arch.md
+      - Datacubes: dev/auxiliary.md
+      - Config Files: dev/config.md
+      - Logging: dev/logging.md
+      - Training: dev/training.md
+  - Reference:
       - DARTS: ref/darts.md
       - Acquisition: ref/acquisition.md
       - Preprocessing: ref/preprocessing.md
@@ -22,13 +31,6 @@ nav:
       - Postprocessing: ref/postprocessing.md
       - Utility: ref/utils.md
       - All: ref.md
-  - Dev:
-      - Contribute: contribute.md
-      - Pipeline steps APIs: dev/arch.md
-      - Datacubes: dev/auxiliary.md
-      - Config Files: dev/config.md
-      - Logging: dev/logging.md
-      - Training: dev/training.md
 
 theme:
   name: material
