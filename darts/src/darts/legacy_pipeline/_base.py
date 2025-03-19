@@ -35,7 +35,7 @@ class _BasePipeline:
     tcvis_model_name: str = None
     notcvis_model_name: str = None
     device: Literal["cuda", "cpu", "auto"] | int | None = None
-    dask_worker: int = min(16, mp.cpu_count() - 1)  # noqa: RUF009
+    dask_worker: int = min(16, mp.cpu_count() - 1)
     ee_project: str | None = None
     ee_use_highvolume: bool = True
     patch_size: int = 1024
@@ -68,7 +68,13 @@ class _BasePipeline:
 
         import torch
         from darts_ensemble.ensemble_v1 import EnsembleV1
-        from darts_export.inference import InferenceResultWriter
+        from darts_export import (
+            export_binarized,
+            export_extent,
+            export_polygonized,
+            export_probabilities,
+            export_thumbnail,
+        )
         from darts_postprocessing import prepare_export
         from dask.distributed import Client, LocalCluster
         from odc.stac import configure_rio
@@ -126,10 +132,12 @@ class _BasePipeline:
                     )
 
                     outpath.mkdir(parents=True, exist_ok=True)
-                    writer = InferenceResultWriter(tile)
-                    writer.export_probabilities(outpath)
-                    writer.export_binarized(outpath)
-                    writer.export_polygonized(outpath)
+                    export_probabilities(tile, outpath)
+                    export_binarized(tile, outpath)
+                    export_polygonized(tile, outpath)
+                    export_extent(tile, outpath)
+                    export_thumbnail(tile, outpath)
+
                     n_tiles += 1
                     logger.info(f"Processed sample {i + 1} of {len(paths)} '{fpath.resolve()}'.")
                 except KeyboardInterrupt:
