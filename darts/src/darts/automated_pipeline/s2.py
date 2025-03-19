@@ -83,6 +83,7 @@ def run_native_sentinel2_pipeline_from_aoi(
 
     # Storing the configuration as JSON file
     config = {k: v if isinstance(v, int | float | str | bool) else str(v) for k, v in locals().items()}
+    output_data_dir.mkdir(parents=True, exist_ok=True)
     with open(output_data_dir / f"{run_id}.config.json", "w") as f:
         json.dump(config, f)
 
@@ -143,8 +144,12 @@ def run_native_sentinel2_pipeline_from_aoi(
         for i, s2id in enumerate(s2ids):
             try:
                 tick_start = time.perf_counter()
+                outpath = output_data_dir / s2id
+                if outpath.exists():
+                    logger.info(f"Tile {s2id=} already processed. Skipping...")
+                    continue
+
                 with stopuhr("Loading optical data"):
-                    outpath = output_data_dir / s2id
                     optical = load_s2_from_gee(s2id, cache=input_cache)
 
                 with stopuhr("Loading ArcticDEM"):
@@ -197,7 +202,7 @@ def run_native_sentinel2_pipeline_from_aoi(
                 n_tiles += 1
                 tick_end = time.perf_counter()
                 duration = tick_end - tick_start
-                tile_infos.append({"s2id": s2id, "path": outpath, "successfull": True, "duration": duration})
+                tile_infos.append({"s2id": s2id, "path": str(outpath), "successfull": True, "duration": duration})
                 logger.info(f"Processed sample {i + 1} of {len(s2ids)} {s2id=} in {duration:.2f}s.")
             except KeyboardInterrupt:
                 logger.warning("Keyboard interrupt detected.\nExiting...")
@@ -205,10 +210,15 @@ def run_native_sentinel2_pipeline_from_aoi(
             except Exception as e:
                 logger.warning(f"Could not process sample {s2id=}.\nSkipping...")
                 logger.exception(e)
+            finally:
+                if len(tile_infos) > 0:
+                    pd.DataFrame(tile_infos).to_parquet(output_data_dir / f"{run_id}.tile_infos.parquet")
+                stopuhr.summary()
+                stopuhr.export().to_parquet(output_data_dir / f"{run_id}.stopuhr.parquet")
         else:
             logger.info(f"Processed {n_tiles} tiles to {output_data_dir.resolve()}.")
 
-        tile_infos = pd.DataFrame(tile_infos)
-        tile_infos.to_parquet(output_data_dir / f"{run_id}.tile_infos.parquet")
-        stopuhr.summary()
-        stopuhr.export().to_parquet(output_data_dir / f"{run_id}.stopuhr.parquet")
+        # tile_infos = pd.DataFrame(tile_infos)
+        # tile_infos.to_parquet(output_data_dir / f"{run_id}.tile_infos.parquet")
+        # stopuhr.summary()
+        # stopuhr.export().to_parquet(output_data_dir / f"{run_id}.stopuhr.parquet")
