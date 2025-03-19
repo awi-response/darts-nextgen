@@ -896,7 +896,6 @@ source = { editable = "darts-export" }
 
 [[package]]
 name = "darts-nextgen"
-version = "0.3.2"
 source = { editable = "." }
 dependencies = [
     { name = "albumentations" },

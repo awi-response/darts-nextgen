@@ -1,5 +1,8 @@
 """DARTS processing pipeline."""
 
-from importlib.metadata import version
+import importlib.metadata
 
-__version__ = version("darts-nextgen")
+try:
+    __version__ = importlib.metadata.version("darts-nextgen")
+except importlib.metadata.PackageNotFoundError:
+    __version__ = "0.0.0"

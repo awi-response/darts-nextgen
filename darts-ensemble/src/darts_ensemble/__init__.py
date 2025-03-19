@@ -1,11 +1,8 @@
 """Inference and model ensembling for the DARTS dataset."""
 
+import importlib.metadata
 
-def hello() -> str:
-    """Say hello to the user.
-
-    Returns:
-        str: Greating message.
-
-    """
-    return "Hello from darts-ensemble!"
+try:
+    __version__ = importlib.metadata.version("darts-nextgen")
+except importlib.metadata.PackageNotFoundError:
+    __version__ = "0.0.0"

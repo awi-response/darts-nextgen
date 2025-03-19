@@ -1,6 +1,6 @@
 [project]
 name = "darts-nextgen"
-version = "0.3.2"
+dynamic = ["version"]
 description = "Panarctic Database of Active Layer Detachment Slides and Retrogressive Thaw Slumps from Deep Learning on High Resolution Satellite Imagery."
 dependencies = [
     # General & Utils
@@ -64,6 +64,19 @@ authors = [
     { name = "Tobias Hölzer", email = "tobias.hoelzer@awi.de" },
     { name = "Lucas von Chamier", email = "lucas.chamier@awi.de" }
 ]
+license = "MIT"
+license-files = ["LICENSE"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Operating System :: OS Independent",
+]
+
+
+[project.urls]
+Documentation = "https://awi-response.github.io/darts-nextgen/latest/"
+Repository = "https://github.com/awi-response/darts-nextgen"
+Issues = "https://github.com/awi-response/darts-nextgen/issues"
+
 
 # We need to move all torch-dependent packages to the optional-dependencies section
 # to ensure that they use the correct version of torch.
@@ -165,14 +178,21 @@ docs = [
 # Build System Configuration
 # ==============================================================================
 [build-system]
-requires = ["hatchling"]
+requires = ["hatchling", "uv-dynamic-versioning"]
 build-backend = "hatchling.build"
 
 [tool.hatch.metadata]
 allow-direct-references = true
 
+[tool.hatch.version]
+source = "uv-dynamic-versioning"
+
 [tool.hatch.build.targets.wheel]
 packages = ["darts/src/darts"]
+
+[tool.uv-dynamic-versioning]
+vcs = "git"
+style = "semver"
 
 # ==============================================================================
 # uv Configuration

@@ -1,5 +1,7 @@
 """Dataset export for the DARTS dataset."""
 
+import importlib.metadata
+
 from darts_export.inference import (
     export_arcticdem_datamask as export_arcticdem_datamask,
 )
@@ -30,3 +32,8 @@ from darts_export.inference import (
 from darts_export.inference import (
     export_thumbnail as export_thumbnail,
 )
+
+try:
+    __version__ = importlib.metadata.version("darts-nextgen")
+except importlib.metadata.PackageNotFoundError:
+    __version__ = "0.0.0"
