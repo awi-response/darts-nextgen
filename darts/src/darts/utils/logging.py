@@ -52,10 +52,14 @@ class LoggingManagerSingleton:
 
         """
         import distributed
-        import lightning as L  # noqa: N812
         import torch
         import torch.utils.data
         import xarray as xr
+
+        try:
+            import lightning as L  # noqa: N812
+        except ImportError:
+            L = None
 
         if self._rich_handler is not None or self._file_handler is not None:
             logger.warning("Logging handlers already added.")
@@ -65,10 +69,13 @@ class LoggingManagerSingleton:
         current_time = time.strftime("%Y-%m-%d_%H-%M-%S")
 
         # Configure the rich console handler
+        traceback_suppress = [cyclopts, torch, torch.utils.data, xr, distributed]
+        if L:
+            traceback_suppress.append(L)
         rich_handler = RichHandler(
             console=RichManager.console,
             rich_tracebacks=True,
-            tracebacks_suppress=[cyclopts, L, torch, torch.utils.data, xr, distributed],
+            tracebacks_suppress=traceback_suppress,
             tracebacks_show_locals=tracebacks_show_locals,
         )
         rich_handler.setFormatter(
