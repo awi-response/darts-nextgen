@@ -4,7 +4,7 @@ import logging
 import time
 from typing import Literal
 
-import odc.geo.xr  # noqa: F401
+import odc.geo.xr
 import xarray as xr
 from darts_utils.cuda import free_cupy
 from xrspatial.utils import has_cuda_and_cupy

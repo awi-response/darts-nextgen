@@ -59,7 +59,7 @@ class LoggingManagerSingleton:
         try:
             import lightning as L  # noqa: N812
         except ImportError:
-            L = None
+            L = None  # noqa: N806
 
         if self._rich_handler is not None or self._file_handler is not None:
             logger.warning("Logging handlers already added.")

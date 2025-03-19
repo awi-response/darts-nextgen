@@ -208,11 +208,7 @@ def load_s2_from_gee(
     if "SCL" not in bands_mapping.keys():
         bands_mapping["SCL"] = "scl"
 
-    if cache is not None:
-        cache_file = cache / f"gee-s2srh-{s2id}-{''.join(bands_mapping.keys())}.nc"
-    else:
-        cache_file = None
-
+    cache_file = None if cache is None else cache / f"gee-s2srh-{s2id}-{''.join(bands_mapping.keys())}.nc"
     if cache_file is not None and cache_file.exists():
         ds_s2 = xr.open_dataset(cache_file, engine="h5netcdf").set_coords("spatial_ref")
         ds_s2.load()
@@ -286,6 +282,12 @@ def load_s2_from_stac(
         bands_mapping (dict[str, str], optional): A mapping from bands to obtain.
             Will be renamed to the corresponding band names.
             Defaults to {"B2": "blue", "B3": "green", "B4": "red", "B8": "nir"}.
+        scale_and_offset (bool | tuple[float, float], optional): Whether to apply the scale and offset to the bands.
+            If a tuple is provided, it will be used as the (`scale`, `offset`) values with `band * scale + offset`.
+            If True, use the default values of `scale` = 0.0001 and `offset` = 0, taken from ee_extra.
+            Defaults to True.
+        cache (Path | None, optional): The path to the cache directory. If None, no caching will be done.
+            Defaults to None.
 
     Returns:
         xr.Dataset: The loaded dataset
@@ -302,11 +304,7 @@ def load_s2_from_stac(
         ids=[s2id],
     )
 
-    if cache is not None:
-        cache_file = cache / f"copernicus-s2l2a-{s2id}-{''.join(bands_mapping.keys())}.nc"
-    else:
-        cache_file = None
-
+    cache_file = None if cache is None else cache / f"gee-s2srh-{s2id}-{''.join(bands_mapping.keys())}.nc"
     if cache_file is not None and cache_file.exists():
         ds_s2 = xr.open_dataset(cache_file, engine="h5netcdf").set_coords("spatial_ref")
         ds_s2.load()
@@ -324,7 +322,8 @@ def load_s2_from_stac(
 
         logger.debug(f"Start downloading {s2id=} from S3. This may take a while.")
         tick_dstart = time.perf_counter()
-        ds_s2.load().load()  # Need double loading since the first load transforms lazy-stac to dask and second actually downloads the data
+        # Need double loading since the first load transforms lazy-stac to dask and second actually downloads the data
+        ds_s2.load().load()
         if cache_file is not None:
             ds_s2.to_netcdf(cache_file, engine="h5netcdf")
         tick_dend = time.perf_counter()
@@ -415,7 +414,7 @@ def get_s2ids_from_shape_stac(
 
     """
     logger.debug(
-        f"Searching for Sentinel 2 tiles via STAC: " f"{aoi_shapefile=} {start_date=} {end_date=} {max_cloud_cover=}."
+        f"Searching for Sentinel 2 tiles via STAC: {aoi_shapefile=} {start_date=} {end_date=} {max_cloud_cover=}."
     )
     tick_fstart = time.perf_counter()
     aoi = gpd.read_file(aoi_shapefile)

@@ -100,7 +100,7 @@ def run_native_sentinel2_pipeline_from_aoi(
 
         init_ee(ee_project, ee_use_highvolume)
 
-        import odc.geo.xr  # noqa: F401
+        import odc.geo.xr
         import pandas as pd
         import torch
         from darts_acquisition import load_arcticdem, load_tcvis
