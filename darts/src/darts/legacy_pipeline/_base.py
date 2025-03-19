@@ -67,6 +67,7 @@ class _BasePipeline:
         init_ee(self.ee_project, self.ee_use_highvolume)
 
         import torch
+        from darts.utils.cuda import decide_device
         from darts_ensemble.ensemble_v1 import EnsembleV1
         from darts_export import (
             export_binarized,
@@ -78,8 +79,6 @@ class _BasePipeline:
         from darts_postprocessing import prepare_export
         from dask.distributed import Client, LocalCluster
         from odc.stac import configure_rio
-
-        from darts.utils.cuda import decide_device
 
         self.device = decide_device(self.device)
 
@@ -194,18 +193,25 @@ class _FastMixin:
 class _PlanetMixin:
     orthotiles_dir: Path = Path("data/input/planet/PSOrthoTile")
     scenes_dir: Path = Path("data/input/planet/PSScene")
+    image_ids: list = None
 
     def _path_generator(self):
         # Find all PlanetScope orthotiles
         for fpath in self.orthotiles_dir.glob("*/*/"):
             tile_id = fpath.parent.name
             scene_id = fpath.name
+            if self.image_ids is not None:
+                if scene_id not in self.image_ids:
+                    continue
             outpath = self.output_data_dir / tile_id / scene_id
             yield fpath, outpath
 
         # Find all PlanetScope scenes
         for fpath in self.scenes_dir.glob("*/"):
             scene_id = fpath.name
+            if self.image_ids is not None:
+                if scene_id not in self.image_ids:
+                    continue
             outpath = self.output_data_dir / scene_id
             yield fpath, outpath
 
