@@ -163,13 +163,11 @@ def load_s2_masks(fpath: str | Path, reference_geobox: GeoBox) -> xr.Dataset:
     # Match crs
     da_scl = da_scl.rio.write_crs(reference_geobox.crs)
 
-    # TODO: new masking method
-    qa_ds = xr.Dataset(coords={c: da_scl.coords[c] for c in da_scl.coords})
-    qa_ds = da_scl.sel(band=1).fillna(0)
-    qa_ds = convert_masks(qa_ds)
+    da_scl = xr.Dataset({"scl": da_scl.sel(band=1).fillna(0).drop_vars("band").astype("uint8")})
+    da_scl = convert_masks(da_scl)
 
     logger.debug(f"Loaded data masks in {time.time() - start_time} seconds.")
-    return qa_ds
+    return da_scl
 
 
 def load_s2_from_gee(
