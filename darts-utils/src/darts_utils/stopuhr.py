@@ -94,3 +94,6 @@ def stopuhr(msg: str, printer: callable = print, res: int = 2):
     yield
     duration = time.perf_counter() - start
     printer(f"{msg} took {duration:.{res}f} s")
+
+
+__all__ = ["StopUhr", "stopuhr"]

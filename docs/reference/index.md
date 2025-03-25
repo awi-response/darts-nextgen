@@ -1,0 +1,18 @@
+# DARTS API Reference
+
+- [DARTS](./darts/index.md)
+  - [Automated Pipeline](./darts/automated_pipeline/index.md)
+  - [Legacy Pipeline](./darts/legacy_pipeline/index.md)
+  - [Legacy Training](./darts/legacy_training/index.md)
+- [DARTS Segmentation](./darts_segmentation/index.md)
+  - [Training](./darts_segmentation/training/index.md)
+  - [Metrics](./darts_segmentation/metrics/index.md)
+- [DARTS Acquisition](./darts_acquisition/index.md)
+- [DARTS Ensemble](./darts_ensemble/index.md)
+- [DARTS Export](./darts_export/index.md)
+- [DARTS Postprocessing](./darts_postprocessing/index.md)
+- [DARTS Preprocessing](./darts_preprocessing/index.md)
+- [DARTS Utils](./darts_utils/index.md)
+  - [Cuda](./darts_utils/cuda/index.md)
+  - [Rich](./darts_utils/rich/index.md)
+  - [Stopuhr](./darts_utils/stopuhr/index.md)

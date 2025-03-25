@@ -1,4 +1,4 @@
-# Logging
+# Logging Guide
 
 We want to use the python logging module as much as possible to traceback errors and document the pipeline processes.
 Furthermore, we want to configure each logger with the `RichHandler`, which prettyfies the output with [rich](https://github.com/Textualize/rich).

@@ -1,6 +1,6 @@
 """A singleton class to manage rich progress bars for the application."""
 
-from rich.console import Console
+import rich.console
 
 #  from rich.progress import Progress
 
@@ -19,7 +19,7 @@ class RichManagerSingleton:
 
     def __init__(self):
         """Initialize the RichProgressManager."""
-        self.console = Console()
+        self.console = rich.console.Console()
         # self.progress = Progress(console=self.console).__enter__()
 
     def __del__(self):

@@ -57,7 +57,7 @@ However, you can specify a different file with the `--config-file` parameter.
 As of right now, the CLI tries to match all parameters under the `darts` key of the config file, skipping not needed ones.
 For more information about the config file,  see the [config guide](guides/config.md)..
 
-### Logging
+### Log files
 
 By default the CLI sets up a logging handler at `DEBUG` level for the `darts` specific packages found in this workspace.
 Running any command will output a logging file at the logging directory, which can be specified via the `--log-dir` parameter.

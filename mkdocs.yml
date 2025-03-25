@@ -22,6 +22,102 @@ nav:
       - Pipeline steps APIs: dev/arch.md
       - Datacubes: dev/auxiliary.md
       - Docs: dev/docs.md
+  - API Reference:
+      - reference/index.md
+      - <code class='doc-symbol doc-symbol-nav doc-symbol-module'></code>darts:
+          - reference/darts/index.md
+          - <code class='doc-symbol doc-symbol-nav doc-symbol-module'></code>automated_pipeline:
+              - reference/darts/automated_pipeline/index.md
+              - <code class='doc-symbol doc-symbol-nav doc-symbol-function'></code>run_native_sentinel2_pipeline_from_aoi: reference/darts/automated_pipeline/run_native_sentinel2_pipeline_from_aoi.md
+          - <code class='doc-symbol doc-symbol-nav doc-symbol-module'></code>legacy_pipeline:
+              - reference/darts/legacy_pipeline/index.md
+              - <code class='doc-symbol doc-symbol-nav doc-symbol-function'></code>run_native_planet_pipeline_fast: reference/darts/legacy_pipeline/run_native_planet_pipeline_fast.md
+              - <code class='doc-symbol doc-symbol-nav doc-symbol-function'></code>run_native_sentinel2_pipeline_fast: reference/darts/legacy_pipeline/run_native_sentinel2_pipeline_fast.md
+          - <code class='doc-symbol doc-symbol-nav doc-symbol-module'></code>legacy_training:
+              - reference/darts/legacy_training/index.md
+              - <code class='doc-symbol doc-symbol-nav doc-symbol-function'></code>convert_lightning_checkpoint: reference/darts/legacy_training/convert_lightning_checkpoint.md
+              - <code class='doc-symbol doc-symbol-nav doc-symbol-function'></code>optuna_sweep_smp: reference/darts/legacy_training/optuna_sweep_smp.md
+              - <code class='doc-symbol doc-symbol-nav doc-symbol-function'></code>preprocess_planet_train_data: reference/darts/legacy_training/preprocess_planet_train_data.md
+              - <code class='doc-symbol doc-symbol-nav doc-symbol-function'></code>preprocess_s2_train_data: reference/darts/legacy_training/preprocess_s2_train_data.md
+              - <code class='doc-symbol doc-symbol-nav doc-symbol-function'></code>test_smp: reference/darts/legacy_training/test_smp.md
+              - <code class='doc-symbol doc-symbol-nav doc-symbol-function'></code>train_smp: reference/darts/legacy_training/train_smp.md
+              - <code class='doc-symbol doc-symbol-nav doc-symbol-function'></code>wandb_sweep_smp: reference/darts/legacy_training/wandb_sweep_smp.md
+      - <code class='doc-symbol doc-symbol-nav doc-symbol-module'></code>darts_segmentation:
+          - reference/darts_segmentation/index.md
+          - <code class='doc-symbol doc-symbol-nav doc-symbol-module'></code>training:
+              - reference/darts_segmentation/training/index.md
+              - <code class='doc-symbol doc-symbol-nav doc-symbol-function'></code>create_training_patches: reference/darts_segmentation/training/create_training_patches.md
+              - <code class='doc-symbol doc-symbol-nav doc-symbol-class'></code>BinarySegmentationMetrics: reference/darts_segmentation/training/BinarySegmentationMetrics.md
+              - <code class='doc-symbol doc-symbol-nav doc-symbol-class'></code>DartsDataModule: reference/darts_segmentation/training/DartsDataModule.md
+              - <code class='doc-symbol doc-symbol-nav doc-symbol-class'></code>DartsDataset: reference/darts_segmentation/training/DartsDataset.md
+              - <code class='doc-symbol doc-symbol-nav doc-symbol-class'></code>DartsDatasetInMemory: reference/darts_segmentation/training/DartsDatasetInMemory.md
+              - <code class='doc-symbol doc-symbol-nav doc-symbol-class'></code>DartsDatasetZarr: reference/darts_segmentation/training/DartsDatasetZarr.md
+              - <code class='doc-symbol doc-symbol-nav doc-symbol-class'></code>SMPSegmenter: reference/darts_segmentation/training/SMPSegmenter.md
+          - <code class='doc-symbol doc-symbol-nav doc-symbol-module'></code>metrics:
+              - reference/darts_segmentation/metrics/index.md
+              - <code class='doc-symbol doc-symbol-nav doc-symbol-class'></code>BinaryBoundaryIoU: reference/darts_segmentation/metrics/BinaryBoundaryIoU.md
+              - <code class='doc-symbol doc-symbol-nav doc-symbol-class'></code>BinaryInstanceAccuracy: reference/darts_segmentation/metrics/BinaryInstanceAccuracy.md
+              - <code class='doc-symbol doc-symbol-nav doc-symbol-class'></code>BinaryInstanceAveragePrecision: reference/darts_segmentation/metrics/BinaryInstanceAveragePrecision.md
+              - <code class='doc-symbol doc-symbol-nav doc-symbol-class'></code>BinaryInstanceConfusionMatrix: reference/darts_segmentation/metrics/BinaryInstanceConfusionMatrix.md
+              - <code class='doc-symbol doc-symbol-nav doc-symbol-class'></code>BinaryInstanceF1Score: reference/darts_segmentation/metrics/BinaryInstanceF1Score.md
+              - <code class='doc-symbol doc-symbol-nav doc-symbol-class'></code>BinaryInstanceFBetaScore: reference/darts_segmentation/metrics/BinaryInstanceFBetaScore.md
+              - <code class='doc-symbol doc-symbol-nav doc-symbol-class'></code>BinaryInstancePrecision: reference/darts_segmentation/metrics/BinaryInstancePrecision.md
+              - <code class='doc-symbol doc-symbol-nav doc-symbol-class'></code>BinaryInstancePrecisionRecallCurve: reference/darts_segmentation/metrics/BinaryInstancePrecisionRecallCurve.md
+              - <code class='doc-symbol doc-symbol-nav doc-symbol-class'></code>BinaryInstanceRecall: reference/darts_segmentation/metrics/BinaryInstanceRecall.md
+              - <code class='doc-symbol doc-symbol-nav doc-symbol-class'></code>BinaryInstanceStatScores: reference/darts_segmentation/metrics/BinaryInstanceStatScores.md
+          - <code class='doc-symbol doc-symbol-nav doc-symbol-function'></code>create_patches: reference/darts_segmentation/create_patches.md
+          - <code class='doc-symbol doc-symbol-nav doc-symbol-function'></code>patch_coords: reference/darts_segmentation/patch_coords.md
+          - <code class='doc-symbol doc-symbol-nav doc-symbol-function'></code>predict_in_patches: reference/darts_segmentation/predict_in_patches.md
+          - <code class='doc-symbol doc-symbol-nav doc-symbol-class'></code>SMPSegmenter: reference/darts_segmentation/SMPSegmenter.md
+          - <code class='doc-symbol doc-symbol-nav doc-symbol-class'></code>SMPSegmenterConfig: reference/darts_segmentation/SMPSegmenterConfig.md
+      - <code class='doc-symbol doc-symbol-nav doc-symbol-module'></code>darts_acquisition:
+          - reference/darts_acquisition/index.md
+          - <code class='doc-symbol doc-symbol-nav doc-symbol-function'></code>download_admin_files: reference/darts_acquisition/download_admin_files.md
+          - <code class='doc-symbol doc-symbol-nav doc-symbol-function'></code>load_arcticdem: reference/darts_acquisition/load_arcticdem.md
+          - <code class='doc-symbol doc-symbol-nav doc-symbol-function'></code>load_planet_masks: reference/darts_acquisition/load_planet_masks.md
+          - <code class='doc-symbol doc-symbol-nav doc-symbol-function'></code>load_planet_scene: reference/darts_acquisition/load_planet_scene.md
+          - <code class='doc-symbol doc-symbol-nav doc-symbol-function'></code>load_s2_from_gee: reference/darts_acquisition/load_s2_from_gee.md
+          - <code class='doc-symbol doc-symbol-nav doc-symbol-function'></code>load_s2_from_stac: reference/darts_acquisition/load_s2_from_stac.md
+          - <code class='doc-symbol doc-symbol-nav doc-symbol-function'></code>load_s2_masks: reference/darts_acquisition/load_s2_masks.md
+          - <code class='doc-symbol doc-symbol-nav doc-symbol-function'></code>load_s2_scene: reference/darts_acquisition/load_s2_scene.md
+          - <code class='doc-symbol doc-symbol-nav doc-symbol-function'></code>load_tcvis: reference/darts_acquisition/load_tcvis.md
+      - <code class='doc-symbol doc-symbol-nav doc-symbol-module'></code>darts_ensemble:
+          - reference/darts_ensemble/index.md
+          - <code class='doc-symbol doc-symbol-nav doc-symbol-class'></code>EnsembleV1: reference/darts_ensemble/EnsembleV1.md
+      - <code class='doc-symbol doc-symbol-nav doc-symbol-module'></code>darts_export:
+          - reference/darts_export/index.md
+          - <code class='doc-symbol doc-symbol-nav doc-symbol-function'></code>export_arcticdem_datamask: reference/darts_export/export_arcticdem_datamask.md
+          - <code class='doc-symbol doc-symbol-nav doc-symbol-function'></code>export_binarized: reference/darts_export/export_binarized.md
+          - <code class='doc-symbol doc-symbol-nav doc-symbol-function'></code>export_datamask: reference/darts_export/export_datamask.md
+          - <code class='doc-symbol doc-symbol-nav doc-symbol-function'></code>export_dem: reference/darts_export/export_dem.md
+          - <code class='doc-symbol doc-symbol-nav doc-symbol-function'></code>export_extent: reference/darts_export/export_extent.md
+          - <code class='doc-symbol doc-symbol-nav doc-symbol-function'></code>export_optical: reference/darts_export/export_optical.md
+          - <code class='doc-symbol doc-symbol-nav doc-symbol-function'></code>export_polygonized: reference/darts_export/export_polygonized.md
+          - <code class='doc-symbol doc-symbol-nav doc-symbol-function'></code>export_probabilities: reference/darts_export/export_probabilities.md
+          - <code class='doc-symbol doc-symbol-nav doc-symbol-function'></code>export_tcvis: reference/darts_export/export_tcvis.md
+          - <code class='doc-symbol doc-symbol-nav doc-symbol-function'></code>export_thumbnail: reference/darts_export/export_thumbnail.md
+      - <code class='doc-symbol doc-symbol-nav doc-symbol-module'></code>darts_postprocessing:
+          - reference/darts_postprocessing/index.md
+          - <code class='doc-symbol doc-symbol-nav doc-symbol-function'></code>prepare_export: reference/darts_postprocessing/prepare_export.md
+      - <code class='doc-symbol doc-symbol-nav doc-symbol-module'></code>darts_preprocessing:
+          - reference/darts_preprocessing/index.md
+          - <code class='doc-symbol doc-symbol-nav doc-symbol-function'></code>calculate_ndvi: reference/darts_preprocessing/calculate_ndvi.md
+          - <code class='doc-symbol doc-symbol-nav doc-symbol-function'></code>calculate_slope: reference/darts_preprocessing/calculate_slope.md
+          - <code class='doc-symbol doc-symbol-nav doc-symbol-function'></code>calculate_topographic_position_index: reference/darts_preprocessing/calculate_topographic_position_index.md
+          - <code class='doc-symbol doc-symbol-nav doc-symbol-function'></code>preprocess_legacy_fast: reference/darts_preprocessing/preprocess_legacy_fast.md
+      - <code class='doc-symbol doc-symbol-nav doc-symbol-module'></code>darts_utils:
+          - reference/darts_utils/index.md
+          - <code class='doc-symbol doc-symbol-nav doc-symbol-module'></code>cuda:
+              - reference/darts_utils/cuda/index.md
+              - <code class='doc-symbol doc-symbol-nav doc-symbol-function'></code>free_cupy: reference/darts_utils/cuda/free_cupy.md
+              - <code class='doc-symbol doc-symbol-nav doc-symbol-function'></code>free_torch: reference/darts_utils/cuda/free_torch.md
+          - <code class='doc-symbol doc-symbol-nav doc-symbol-module'></code>rich:
+              - reference/darts_utils/rich/index.md
+              - <code class='doc-symbol doc-symbol-nav doc-symbol-class'></code>RichManagerSingleton: reference/darts_utils/rich/RichManagerSingleton.md
+          - <code class='doc-symbol doc-symbol-nav doc-symbol-module'></code>stopuhr:
+              - reference/darts_utils/stopuhr/index.md
+              - <code class='doc-symbol doc-symbol-nav doc-symbol-function'></code>stopuhr: reference/darts_utils/stopuhr/stopuhr.md
+              - <code class='doc-symbol doc-symbol-nav doc-symbol-class'></code>StopUhr: reference/darts_utils/stopuhr/StopUhr.md
 
 theme:
   name: material
@@ -80,11 +176,14 @@ theme:
     - content.code.annotate
 plugins:
   - glightbox
-  - api-autonav:
-      modules: ['darts/src/darts']
   - mkdocstrings:
       handlers:
         python:
+          inventories:
+            - https://docs.python.org/3/objects.inv
+            - https://docs.xarray.dev/en/stable/objects.inv
+            - https://numpy.org/doc/stable/objects.inv
+            - https://pytorch.org/docs/stable/objects.inv
           paths:
             - 'darts-acquisition/src'
             - 'darts-ensemble/src'
@@ -111,10 +210,13 @@ plugins:
             show_signature: true
             separate_signature: true
             show_signature_annotations: true
+            signature_crossrefs: true
             show_overloads: true
             # signature_crossrefs: true
             unwrap_annotated: true
             merge_init_into_class: true
+  - autorefs:
+      resolve_closest: true
   - privacy:
       enabled: !ENV [CI, false]
   - search:
