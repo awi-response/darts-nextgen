@@ -3,9 +3,13 @@
 import logging
 import time
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import toml
 import yaml
+
+if TYPE_CHECKING:
+    import pytorch_lightning as pl
 
 logger = logging.getLogger(__name__)
 
@@ -43,20 +47,20 @@ def train_smp(
     run_name: str | None = None,
     run_id: str | None = None,
     trial_name: str | None = None,
-):
+) -> "pl.Trainer":
     """Run the training of the SMP model.
 
     Please see https://smp.readthedocs.io/en/latest/index.html for model configurations.
 
-    Each training run is assigned a unique name and id pair and optionally a trial name.
+    Each training run is assigned a unique **name** and **id** pair and optionally a trial name.
     The name, which the user _can_ provide, should be used as a grouping mechanism of equal hyperparameter and code.
     Hence, different versions of the same name should only differ by random state or run settings parameter, like logs.
     Each version is assigned a unique id.
-    Artifacts (metrics, checkpoints, etc.) are then stored under {artifact_dir}/{run_name}/{run_id} in no-crossval runs.
-    If trial_name is specified, the artifacts are stored under {artifact_dir}/{trial_name}/{run_name}-{run_id}.
-    Wandb logs are always stored under {wandb_entity}/{wandb_project}/{run_name}, regardless of trial_name.
-    However, they are further grouped bythe trial_name (via job_type), if specified.
-    Both run_name and run_id are also stored in the hparams of each checkpoint.
+    Artifacts (metrics & checkpoints) are then stored under `{artifact_dir}/{run_name}/{run_id}` in no-crossval runs.
+    If `trial_name` is specified, the artifacts are stored under `{artifact_dir}/{trial_name}/{run_name}-{run_id}`.
+    Wandb logs are always stored under `{wandb_entity}/{wandb_project}/{run_name}`, regardless of `trial_name`.
+    However, they are further grouped by the `trial_name` (via job_type), if specified.
+    Both `run_name` and `run_id` are also stored in the hparams of each checkpoint.
 
     You can specify the frequency on how often logs will be written and validation will be performed.
         - `log_every_n_steps` specifies how often train-logs will be written. This does not affect validation.
@@ -73,18 +77,12 @@ def train_smp(
 
     ```sh
     preprocessed-data/ # the top-level directory
-    ├── cross-val/ # this directory contains the data for the training and validation
-    │   ├── x/
-    │   └── y/
-    ├── val-test/ # this directory contains the data for the random selected validation set
-    │   ├── x/
-    │   └── y/
-    └── test/ # this directory contians the data for the left-out-region test set
-        ├── x/
-        └── y/
+    ├── config.toml
+    ├── cross-val.zarr/ # this zarr group contains the dataarrays x and y for the training and validation
+    ├── test.zarr/ # this zarr group contains the dataarrays x and y for the left-out-region test set
+    ├── val-test.zarr/ # this zarr group contains the dataarrays x and y for the random selected validation set
+    └── labels.geojson
     ```
-
-    `x` and `y` are the directories which contain torch-tensor files (.pt) for the input and target data.
 
     Args:
         train_data_dir (Path): Path to the training data directory (top-level).

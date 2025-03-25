@@ -5,6 +5,10 @@ import time
 from collections import defaultdict
 from contextlib import contextmanager
 from statistics import mean, stdev
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    import pandas as pd
 
 
 class StopUhr:
@@ -25,7 +29,7 @@ class StopUhr:
         """Reset the durations."""
         self.durations = defaultdict(list)
 
-    def export(self):
+    def export(self) -> "pd.DataFrame":
         """Export the durations as a pandas DataFrame.
 
         Returns:

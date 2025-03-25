@@ -16,6 +16,11 @@ logger = logging.getLogger(__name__.replace("darts_", "darts."))
 def create_arcticdem_vrt(dem_data_dir: Path, vrt_target_dir: Path):  # noqa: C901
     """Create a VRT file from ArcticDEM data.
 
+    !!! danger "Deprecated"
+
+        This function is deprecated and will be removed in future versions.
+        VRT are replaced by zarr datacubes and respective functionality.
+
     This command expects the tiles for slope and relative elevation in the subfolders `relative_elevation` and `slope`
     of `dem_data_dir`. The tool requires the python gdal bindings to be installed.
 
@@ -100,6 +105,11 @@ def create_arcticdem_vrt(dem_data_dir: Path, vrt_target_dir: Path):  # noqa: C90
 def load_vrt(vrt_path: Path, reference_dataset: xr.Dataset) -> xr.DataArray:
     """Load a VRT file and reproject it to match the reference dataset.
 
+    !!! danger "Deprecated"
+
+        This function is deprecated and will be removed in future versions.
+        VRT are replaced by zarr datacubes and respective functionality.
+
     Args:
         vrt_path (Path): Path to the vrt file.
         reference_dataset (xr.Dataset): The reference dataset.
@@ -134,6 +144,11 @@ def load_vrt(vrt_path: Path, reference_dataset: xr.Dataset) -> xr.DataArray:
 
 def load_arcticdem_from_vrt(slope_vrt: Path, elevation_vrt: Path, reference_dataset: xr.Dataset) -> xr.Dataset:
     """Load ArcticDEM data and reproject it to match the reference dataset.
+
+    !!! danger "Deprecated"
+
+        This function is deprecated and will be removed in future versions.
+        VRT are replaced by zarr datacubes and respective functionality.
 
     Args:
         slope_vrt (Path): Path to the ArcticDEM slope VRT file.

@@ -67,7 +67,6 @@ class _BasePipeline:
         init_ee(self.ee_project, self.ee_use_highvolume)
 
         import torch
-        from darts.utils.cuda import decide_device
         from darts_ensemble.ensemble_v1 import EnsembleV1
         from darts_export import (
             export_binarized,
@@ -79,6 +78,8 @@ class _BasePipeline:
         from darts_postprocessing import prepare_export
         from dask.distributed import Client, LocalCluster
         from odc.stac import configure_rio
+
+        from darts.utils.cuda import decide_device
 
         self.device = decide_device(self.device)
 
@@ -152,6 +153,7 @@ class _BasePipeline:
 # =============================================================================
 # Processing mixins (they provide _preprocess method)
 # =============================================================================
+# VRTs are deprecated and will be removed in the future
 @dataclass
 class _VRTMixin:
     arcticdem_slope_vrt: Path = Path("data/input/ArcticDEM/slope.vrt")

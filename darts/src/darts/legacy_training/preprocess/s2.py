@@ -126,7 +126,7 @@ def preprocess_s2_train_data(
     The data is split into a cross-validation, a validation-test and a test set:
 
         - `cross-val` is meant to be used for train and validation
-        - `val-test` 5% random leave-out for testing the randomness distribution shift of the data
+        - `val-test` (5%) random leave-out for testing the randomness distribution shift of the data
         - `test` leave-out region for testing the spatial distribution shift of the data
 
     Each split is stored as a zarr group, containing a x and a y dataarray.
@@ -136,9 +136,29 @@ def preprocess_s2_train_data(
     This results in super fast random access to the data, because each sample / patch is stored in a separate chunk and
     therefore in a separate file.
 
-    Through exclude_nopositve and exclude_nan, respective patches can be excluded from the final data.
+    Through the parameters `test_val_split` and `test_regions`, the test and validation split can be controlled.
+    To `test_regions` can a list of admin 1 or admin 2 region names, based on the region shapefile maintained by
+    https://github.com/wmgeolab/geoBoundaries, be supplied to remove intersecting scenes from the dataset and
+    put them in the test-split.
+    With the `test_val_split` parameter, the ratio between further splitting of a test-validation set can be controlled.
 
+    Through `exclude_nopositve` and `exclude_nan`, respective patches can be excluded from the final data.
 
+    Further, a `config.toml` file is saved in the `train_data_dir` containing the configuration used for the
+    preprocessing.
+    Addionally, a `labels.geojson` file is saved in the `train_data_dir` containing the joined labels geometries used
+    for the creation of the binarized label-masks, containing also information about the split via the `mode` column.
+
+    The final directory structure of `train_data_dir` will look like this:
+
+    ```sh
+    train_data_dir/
+    ├── config.toml
+    ├── cross-val.zarr/
+    ├── test.zarr/
+    ├── val-test.zarr/
+    └── labels.geojson
+    ```
 
     Args:
         bands (list[str]): The bands to be used for training. Must be present in the preprocessing.

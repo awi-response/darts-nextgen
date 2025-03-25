@@ -12,3 +12,5 @@
       members: true
 - [run_native_planet_pipeline_fast](run_native_planet_pipeline_fast.md)
 - [run_native_sentinel2_pipeline_fast](run_native_sentinel2_pipeline_fast.md)
+- [LegacyNativePlanetPipelineFast](LegacyNativePlanetPipelineFast.md)
+- [LegacyNativeSentinel2PipelineFast](LegacyNativeSentinel2PipelineFast.md)

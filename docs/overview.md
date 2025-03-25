@@ -7,6 +7,8 @@ hide:
 
 This is a guide to help you, as a user / data engineer, get started with the project.
 
+[TOC]
+
 ## Installation
 
 To setup the environment for the project, you need to install [uv](https://docs.astral.sh/uv/) and run the following command, assuming CUDA 12.6 is installed:
@@ -158,6 +160,33 @@ Finally, specify an output directory (`output-dir`), where you want to save the 
 
 Of course you can tweak all other options aswell, also via the CLI.
 A list of all options can be found in the [config guide](guides/config.md) or by running a command with the `--help` parameter.
+
+???+ tip "Example config file"
+    This is how an example config file could look like for the automated Sentinel 2 pipeline:
+
+    ```toml title="config.toml"
+    [darts]
+    ee-project = "ee-tobias-hoelzer"
+    dask-worker = 4
+
+    [darts.aoi]
+    aoi-shapefile = "./data/banks_island.shp"
+    start-date = "2024-07"
+    end-date = "2024-10"
+    max-cloud-cover = 1 # %
+
+    [darts.paths]
+    input-cache = "./data/cache/s2gee"
+    output-data-dir = "./data/out"
+    arcticdem-dir = "./data/download/arcticdem"
+    tcvis-dir = "./data/download/tcvis"
+    model-file = "./models/s2-tcvis-final-large_2025-02-12.ckpt"
+
+    [darts.tiling]
+    batch-size = 8  # Reduce incase of memory issues
+    patch-size = 512  # Reduce incase of memory issues
+    overlap = 128  # Recommended to be 1/4 of patch-size
+    ```
 
 ### Run a the pipeline
 

@@ -44,7 +44,7 @@ def run_native_sentinel2_pipeline_from_aoi(
         start_date (str): The start date for the Sentinel-2 data.
         end_date (str): The end date for the Sentinel-2 data.
         max_cloud_cover (int, optional): The maximum cloud cover to use for the Sentinel-2 data. Defaults to 10.
-        input_cache(Path): The directory to use for the cache. Stores the downloaded optical data here.
+        input_cache (Path): The directory to use for the cache. Stores the downloaded optical data here.
             Defaults to Path("data/cache/input").
         output_data_dir (Path): The "output" directory. Defaults to Path("data/output").
         arcticdem_dir (Path): The directory containing the ArcticDEM data (the datacube and the extent files).

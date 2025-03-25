@@ -1,6 +1,6 @@
 """Boundary IoU metric for binary segmentation tasks."""
 
-from typing import Literal
+from typing import Literal, TypedDict, Unpack
 
 import torch
 from torch import Tensor
@@ -13,6 +13,19 @@ from torchmetrics.functional.classification.stat_scores import (
 from darts_segmentation.metrics.boundary_helpers import get_boundary
 
 MatchingMetric = Literal["iou", "boundary"]
+
+
+class BinaryBoundaryIoUKwargs(TypedDict):
+    """Keyword arguments for the BinaryBoundaryIoU metric."""
+
+    zero_division: Literal[0, 1]
+    compute_on_cpu: bool
+    dist_sync_on_step: bool
+    process_group: str
+    dist_sync_fn: callable
+    distributed_available_fn: callable
+    sync_on_compute: bool
+    compute_with_cache: bool
 
 
 class BinaryBoundaryIoU(Metric):
@@ -38,9 +51,13 @@ class BinaryBoundaryIoU(Metric):
         multidim_average: Literal["global", "samplewise"] = "global",
         ignore_index: int | None = None,
         validate_args: bool = True,
-        **kwargs,
+        **kwargs: Unpack[BinaryBoundaryIoUKwargs],
     ):
         """Create a new instance of the BinaryBoundaryIoU metric.
+
+        Please see the
+        [torchmetrics docs](https://lightning.ai/docs/torchmetrics/stable/pages/overview.html#metric-kwargs)
+        for more info about the **kwargs.
 
         Args:
             dilation (float | int, optional): The dilation (factor) / width of the boundary.
@@ -52,8 +69,26 @@ class BinaryBoundaryIoU(Metric):
                 calculated. Defaults to "global".
             ignore_index (int | None, optional): Ignores an invalid class.  Defaults to None.
             validate_args (bool, optional): Weather to validate inputs. Defaults to True.
-            kwargs: Additional arguments for the Metric class, regarding compute-methods.
-                Please refer to torchmetrics for more examples.
+
+        Keyword Args:
+            zero_division (int):
+                Value to return when there is a zero division. Default is 0.
+            compute_on_cpu (bool):
+                If metric state should be stored on CPU during computations. Only works for list states.
+            dist_sync_on_step (bool):
+                If metric state should synchronize on ``forward()``. Default is ``False``.
+            process_group (str):
+                The process group on which the synchronization is called. Default is the world.
+            dist_sync_fn (callable):
+                Function that performs the allgather option on the metric state. Default is a custom
+                implementation that calls ``torch.distributed.all_gather`` internally.
+            distributed_available_fn (callable):
+                Function that checks if the distributed backend is available. Defaults to a
+                check of ``torch.distributed.is_available()`` and ``torch.distributed.is_initialized()``.
+            sync_on_compute (bool):
+                If metric state should synchronize when ``compute`` is called. Default is ``True``.
+            compute_with_cache (bool):
+                If results from ``compute`` should be cached. Default is ``True``.
 
         Raises:
             ValueError: If dilation is not a float or int.

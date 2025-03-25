@@ -17,9 +17,10 @@ nav:
       - Config Files: guides/config.md
       - Logging: guides/logging.md
       - Training: guides/training.md
+      - Pipeline v1: guides/pipeline-v1.md
   - Dev:
       - Contribute: contribute.md
-      - Pipeline steps APIs: dev/arch.md
+      - Architecture: dev/arch.md
       - Datacubes: dev/auxiliary.md
       - Docs: dev/docs.md
   - API Reference:
@@ -33,6 +34,8 @@ nav:
               - reference/darts/legacy_pipeline/index.md
               - <code class='doc-symbol doc-symbol-nav doc-symbol-function'></code>run_native_planet_pipeline_fast: reference/darts/legacy_pipeline/run_native_planet_pipeline_fast.md
               - <code class='doc-symbol doc-symbol-nav doc-symbol-function'></code>run_native_sentinel2_pipeline_fast: reference/darts/legacy_pipeline/run_native_sentinel2_pipeline_fast.md
+              - <code class='doc-symbol doc-symbol-nav doc-symbol-class'></code>LegacyNativePlanetPipelineFast: reference/darts/legacy_pipeline/LegacyNativePlanetPipelineFast.md
+              - <code class='doc-symbol doc-symbol-nav doc-symbol-class'></code>LegacyNativeSentinel2PipelineFast: reference/darts/legacy_pipeline/LegacyNativeSentinel2PipelineFast.md
           - <code class='doc-symbol doc-symbol-nav doc-symbol-module'></code>legacy_training:
               - reference/darts/legacy_training/index.md
               - <code class='doc-symbol doc-symbol-nav doc-symbol-function'></code>convert_lightning_checkpoint: reference/darts/legacy_training/convert_lightning_checkpoint.md
@@ -184,6 +187,8 @@ plugins:
             - https://docs.xarray.dev/en/stable/objects.inv
             - https://numpy.org/doc/stable/objects.inv
             - https://pytorch.org/docs/stable/objects.inv
+            - https://lightning.ai/docs/torchmetrics/stable/objects.inv
+            # - https://lightning.ai/docs/pytorch/stable/object.inv
           paths:
             - 'darts-acquisition/src'
             - 'darts-ensemble/src'

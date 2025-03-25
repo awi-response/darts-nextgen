@@ -98,7 +98,7 @@ class BinarySegmentationMetrics(Callback):
     def _val_prefix(self):
         return "val" if self.is_crossval else self.val_set
 
-    def is_val_plot_epoch(self, current_epoch: int, check_val_every_n_epoch: int | None):
+    def is_val_plot_epoch(self, current_epoch: int, check_val_every_n_epoch: int | None) -> bool:
         """Check if the current epoch is an epoch where validation samples should be plotted.
 
         Args:

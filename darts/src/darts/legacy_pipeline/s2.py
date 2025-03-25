@@ -13,6 +13,11 @@ from darts.legacy_pipeline._base import AquisitionData, _BasePipeline, _S2Mixin,
 class LegacyNativeSentinel2Pipeline(_S2Mixin, _VRTMixin, _BasePipeline):
     """Pipeline for Sentinel 2 data.
 
+    !!! danger "Deprecated"
+
+        This pipeline is deprecated and will be removed in future versions.
+        It relies on VRTs, which are replaced by faster zarr datacubes.
+
     Args:
         sentinel2_dir (Path): The directory containing the Sentinel 2 scenes. Defaults to Path("data/input/sentinel2").
         output_data_dir (Path): The "output" directory. Defaults to Path("data/output").
@@ -88,5 +93,12 @@ class LegacyNativeSentinel2Pipeline(_S2Mixin, _VRTMixin, _BasePipeline):
 
 
 def run_native_sentinel2_pipeline(*, pipeline: Annotated[LegacyNativeSentinel2Pipeline, Parameter("*")]):
-    """Search for all Sentinel scenes in the given directory and runs the segmentation pipeline on them."""
+    """Search for all Sentinel scenes in the given directory and runs the segmentation pipeline on them.
+
+    !!! danger "Deprecated"
+
+        This pipeline is deprecated and will be removed in future versions.
+        It relies on VRTs, which are replaced by faster zarr datacubes.
+
+    """
     pipeline.run()

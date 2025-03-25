@@ -318,8 +318,6 @@ def optuna_sweep_smp(
         device (int | str | None, optional): The device to run the model on. Defaults to None.
         wandb_entity (str | None, optional): Weights and Biases Entity. Defaults to None.
         wandb_project (str | None, optional): Weights and Biases Project. Defaults to None.
-        run_name (str | None, optional): Name of this run, as a further grouping method for logs etc. Defaults to None.
-        # Hyperparameters (default values if not provided by sweep-config)
         model_arch (str, optional): Model architecture to use. Defaults to "Unet".
         model_encoder (str, optional): Encoder to use. Defaults to "dpn107".
         augment (bool, optional): Weather to apply augments or not. Defaults to True.

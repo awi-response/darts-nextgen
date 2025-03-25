@@ -13,6 +13,11 @@ from darts.legacy_pipeline._base import AquisitionData, _BasePipeline, _PlanetMi
 class LegacyNativePlanetPipeline(_PlanetMixin, _VRTMixin, _BasePipeline):
     """Pipeline for Planet data.
 
+    !!! danger "Deprecated"
+
+        This pipeline is deprecated and will be removed in future versions.
+        It relies on VRTs, which are replaced by faster zarr datacubes.
+
     Args:
         orthotiles_dir (Path): The directory containing the PlanetScope orthotiles.
             Defaults to Path("data/input/planet/PSOrthoTile").
@@ -129,5 +134,11 @@ class LegacyNativePlanetPipeline(_PlanetMixin, _VRTMixin, _BasePipeline):
 
 
 def run_native_planet_pipeline(*, pipeline: Annotated[LegacyNativePlanetPipeline, Parameter("*")]):
-    """Search for all PlanetScope scenes in the given directory and runs the segmentation pipeline on them."""
+    """Search for all PlanetScope scenes in the given directory and runs the segmentation pipeline on them.
+
+    !!! danger "Deprecated"
+
+        This function is deprecated and will be removed in future versions.
+        It relies on VRTs, which are replaced by faster zarr datacubes.
+    """
     pipeline.run()
