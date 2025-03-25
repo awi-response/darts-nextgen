@@ -11,9 +11,7 @@ from darts_utils.rich import RichManager
 from darts import __version__
 from darts.automated_pipeline.s2 import run_native_sentinel2_pipeline_from_aoi
 from darts.legacy_pipeline import (
-    run_native_planet_pipeline,
     run_native_planet_pipeline_fast,
-    run_native_sentinel2_pipeline,
     run_native_sentinel2_pipeline_fast,
 )
 from darts.legacy_training import (
@@ -72,9 +70,7 @@ def env_info():
     debug_info()
 
 
-app.command(group=pipeline_group)(run_native_planet_pipeline)
 app.command(group=pipeline_group)(run_native_planet_pipeline_fast)
-app.command(group=pipeline_group)(run_native_sentinel2_pipeline)
 app.command(group=pipeline_group)(run_native_sentinel2_pipeline_fast)
 app.command(group=pipeline_group)(run_native_sentinel2_pipeline_from_aoi)
 
@@ -85,21 +81,6 @@ app.command(group=train_group)(test_smp)
 app.command(group=train_group)(convert_lightning_checkpoint)
 app.command(group=train_group)(wandb_sweep_smp)
 app.command(group=train_group)(optuna_sweep_smp)
-
-
-# Custom wrapper for the create_arcticdem_vrt function, which dodges the loading of all the heavy modules
-@app.command(group=data_group)
-def create_arcticdem_vrt(dem_data_dir: Path, vrt_target_dir: Path):
-    """Create a VRT file from ArcticDEM data.
-
-    Args:
-        dem_data_dir (Path): The directory containing the ArcticDEM data (.tif).
-        vrt_target_dir (Path): The output directory.
-
-    """
-    from darts_acquisition.arcticdem.vrt import create_arcticdem_vrt as _create_arcticdem_vrt
-
-    _create_arcticdem_vrt(dem_data_dir, vrt_target_dir)
 
 
 # Intercept the logging behavior to add a file handler

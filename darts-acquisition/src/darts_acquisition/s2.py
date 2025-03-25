@@ -31,13 +31,7 @@ def convert_masks(ds_s2: xr.Dataset) -> xr.Dataset:
     """
     assert "scl" in ds_s2.data_vars, "The dataset does not contain the SCL band."
 
-    ds_s2["quality_data_mask"] = xr.zeros_like(ds_s2["scl"], dtype="uint8").assign_attrs(
-        {
-            "data_source": "s2",
-            "long_name": "Quality Data Mask",
-            "description": "0 = Invalid, 1 = Low Quality, 2 = High Quality",
-        }
-    )
+    ds_s2["quality_data_mask"] = xr.zeros_like(ds_s2["scl"], dtype="uint8")
     # TODO: What about nan values?
     invalids = ds_s2["scl"].fillna(0).isin([0, 1])
     low_quality = ds_s2["scl"].isin([3, 8, 9, 11])
@@ -45,6 +39,10 @@ def convert_masks(ds_s2: xr.Dataset) -> xr.Dataset:
     # ds_s2["quality_data_mask"] = ds_s2["quality_data_mask"].where(invalids, 0)
     ds_s2["quality_data_mask"] = xr.where(low_quality, 1, ds_s2["quality_data_mask"])
     ds_s2["quality_data_mask"] = xr.where(high_quality, 2, ds_s2["quality_data_mask"])
+
+    ds_s2["quality_data_mask"].attrs["data_source"] = "s2"
+    ds_s2["quality_data_mask"].attrs["long_name"] = "Quality Data Mask"
+    ds_s2["quality_data_mask"].attrs["description"] = "0 = Invalid, 1 = Low Quality, 2 = High Quality"
 
     # TODO: Delete this?
     # ds_s2 = ds_s2.drop_vars("scl")
@@ -110,9 +108,9 @@ def load_s2_scene(fpath: str | Path) -> xr.Dataset:
     ds_s2 = s2_da.fillna(0).rio.write_nodata(0).astype("uint16").assign_coords({"band": bands}).to_dataset(dim="band")
 
     for var in ds_s2.data_vars:
-        ds_s2[var].assign_attrs(
-            {"data_source": "s2", "long_name": f"Sentinel 2 {var.capitalize()}", "units": "Reflectance"}
-        )
+        ds_s2[var].attrs["data_source"] = "s2"
+        ds_s2[var].attrs["long_name"] = f"Sentinel 2 {var.capitalize()}"
+        ds_s2[var].attrs["units"] = "Reflectance"
 
     planet_crop_id, s2_tile_id, tile_id = parse_s2_tile_id(fpath)
     ds_s2.attrs["planet_crop_id"] = planet_crop_id
@@ -237,9 +235,9 @@ def load_s2_from_gee(
     ds_s2 = ds_s2.rename_vars(bands_mapping)
 
     for var in ds_s2.data_vars:
-        ds_s2[var].assign_attrs(
-            {"data_source": "s2-gee", "long_name": f"Sentinel 2 {var.capitalize()}", "units": "Reflectance"}
-        )
+        ds_s2[var].attrs["data_source"] = "s2-gee"
+        ds_s2[var].attrs["long_name"] = f"Sentinel 2 {var.capitalize()}"
+        ds_s2[var].attrs["units"] = "Reflectance"
 
     ds_s2 = convert_masks(ds_s2)
 
@@ -329,9 +327,9 @@ def load_s2_from_stac(
 
     ds_s2 = ds_s2.rename_vars(bands_mapping)
     for var in ds_s2.data_vars:
-        ds_s2[var].assign_attrs(
-            {"data_source": "s2-gee", "long_name": f"Sentinel 2 {var.capitalize()}", "units": "Reflectance"}
-        )
+        ds_s2[var].attrs["data_source"] = "s2-stac"
+        ds_s2[var].attrs["long_name"] = f"Sentinel 2 {var.capitalize()}"
+        ds_s2[var].attrs["units"] = "Reflectance"
 
     ds_s2 = convert_masks(ds_s2)
 

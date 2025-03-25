@@ -115,19 +115,6 @@ cuda121 = [
     "cuda-python>=12.6.2.post1",
     "pynvml==11.4.1",
 ]
-cuda124 = [
-    "torch>=2.2.0",
-    "torchvision>=0.17.0",
-    "segmentation-models-pytorch>=0.4.0",
-    "lovely-tensors>=0.1.17",
-    "timm>=1.0.13",
-    # CUDA-only
-    "cucim-cu12>=24.8",
-    "cupy-cuda12x>=13.3.0",
-    "cupy-xarray",
-    "cuda-python>=12.6.2.post1",
-    "pynvml==11.4.1",
-]
 cuda126 = [
     "torch>=2.2.0",
     "torchvision>=0.17.0",
@@ -172,6 +159,8 @@ docs = [
     "mkdocs-git-revision-date-localized-plugin>=1.2.9",
     "mkdocs-git-committers-plugin-2>=2.3.0",
     "mkdocs-glightbox>=0.4.0",
+    "mkdocs-autoapi>=0.4.0",
+    "mkdocs-api-autonav>=0.2.1",
 ]
 
 # ==============================================================================
@@ -204,7 +193,6 @@ conflicts = [
     { extra = "cpu" },
     { extra = "cuda118" },
     { extra = "cuda121" },
-    { extra = "cuda124" },
     { extra = "cuda126" },
   ],
 ]
@@ -215,14 +203,12 @@ torch = [
   { index = "pytorch-cpu", extra = "cpu" },
   { index = "pytorch-cu118", extra = "cuda118" },
   { index = "pytorch-cu121", extra = "cuda121" },
-  { index = "pytorch-cu124", extra = "cuda124" },
   { index = "pytorch-cu126", extra = "cuda126" },
 ]
 torchvision = [
   { index = "pytorch-cpu", extra = "cpu" },
   { index = "pytorch-cu118", extra = "cuda118" },
   { index = "pytorch-cu121", extra = "cuda121" },
-  { index = "pytorch-cu124", extra = "cuda124" },
   { index = "pytorch-cu126", extra = "cuda126" },
 ]
 darts-acquisition = { workspace = true }
@@ -247,11 +233,6 @@ explicit = true
 [[tool.uv.index]]
 name = "pytorch-cu121"
 url = "https://download.pytorch.org/whl/cu121"
-explicit = true
-
-[[tool.uv.index]]
-name = "pytorch-cu124"
-url = "https://download.pytorch.org/whl/cu124"
 explicit = true
 
 [[tool.uv.index]]

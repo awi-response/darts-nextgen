@@ -123,6 +123,23 @@ def preprocess_s2_train_data(
 ):
     """Preprocess Sentinel 2 data for training.
 
+    The data is split into a cross-validation, a validation-test and a test set:
+
+        - `cross-val` is meant to be used for train and validation
+        - `val-test` 5% random leave-out for testing the randomness distribution shift of the data
+        - `test` leave-out region for testing the spatial distribution shift of the data
+
+    Each split is stored as a zarr group, containing a x and a y dataarray.
+    The x dataarray contains the input data with the shape (n_patches, n_bands, patch_size, patch_size).
+    The y dataarray contains the labels with the shape (n_patches, patch_size, patch_size).
+    Both dataarrays are chunked along the n_patches dimension.
+    This results in super fast random access to the data, because each sample / patch is stored in a separate chunk and
+    therefore in a separate file.
+
+    Through exclude_nopositve and exclude_nan, respective patches can be excluded from the final data.
+
+
+
     Args:
         bands (list[str]): The bands to be used for training. Must be present in the preprocessing.
         sentinel2_dir (Path): The directory containing the Sentinel 2 scenes.

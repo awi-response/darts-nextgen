@@ -55,14 +55,14 @@ By default the CLI tries to load a `config.toml` file from the current directory
 However, you can specify a different file with the `--config-file` parameter.
 
 As of right now, the CLI tries to match all parameters under the `darts` key of the config file, skipping not needed ones.
-For more information about the config file,  see the [config guide](dev/config.md)..
+For more information about the config file,  see the [config guide](guides/config.md)..
 
 ### Logging
 
 By default the CLI sets up a logging handler at `DEBUG` level for the `darts` specific packages found in this workspace.
 Running any command will output a logging file at the logging directory, which can be specified via the `--log-dir` parameter.
 The logging file will be named after the command and the current timestamp.
-If you want to change the logging behavior in python code, you can check out the [logging guide](dev/logging.md).
+If you want to change the logging behavior in python code, you can check out the [logging guide](guides/logging.md).
 
 ## Running a pipeline based on Sentinel 2 data
 
@@ -157,7 +157,7 @@ Auxiliary data (TCVIS and ArcticDEM) will be downloaded on demand into a datacub
 Finally, specify an output directory (`output-dir`), where you want to save the results of the pipeline.
 
 Of course you can tweak all other options aswell, also via the CLI.
-A list of all options can be found in the [config guide](dev/config.md) or by running a command with the `--help` parameter.
+A list of all options can be found in the [config guide](guides/config.md) or by running a command with the `--help` parameter.
 
 ### Run a the pipeline
 
@@ -171,5 +171,5 @@ rye run darts run-native-planet-pipeline-fast --config-file path/to/your/config.
 
 The project was build with the idea in mind, that it is easy to create a new pipeline, with e.g. different parallelisation techniques.
 The [architecture guide](dev/arch.md) provides an overview of the project structure and the key components.
-A good starting point to understand the components is the [intro to components](components/intro.md).
+A good starting point to understand the components is the [intro to components](guides/components.md).
 The build-in pipelines are a good example how the components can be used and put together to create a new pipeline.

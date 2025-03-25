@@ -2,7 +2,11 @@
 
 import importlib.metadata
 
-from darts_preprocessing.preprocess import preprocess_legacy as preprocess_legacy
+from darts_preprocessing.engineering.arcticdem import calculate_slope as calculate_slope
+from darts_preprocessing.engineering.arcticdem import (
+    calculate_topographic_position_index as calculate_topographic_position_index,
+)
+from darts_preprocessing.engineering.indices import calculate_ndvi as calculate_ndvi
 from darts_preprocessing.preprocess import preprocess_legacy_fast as preprocess_legacy_fast
 
 try:
