@@ -194,25 +194,36 @@ class _PlanetMixin:
     orthotiles_dir: Path = Path("data/input/planet/PSOrthoTile")
     scenes_dir: Path = Path("data/input/planet/PSScene")
     image_ids: list = None
+    overwrite: bool = False
 
     def _path_generator(self):
         # Find all PlanetScope orthotiles
         for fpath in self.orthotiles_dir.glob("*/*/"):
             tile_id = fpath.parent.name
             scene_id = fpath.name
+            # only use dedicated image_ids
             if self.image_ids is not None:
-                if scene_id not in self.image_ids:
+                if scene_id not in self.image_ids and not self.overwrite:
                     continue
             outpath = self.output_data_dir / tile_id / scene_id
+            # only use image_ids that are not yet processed
+            if outpath.exists():
+                logger.info(f"Output for {scene_id} already exists! Skipping...")
+                continue
             yield fpath, outpath
 
         # Find all PlanetScope scenes
         for fpath in self.scenes_dir.glob("*/"):
             scene_id = fpath.name
+            # check for existing output
             if self.image_ids is not None:
-                if scene_id not in self.image_ids:
+                if scene_id not in self.image_ids and not self.overwrite:
                     continue
+
             outpath = self.output_data_dir / scene_id
+            # only use image_ids that are not yet processed
+            if outpath.exists() and not self.overwrite:
+                continue
             yield fpath, outpath
 
 
