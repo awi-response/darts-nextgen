@@ -67,7 +67,6 @@ class _BasePipeline:
         init_ee(self.ee_project, self.ee_use_highvolume)
 
         import torch
-        from darts.utils.cuda import decide_device
         from darts_ensemble.ensemble_v1 import EnsembleV1
         from darts_export import (
             export_binarized,
@@ -79,6 +78,8 @@ class _BasePipeline:
         from darts_postprocessing import prepare_export
         from dask.distributed import Client, LocalCluster
         from odc.stac import configure_rio
+
+        from darts.utils.cuda import decide_device
 
         self.device = decide_device(self.device)
 
@@ -194,34 +195,79 @@ class _PlanetMixin:
     orthotiles_dir: Path = Path("data/input/planet/PSOrthoTile")
     scenes_dir: Path = Path("data/input/planet/PSScene")
     image_ids: list = None
+    overwrite: bool = False
 
     def _path_generator(self):
         # Find all PlanetScope orthotiles
         for fpath in self.orthotiles_dir.glob("*/*/"):
             tile_id = fpath.parent.name
             scene_id = fpath.name
+            # only use dedicated image_ids
             if self.image_ids is not None:
-                if scene_id not in self.image_ids:
+                if scene_id not in self.image_ids and not self.overwrite:
                     continue
             outpath = self.output_data_dir / tile_id / scene_id
+            # only use image_ids that are not yet processed
+            if outpath.exists() and not self.overwrite:
+                # check if output is complete
+                if check_output_dir(outpath):
+                    logger.info(f"Output for {scene_id} already exists! Skipping...")
+                    continue
+                else:
+                    logger.info(f"Output for {scene_id} already exists, but incomplete! Will be processed!")
             yield fpath, outpath
 
         # Find all PlanetScope scenes
         for fpath in self.scenes_dir.glob("*/"):
             scene_id = fpath.name
+            # check for existing output
             if self.image_ids is not None:
-                if scene_id not in self.image_ids:
+                if scene_id not in self.image_ids and not self.overwrite:
                     continue
+
             outpath = self.output_data_dir / scene_id
+            # only use image_ids that are not yet processed
+            if outpath.exists() and not self.overwrite:
+                # check if output is complete
+                if check_output_dir(outpath):
+                    logger.info(f"Output for {scene_id} already exists! Skipping...")
+                    continue
+                else:
+                    logger.info(f"Output for {scene_id} already exists, but incomplete! Will be processed!")
             yield fpath, outpath
 
 
 @dataclass
 class _S2Mixin:
     sentinel2_dir: Path = Path("data/input/sentinel2")
+    overwrite: bool = False
 
     def _path_generator(self):
         for fpath in self.sentinel2_dir.glob("*/"):
             scene_id = fpath.name
             outpath = self.output_data_dir / scene_id
+            # only use image_ids that are not yet processed
+            if outpath.exists() and not self.overwrite:
+                logger.info(f"Output for {scene_id} already exists! Skipping...")
+            else:
+                continue
             yield fpath, outpath
+
+
+def check_output_dir(output_dir: Path) -> bool:
+    """Check if the output directory has at least 7 files.
+
+    Args:
+        output_dir (Path): The directory to check.
+
+    Returns:
+        bool: True if the directory has at least 7 files, False otherwise.
+
+    Note:
+        This function only counts files, not subdirectories.
+
+    """
+    flist = [p for p in output_dir.glob("*") if p.is_file()]
+    is_complete = len(flist) >= 7
+    print(len(flist))
+    return is_complete
