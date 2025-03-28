@@ -240,11 +240,17 @@ class _PlanetMixin:
 @dataclass
 class _S2Mixin:
     sentinel2_dir: Path = Path("data/input/sentinel2")
+    overwrite: bool = False
 
     def _path_generator(self):
         for fpath in self.sentinel2_dir.glob("*/"):
             scene_id = fpath.name
             outpath = self.output_data_dir / scene_id
+            # only use image_ids that are not yet processed
+            if outpath.exists() and not self.overwrite:
+                logger.info(f"Output for {scene_id} already exists! Skipping...")
+            else:
+                continue
             yield fpath, outpath
 
 
