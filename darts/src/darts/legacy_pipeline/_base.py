@@ -67,7 +67,6 @@ class _BasePipeline:
         init_ee(self.ee_project, self.ee_use_highvolume)
 
         import torch
-        from darts.utils.cuda import decide_device
         from darts_ensemble.ensemble_v1 import EnsembleV1
         from darts_export import (
             export_binarized,
@@ -79,6 +78,8 @@ class _BasePipeline:
         from darts_postprocessing import prepare_export
         from dask.distributed import Client, LocalCluster
         from odc.stac import configure_rio
+
+        from darts.utils.cuda import decide_device
 
         self.device = decide_device(self.device)
 
@@ -207,9 +208,13 @@ class _PlanetMixin:
                     continue
             outpath = self.output_data_dir / tile_id / scene_id
             # only use image_ids that are not yet processed
-            if outpath.exists():
-                logger.info(f"Output for {scene_id} already exists! Skipping...")
-                continue
+            if outpath.exists() and not self.overwrite:
+                # check if output is complete
+                if check_output_dir(outpath):
+                    logger.info(f"Output for {scene_id} already exists! Skipping...")
+                    continue
+                else:
+                    logger.info(f"Output for {scene_id} already exists, but incomplete! Will be processed!")
             yield fpath, outpath
 
         # Find all PlanetScope scenes
@@ -223,7 +228,12 @@ class _PlanetMixin:
             outpath = self.output_data_dir / scene_id
             # only use image_ids that are not yet processed
             if outpath.exists() and not self.overwrite:
-                continue
+                # check if output is complete
+                if check_output_dir(outpath):
+                    logger.info(f"Output for {scene_id} already exists! Skipping...")
+                    continue
+                else:
+                    logger.info(f"Output for {scene_id} already exists, but incomplete! Will be processed!")
             yield fpath, outpath
 
 
@@ -236,3 +246,22 @@ class _S2Mixin:
             scene_id = fpath.name
             outpath = self.output_data_dir / scene_id
             yield fpath, outpath
+
+
+def check_output_dir(output_dir: Path) -> bool:
+    """Check if the output directory has at least 7 files.
+
+    Args:
+        output_dir (Path): The directory to check.
+
+    Returns:
+        bool: True if the directory has at least 7 files, False otherwise.
+
+    Note:
+        This function only counts files, not subdirectories.
+
+    """
+    flist = [p for p in output_dir.glob("*") if p.is_file()]
+    is_complete = len(flist) >= 7
+    print(len(flist))
+    return is_complete
