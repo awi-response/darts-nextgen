@@ -53,18 +53,19 @@ class StopUhr:
             res (int, optional): The number of decimal places to round to. Defaults to 2.
 
         """
+        max_key_len = max(len(key) for key in self.durations.keys())
         for key, values in self.durations.items():
             if not values:
-                self.printer(f"'{key}' No durations recorded")
+                self.printer(f"'{key:<{max_key_len}}' No durations recorded")
                 continue
 
             if len(values) == 1:
-                self.printer(f"'{key}' took {values[0]:.{res}f} s")
+                self.printer(f"'{key:<{max_key_len}}' took {values[0]:.{res}f} s")
                 continue
 
             mean_val = mean(values)
             stdev_val = stdev(values)
-            self.printer(f"{key} took {mean_val:.{res}f} ± {stdev_val:.{res}f} s")
+            self.printer(f"{key:<{max_key_len}} took {mean_val:.{res}f} ± {stdev_val:.{res}f} s")
 
     @contextmanager
     def __call__(self, key: str, res: int = 2, log: bool = True):

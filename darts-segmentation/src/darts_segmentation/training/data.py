@@ -25,9 +25,9 @@ class DartsDataset(Dataset):
 
         self.x_files = sorted((data_dir / "x").glob("*.pt"))
         self.y_files = sorted((data_dir / "y").glob("*.pt"))
-        assert len(self.x_files) == len(
-            self.y_files
-        ), f"Dataset corrupted! Got {len(self.x_files)=} and {len(self.y_files)=}!"
+        assert len(self.x_files) == len(self.y_files), (
+            f"Dataset corrupted! Got {len(self.x_files)=} and {len(self.y_files)=}!"
+        )
         if indices is not None:
             self.x_files = [self.x_files[i] for i in indices]
             self.y_files = [self.y_files[i] for i in indices]
@@ -73,14 +73,14 @@ class DartsDatasetZarr(Dataset):
         if isinstance(data_dir, str):
             data_dir = Path(data_dir)
 
-        store = zarr.storage.DirectoryStore(data_dir)
+        store = zarr.storage.LocalStore(data_dir)
         self.zroot = zarr.group(store=store)
 
-        assert (
-            "x" in self.zroot and "y" in self.zroot
-        ), f"Dataset corrupted! {self.zroot.info=} must contain 'x' or 'y' arrays!"
+        assert "x" in self.zroot and "y" in self.zroot, (
+            f"Dataset corrupted! {self.zroot.info=} must contain 'x' or 'y' arrays!"
+        )
 
-        self.indices = indices if indices is not None else list(range(len(self.zroot["x"])))
+        self.indices = indices if indices is not None else list(range(self.zroot["x"].shape[0]))
 
         self.transform = (
             A.Compose(
@@ -131,9 +131,9 @@ class DartsDatasetInMemory(Dataset):
         self.x = []
         self.y = []
         for xfile, yfile in zip(x_files, y_files):
-            assert (
-                xfile.stem == yfile.stem
-            ), f"Dataset corrupted! Files must have the same name, but got {xfile=} {yfile=}!"
+            assert xfile.stem == yfile.stem, (
+                f"Dataset corrupted! Files must have the same name, but got {xfile=} {yfile=}!"
+            )
             x = torch.load(xfile).numpy()
             y = torch.load(yfile).int().numpy()
             self.x.append(x)

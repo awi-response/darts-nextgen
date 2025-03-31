@@ -8,6 +8,7 @@ dependencies = [
     "cyclopts>=3.1.0",
     "lovely-numpy>=0.2.13",
     "setuptools>=75.5.0",
+    "stopuhr>=0.0.3",
     "names-generator>=0.2.0",
     # IO
     "boto3>=1.37.7",
@@ -23,8 +24,9 @@ dependencies = [
     "pystac-client>=0.8.6",
     "odc-geo>=0.4.8",
     "odc-stac[botocore]>=0.3.10",
+    "smart-geocubes[stac,gee] >=0.0.4",
     "toml>=0.10.2",
-    "zarr[jupyter]>=2.18.3, <3",
+    "zarr>=3.0.4",
     # Processing
     "albumentations>=1.4.21",
     "scikit-image>=0.20",
@@ -53,7 +55,7 @@ dependencies = [
     "darts-preprocessing",
     "darts-segmentation",
     "darts-superresolution",
-    "darts-utils"
+    "darts-utils",
 ]
 readme = "README.md"
 requires-python = ">= 3.11"

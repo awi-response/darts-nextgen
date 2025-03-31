@@ -69,6 +69,7 @@ class BinaryBoundaryIoU(Metric):
                 calculated. Defaults to "global".
             ignore_index (int | None, optional): Ignores an invalid class.  Defaults to None.
             validate_args (bool, optional): Weather to validate inputs. Defaults to True.
+            **kwargs: Additional keyword arguments for the metric.
 
         Keyword Args:
             zero_division (int):

@@ -235,10 +235,10 @@ def preprocess_planet_train_data(
     from darts_segmentation.training.prepare_training import create_training_patches
     from dask.distributed import Client, LocalCluster
     from lovely_tensors import monkey_patch
-    from numcodecs import Blosc
     from odc.stac import configure_rio
     from rich.progress import track
-    from zarr.storage import DirectoryStore
+    from zarr.codecs import BloscCodec
+    from zarr.storage import LocalStore
 
     from darts.utils.cuda import debug_info, decide_device
     from darts.utils.earthengine import init_ee
@@ -280,9 +280,9 @@ def preprocess_planet_train_data(
         train_data_dir.mkdir(exist_ok=True, parents=True)
 
         zgroups = {
-            "cross-val": zarr.group(store=DirectoryStore(train_data_dir / "cross-val.zarr"), overwrite=True),
-            "val-test": zarr.group(store=DirectoryStore(train_data_dir / "val-test.zarr"), overwrite=True),
-            "test": zarr.group(store=DirectoryStore(train_data_dir / "test.zarr"), overwrite=True),
+            "cross-val": zarr.group(store=LocalStore(train_data_dir / "cross-val.zarr"), overwrite=True),
+            "val-test": zarr.group(store=LocalStore(train_data_dir / "val-test.zarr"), overwrite=True),
+            "test": zarr.group(store=LocalStore(train_data_dir / "test.zarr"), overwrite=True),
         }
         # We need do declare the number of patches to 0, because we can't know the final number of patches
         for root in zgroups.values():
@@ -292,7 +292,7 @@ def preprocess_planet_train_data(
                 # shards=(100, len(bands), patch_size, patch_size),
                 chunks=(1, len(bands), patch_size, patch_size),
                 dtype="float32",
-                compressor=Blosc(cname="lz4", clevel=9),
+                compressor=BloscCodec(cname="lz4", clevel=9),
             )
             root.create(
                 name="y",
@@ -300,7 +300,7 @@ def preprocess_planet_train_data(
                 # shards=(100, patch_size, patch_size),
                 chunks=(1, patch_size, patch_size),
                 dtype="uint8",
-                compressor=Blosc(cname="lz4", clevel=9),
+                compressor=BloscCodec(cname="lz4", clevel=9),
             )
 
         # Find all Sentinel 2 scenes and split into train+val (cross-val), val-test (variance) and test (region)
