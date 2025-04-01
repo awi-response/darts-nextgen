@@ -59,6 +59,30 @@ Install the python environment for CPU-only use:
 uv sync --extra cpu
 ```
 
+### Workaround for CUDA related errors
+
+If CUDA is not installed correctly, some CUDA optional packages are missing or the wrong version of CUDA is installed, conda / mamba can be used as a workaround.
+
+First create a new conda environment and activate it:
+
+```sh
+mamba create -n darts-nextgen-cuda-env
+mamba activate darts-nextgen-cuda-env
+```
+
+Then install CUDA toolkit and required system packages via conda / mamba:
+
+```sh
+mamba install cuda-toolkit nvidia::cuda-nvrtc
+...
+```
+
+Now you can (while the conda / mamba environment is active) sync your uv environment.
+
+```sh
+uv sync --...
+```
+
 ## Training specific dependencies
 
 Training specific dependencies are optional and therefore not installed by default.

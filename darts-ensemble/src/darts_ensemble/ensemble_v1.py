@@ -3,6 +3,7 @@
 import logging
 from pathlib import Path
 
+import stopuhr
 import torch
 import xarray as xr
 from darts_segmentation.segment import SMPSegmenter
@@ -35,6 +36,11 @@ class EnsembleV1:
         )
         self.models = {k: SMPSegmenter(v, device=device) for k, v in model_paths.items()}
 
+    @stopuhr.funkuhr(
+        "Ensemble inference",
+        printer=logger.debug,
+        print_kwargs=["patch_size", "overlap", "batch_size", "reflection", "keep_inputs"],
+    )
     def segment_tile(
         self,
         tile: xr.Dataset,

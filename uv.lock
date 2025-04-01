@@ -1051,7 +1051,7 @@ requires-dist = [
     { name = "setuptools", specifier = ">=75.5.0" },
     { name = "shapely", specifier = ">=2.0.0" },
     { name = "smart-geocubes", extras = ["gee", "stac"], specifier = ">=0.0.4" },
-    { name = "stopuhr", specifier = ">=0.0.3" },
+    { name = "stopuhr", specifier = ">=0.0.4" },
     { name = "timm", marker = "extra == 'cpu'", specifier = ">=1.0.13" },
     { name = "timm", marker = "extra == 'cuda118'", specifier = ">=1.0.13" },
     { name = "timm", marker = "extra == 'cuda121'", specifier = ">=1.0.13" },
@@ -4897,11 +4897,11 @@ wheels = [
 
 [[package]]
 name = "stopuhr"
-version = "0.0.3"
+version = "0.0.4"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/49/dd/b7d00b5b7a7f10964fd230ee89e3899dd868117dc1cbe13838891a38fdc8/stopuhr-0.0.3.tar.gz", hash = "sha256:d29403625c14967495fcf53583d4be554f390d0f74763decfd70ebbd62eb0aff", size = 91829 }
+sdist = { url = "https://files.pythonhosted.org/packages/19/94/44017c1e168eb401921a3538b420c1b06099f22a5cfb1eba5ed9918dc686/stopuhr-0.0.4.tar.gz", hash = "sha256:1ec732b7b9f0a2e2df17aa7718c16864bb7f6a61cf86099172ac8337e5aeff0a", size = 109884 }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/cb/c2/a630a15590cac48f72406e4d4f368604863f258949b319dee363b4559c97/stopuhr-0.0.3-py3-none-any.whl", hash = "sha256:4308108e431f563127ee60091d0f8a31b41d726b0bb7b7bb0b77eb6327114deb", size = 5763 },
+    { url = "https://files.pythonhosted.org/packages/1c/c1/1a5ff778732c49452095021d9b71827b1a30c2f6a139102976016a190089/stopuhr-0.0.4-py3-none-any.whl", hash = "sha256:5cd4ae28040d04070d1c5aa3c7c5113efaba18f6ae88854fa14f7cbf8a48ad97", size = 6844 },
 ]
 
 [[package]]

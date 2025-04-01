@@ -9,11 +9,6 @@ import cyclopts
 from darts_utils.rich import RichManager
 
 from darts import __version__
-from darts.automated_pipeline.s2 import run_native_sentinel2_pipeline_from_aoi
-from darts.legacy_pipeline import (
-    run_native_planet_pipeline_fast,
-    run_native_sentinel2_pipeline_fast,
-)
 from darts.legacy_training import (
     convert_lightning_checkpoint,
     optuna_sweep_smp,
@@ -23,6 +18,7 @@ from darts.legacy_training import (
     train_smp,
     wandb_sweep_smp,
 )
+from darts.pipelines import AOISentinel2Pipeline, PlanetPipeline, Sentinel2Pipeline
 from darts.utils.config import ConfigParser
 from darts.utils.logging import LoggingManager
 
@@ -63,6 +59,18 @@ def hello(name: str, n: int = 1):
 
 
 @app.command
+def shell():
+    """Open an interactive shell."""
+    app.interactive_shell()
+
+
+@app.command
+def help():
+    """Display the help screen."""
+    app.help_print()
+
+
+@app.command
 def env_info():
     """Print debug information about the environment."""
     from darts.utils.cuda import debug_info
@@ -70,9 +78,9 @@ def env_info():
     debug_info()
 
 
-app.command(group=pipeline_group)(run_native_planet_pipeline_fast)
-app.command(group=pipeline_group)(run_native_sentinel2_pipeline_fast)
-app.command(group=pipeline_group)(run_native_sentinel2_pipeline_from_aoi)
+app.command(name="run-sequential-aoi-sentinel2-pipeline", group=pipeline_group)(AOISentinel2Pipeline.cli)
+app.command(name="run-sequential-sentinel2-pipeline", group=pipeline_group)(Sentinel2Pipeline.cli)
+app.command(name="run-sequential-planet-pipeline", group=pipeline_group)(PlanetPipeline.cli)
 
 app.command(group=train_group)(preprocess_planet_train_data)
 app.command(group=train_group)(preprocess_s2_train_data)
@@ -89,10 +97,15 @@ def launcher(  # noqa: D103
     *tokens: Annotated[str, cyclopts.Parameter(show=False, allow_leading_hyphen=True)],
     log_dir: Path = Path("logs"),
     config_file: Path = Path("config.toml"),
+    verbose: bool = False,
     tracebacks_show_locals: bool = False,
 ):
     command, bound, _ = app.parse_args(tokens)
     LoggingManager.add_logging_handlers(command.__name__, log_dir, tracebacks_show_locals)
+    if verbose:
+        logger.setLevel(logging.DEBUG)
+    else:
+        logger.setLevel(logging.INFO)
     logger.debug(f"Running on Python version {sys.version} from {__name__} ({root_file})")
     return command(*bound.args, **bound.kwargs)
 

@@ -2,24 +2,22 @@
 
 import io
 import logging
-import time
 import zipfile
 from pathlib import Path
 
 import requests
+import stopuhr
 
 logger = logging.getLogger(__name__.replace("darts_", "darts."))
 
 
+@stopuhr.funkuhr("Downloading and extracting zip file", printer=logger.debug, print_kwargs=True)
 def _download_zip(url: str, admin_dir: Path):
-    tick_fstart = time.perf_counter()
     response = requests.get(url)
 
     # Get the downloaded data as a byte string
     data = response.content
-
-    tick_download = time.perf_counter()
-    logger.debug(f"Downloaded {len(data)} bytes in {tick_download - tick_fstart:.2f} seconds")
+    logger.debug(f"Downloaded {len(data)} bytes")
 
     # Create a bytesIO object
     with io.BytesIO(data) as buffer:
@@ -29,10 +27,8 @@ def _download_zip(url: str, admin_dir: Path):
             # Extract the files to the specified directory
             zip_ref.extractall(admin_dir)
 
-    tick_extract = time.perf_counter()
-    logger.debug(f"Extraction completed in {tick_extract - tick_download:.2f} seconds")
 
-
+@stopuhr.funkuhr("Downloading admin files", printer=logger.debug, print_kwargs=True)
 def download_admin_files(admin_dir: Path):
     """Download the admin files for the regions.
 
@@ -42,8 +38,6 @@ def download_admin_files(admin_dir: Path):
         admin_dir (Path): The path to the admin files.
 
     """
-    tick_fstart = time.perf_counter()
-
     # Download the admin files
     admin_1_url = "https://github.com/wmgeolab/geoBoundaries/raw/main/releaseData/CGAZ/geoBoundariesCGAZ_ADM1.zip"
     admin_2_url = "https://github.com/wmgeolab/geoBoundaries/raw/main/releaseData/CGAZ/geoBoundariesCGAZ_ADM2.zip"
@@ -55,6 +49,3 @@ def download_admin_files(admin_dir: Path):
 
     logger.debug(f"Downloading {admin_2_url} to {admin_dir.resolve()}")
     _download_zip(admin_2_url, admin_dir)
-
-    tick_fend = time.perf_counter()
-    logger.info(f"Downloaded admin files in {tick_fend - tick_fstart:.2f} seconds")

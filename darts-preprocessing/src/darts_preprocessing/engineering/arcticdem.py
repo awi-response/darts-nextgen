@@ -1,9 +1,9 @@
 """Computation of ArcticDEM derived products."""
 
 import logging
-import time
 from math import ceil
 
+import stopuhr
 import xarray as xr
 from xrspatial import convolution, slope
 from xrspatial.utils import has_cuda_and_cupy
@@ -15,6 +15,7 @@ if has_cuda_and_cupy():
     import cupy_xarray  # noqa: F401
 
 
+@stopuhr.funkuhr("Calculating TPI", printer=logger.debug, print_kwargs=["outer_radius", "inner_radius"])
 def calculate_topographic_position_index(arcticdem_ds: xr.Dataset, outer_radius: int, inner_radius: int) -> xr.Dataset:
     """Calculate the Topographic Position Index (TPI) from an ArcticDEM Dataset.
 
@@ -27,7 +28,6 @@ def calculate_topographic_position_index(arcticdem_ds: xr.Dataset, outer_radius:
         xr.Dataset: The input Dataset with the calculated TPI added as a new variable 'tpi'.
 
     """
-    tick_fstart = time.perf_counter()
     cellsize_x, cellsize_y = convolution.calc_cellsize(arcticdem_ds.dem)  # Should be equal to the resolution of the DEM
     # Use an annulus kernel if inner_radius is greater than 0
     outer_radius_m = f"{outer_radius}m"
@@ -68,11 +68,10 @@ def calculate_topographic_position_index(arcticdem_ds: xr.Dataset, outer_radius:
 
     arcticdem_ds["tpi"] = tpi.compute()
 
-    tick_fend = time.perf_counter()
-    logger.info(f"Topographic Position Index calculated in {tick_fend - tick_fstart:.2f} seconds.")
     return arcticdem_ds
 
 
+@stopuhr.funkuhr("Calculating slope", printer=logger.debug)
 def calculate_slope(arcticdem_ds: xr.Dataset) -> xr.Dataset:
     """Calculate the slope of the terrain surface from an ArcticDEM Dataset.
 
@@ -83,9 +82,6 @@ def calculate_slope(arcticdem_ds: xr.Dataset) -> xr.Dataset:
         xr.Dataset: The input Dataset with the calculated slope added as a new variable 'slope'.
 
     """
-    tick_fstart = time.perf_counter()
-    logger.debug("Calculating slope of the terrain surface.")
-
     slope_deg = slope(arcticdem_ds.dem)
     slope_deg.attrs = {
         "long_name": "Slope",
@@ -95,7 +91,4 @@ def calculate_slope(arcticdem_ds: xr.Dataset) -> xr.Dataset:
         "_FillValue": float("nan"),
     }
     arcticdem_ds["slope"] = slope_deg.compute()
-
-    tick_fend = time.perf_counter()
-    logger.info(f"Slope calculated in {tick_fend - tick_fstart:.2f} seconds.")
     return arcticdem_ds

@@ -1,8 +1,7 @@
 # DARTS API Reference
 
 - [DARTS](./darts/index.md)
-  - [Automated Pipeline](./darts/automated_pipeline/index.md)
-  - [Legacy Pipeline](./darts/legacy_pipeline/index.md)
+  - [Pipelines](./darts/pipelines/index.md)
   - [Legacy Training](./darts/legacy_training/index.md)
 - [DARTS Segmentation](./darts_segmentation/index.md)
   - [Training](./darts_segmentation/training/index.md)
@@ -15,4 +14,3 @@
 - [DARTS Utils](./darts_utils/index.md)
   - [Cuda](./darts_utils/cuda/index.md)
   - [Rich](./darts_utils/rich/index.md)
-  - [Stopuhr](./darts_utils/stopuhr/index.md)

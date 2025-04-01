@@ -2,7 +2,6 @@
 
 import logging
 import math
-import time
 from collections.abc import Generator
 
 import torch
@@ -54,7 +53,6 @@ def create_patches(
         torch.Tensor: The patches. Shape: (BS, N_h, N_w, C, patch_size, patch_size).
 
     """
-    start_time = time.time()
     logger.debug(
         f"Creating patches from a tensor with shape {tensor_tiles.shape} "
         f"with patch_size {patch_size} and overlap {overlap}"
@@ -83,7 +81,6 @@ def create_patches(
         patches[:, patch_idx_h, patch_idx_w, :] = tensor_tiles[:, :, y : y + patch_size, x : x + patch_size]
         coords[patch_idx_h, patch_idx_w, :] = torch.tensor([i, y, x, patch_idx_h, patch_idx_w])
 
-    logger.debug(f"Creating {nh * nw} patches took {time.time() - start_time:.2f}s")
     if return_coords:
         return patches, coords
     else:
@@ -118,7 +115,6 @@ def predict_in_patches(
         The predicted tensor.
 
     """
-    start_time = time.time()
     logger.debug(
         f"Predicting on a tensor with shape {tensor_tiles.shape} "
         f"with patch_size {patch_size}, overlap {overlap} and batch_size {batch_size} on device {device}"
@@ -191,7 +187,6 @@ def predict_in_patches(
 
     # Remove the 1px border and the padding
     prediction = prediction[:, p:-p, p:-p]
-    logger.info(f"Predicting {nh * nw} patches took {time.time() - start_time:.2f}s")
 
     if return_weights:
         return prediction, weights

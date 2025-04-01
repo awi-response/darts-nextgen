@@ -19,3 +19,5 @@
 - [load_s2_masks](load_s2_masks.md)
 - [load_s2_scene](load_s2_scene.md)
 - [load_tcvis](load_tcvis.md)
+- [parse_planet_type](parse_planet_type.md)
+- [parse_s2_tile_id](parse_s2_tile_id.md)

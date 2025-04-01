@@ -10,7 +10,7 @@ from rich.logging import RichHandler
 
 # A global level to easy change the log level for interal darts modules
 # -> is different from the log level of other libraries (always INFO)
-DARTS_LEVEL = logging.DEBUG
+DARTS_LEVEL = logging.INFO
 
 logger = logging.getLogger(__name__)
 

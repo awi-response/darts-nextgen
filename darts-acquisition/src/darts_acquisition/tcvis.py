@@ -4,12 +4,14 @@ import logging
 from pathlib import Path
 
 import smart_geocubes
+import stopuhr
 import xarray as xr
 from odc.geo.geobox import GeoBox
 
 logger = logging.getLogger(__name__.replace("darts_", "darts."))
 
 
+@stopuhr.funkuhr("Loading TCVIS", printer=logger.debug, print_kwargs=True)
 def load_tcvis(
     geobox: GeoBox,
     data_dir: Path | str,

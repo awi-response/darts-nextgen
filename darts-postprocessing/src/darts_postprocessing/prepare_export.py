@@ -4,6 +4,7 @@ import logging
 from typing import Literal
 
 import numpy as np
+import stopuhr
 import xarray as xr
 from darts_utils.cuda import free_cupy
 from skimage.morphology import binary_erosion, disk, label, remove_small_objects
@@ -25,6 +26,7 @@ except ImportError:
     logger.debug("GPU-accelerated cucim functions are not available.")
 
 
+@stopuhr.funkuhr("Eroding mask", printer=logger.debug, print_kwargs=["size"])
 def erode_mask(mask: xr.DataArray, size: int, device: Literal["cuda", "cpu"] | int) -> xr.DataArray:
     """Erode the mask, also set the edges to invalid.
 
@@ -76,6 +78,7 @@ def erode_mask(mask: xr.DataArray, size: int, device: Literal["cuda", "cpu"] | i
     return mask
 
 
+@stopuhr.funkuhr("Binarizing probabilities", printer=logger.debug, print_kwargs=["threshold", "min_object_size"])
 def binarize(
     probs: xr.DataArray,
     threshold: float,
@@ -146,12 +149,18 @@ def binarize(
     return binarized
 
 
+@stopuhr.funkuhr(
+    "Preparing export",
+    printer=logger.debug,
+    print_kwargs=["bin_threshold", "mask_erosion_size", "min_object_size", "quality_level", "ensemble_subsets"],
+)
 def prepare_export(
     tile: xr.Dataset,
     bin_threshold: float = 0.5,
     mask_erosion_size: int = 10,
     min_object_size: int = 32,
     quality_level: int | Literal["high_quality", "low_quality", "none"] = 0,
+    ensemble_subsets: list[str] = [],
     device: Literal["cuda", "cpu"] | int = DEFAULT_DEVICE,
 ) -> xr.Dataset:
     """Prepare the export, e.g. binarizes the data and convert the float probabilities to uint8.
@@ -164,6 +173,8 @@ def prepare_export(
         min_object_size (int, optional): The minimum object size to keep in pixel. Defaults to 32.
         quality_level (int | str, optional): The quality level to use for the mask. If a string maps to int.
             high_quality -> 2, low_quality=1, none=0 (apply no masking). Defaults to 0.
+        ensemble_subsets (list[str], optional): The ensemble subsets to use for the binarization.
+            Defaults to [].
         device (Literal["cuda", "cpu"] | int, optional): The device to use for dilation.
             Defaults to "cuda" if cuda for cucim is available, else "cpu".
 
@@ -179,6 +190,10 @@ def prepare_export(
     mask = tile["quality_data_mask"] >= quality_level
     if quality_level > 0:
         mask = erode_mask(mask, mask_erosion_size, device)  # 0=positive, 1=negative
+    tile["extent"] = mask.copy()
+    tile["extent"].attrs = {
+        "long_name": "Extent of the segmentation",
+    }
 
     def _prep_layer(tile, layername, binarized_layer_name):
         # Binarize the segmentation
@@ -206,10 +221,7 @@ def prepare_export(
 
     # get the names of the model probabilities if available
     # for example 'tcvis' from 'probabilities-tcvis'
-    aux_probabilities = [
-        name.removeprefix("probabilities-") for name in tile.keys() if name.startswith("probabilities-")
-    ]
-    for aux_prob in aux_probabilities:
-        tile = _prep_layer(tile, f"probabilities-{aux_prob}", f"binarized_segmentation-{aux_prob}")
+    for ensemble_subset in ensemble_subsets:
+        tile = _prep_layer(tile, f"probabilities-{ensemble_subset}", f"binarized_segmentation-{ensemble_subset}")
 
     return tile
