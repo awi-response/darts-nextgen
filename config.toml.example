@@ -14,6 +14,9 @@ arcticdem-slope-vrt = "data/input/ArcticDEM/slope.vrt"
 arcticdem-elevation-vrt = "data/input/ArcticDEM/elevation.vrt"
 arcticdem-dir = "data/download/arcticdem"
 tcvis-dir = "data/download/tcvis"
+overwrite = false # planet inference only
+image-ids = ['20210724_194944_103c', '20210731_200455_92_2262'] # planet inference only, remove to process all images
+
 
 [darts.preprocess]
 tpi-outer-radius = 100
