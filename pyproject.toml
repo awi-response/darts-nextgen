@@ -132,8 +132,7 @@ cuda126 = [
 ]
 training = [
     "lightning>=2.4.0",
-    # "psycopg2>=2.9.10",
-    "psycopg[binary]",
+    "psycopg2-binary>=2.9.10",
     "torchmetrics>=1.6.0",
     "wandb>=0.18.7",
     "optuna>=4.1.0",

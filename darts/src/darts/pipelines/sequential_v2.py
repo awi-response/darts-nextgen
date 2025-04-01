@@ -52,6 +52,7 @@ class _BasePipeline(ABC):
         default_factory=lambda: ["probabilities", "binarized", "polygonized", "extent", "thumbnail"]
     )
     write_model_outputs: bool = False
+    overwrite: bool = False
 
     @abstractmethod
     def _get_tile_id(self, tilekey: Any) -> str:
@@ -68,7 +69,7 @@ class _BasePipeline(ABC):
     def _load_tile(self, tileinfo: Any) -> "xr.Dataset":
         pass
 
-    def run(self):
+    def run(self):  # noqa: C901
         if self.model_files is None or len(self.model_files) == 0:
             raise ValueError("No model files provided. Please provide a list of model files.")
         if len(self.export_bands) == 0:
@@ -99,7 +100,7 @@ class _BasePipeline(ABC):
         import torch
         from darts_acquisition import load_arcticdem, load_tcvis
         from darts_ensemble import EnsembleV1
-        from darts_export import export_tile
+        from darts_export import export_tile, missing_outputs
         from darts_postprocessing import prepare_export
         from darts_preprocessing import preprocess_legacy_fast
 
@@ -132,6 +133,18 @@ class _BasePipeline(ABC):
         for i, (tilekey, outpath) in enumerate(tileinfo):
             tile_id = self._get_tile_id(tilekey)
             try:
+                if not self.overwrite:
+                    mo = missing_outputs(outpath, bands=self.export_bands, ensemble_subsets=models.keys())
+                    if mo == "none":
+                        logger.info(f"Tile {tile_id} already processed. Skipping...")
+                        continue
+                    if mo == "some":
+                        logger.warning(
+                            f"Tile {tile_id} already processed. Some outputs are missing."
+                            " Skipping because overwrite=False..."
+                        )
+                        continue
+
                 with stopuhr("Loading optical data", log=False):
                     tile = self._load_tile(tilekey)
                 with stopuhr("Loading ArcticDEM", log=False):
@@ -222,7 +235,7 @@ class PlanetPipeline(_BasePipeline):
 
     Args:
         orthotiles_dir (Path): The directory containing the PlanetScope orthotiles.
-        scnes_dir (Path): The directory containing the PlanetScope scenes.
+        scenes_dir (Path): The directory containing the PlanetScope scenes.
         image_ids (list): The list of image ids to process. If None, all images in the directory will be processed.
 
 
@@ -262,6 +275,7 @@ class PlanetPipeline(_BasePipeline):
             Defaults to ["probabilities", "binarized", "polygonized", "extent", "thumbnail"].
         write_model_outputs (bool, optional): Also save the model outputs, not only the ensemble result.
             Defaults to False.
+        overwrite (bool, optional): Whether to overwrite existing files. Defaults to False.
 
     """
 
@@ -366,6 +380,7 @@ class Sentinel2Pipeline(_BasePipeline):
             Defaults to ["probabilities", "binarized", "polygonized", "extent", "thumbnail"].
         write_model_outputs (bool, optional): Also save the model outputs, not only the ensemble result.
             Defaults to False.
+        overwrite (bool, optional): Whether to overwrite existing files. Defaults to False.
 
     """
 
@@ -459,6 +474,7 @@ class AOISentinel2Pipeline(_BasePipeline):
             Defaults to ["probabilities", "binarized", "polygonized", "extent", "thumbnail"].
         write_model_outputs (bool, optional): Also save the model outputs, not only the ensemble result.
             Defaults to False.
+        overwrite (bool, optional): Whether to overwrite existing files. Defaults to False.
 
     """
 

@@ -2,6 +2,7 @@
 
 import importlib.metadata
 
+from darts_export.check import missing_outputs as missing_outputs
 from darts_export.export import export_tile as export_tile
 
 try:
