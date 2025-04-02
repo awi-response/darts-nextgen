@@ -35,6 +35,7 @@ class LoggingManagerSingleton:
         self._rich_handler = None
         self._file_handler = None
         self._managed_loggers = []
+        self._log_level = DARTS_LEVEL
 
     def setup_logging(self):
         """Set up logging for the application."""
@@ -42,12 +43,15 @@ class LoggingManagerSingleton:
         logging.getLogger("darts").setLevel(DARTS_LEVEL)
         logging.captureWarnings(True)
 
-    def add_logging_handlers(self, command: str, log_dir: Path, tracebacks_show_locals: bool = False):
+    def add_logging_handlers(
+        self, command: str, log_dir: Path, verbose: bool = False, tracebacks_show_locals: bool = False
+    ):
         """Add logging handlers (rich-console and file) to the application.
 
         Args:
             command (str): The command that is run.
             log_dir (Path): The directory to save the logs to.
+            verbose (bool): Whether to set the log level to DEBUG.
             tracebacks_show_locals (bool): Whether to show local variables in tracebacks.
 
         """
@@ -96,19 +100,25 @@ class LoggingManagerSingleton:
         )
         self._file_handler = file_handler
 
+        self._log_level = logging.DEBUG if verbose else DARTS_LEVEL
+
         darts_logger = logging.getLogger("darts")
         darts_logger.addHandler(rich_handler)
         darts_logger.addHandler(file_handler)
-        darts_logger.setLevel(DARTS_LEVEL)
+        darts_logger.setLevel(self._log_level)
 
-    def apply_logging_handlers(self, *names: str, level: int = logging.INFO):
+    def apply_logging_handlers(self, *names: str, level: int | None = None):
         """Apply the logging handlers to a (third-party) logger.
 
         Args:
             names (str): The names of the loggers to apply the handlers to.
-            level (int): The log level to set for the logger.
+            level (int | None, optional): The log level to set for the loggers. If None, use the manager level.
+                Defaults to None.
 
         """
+        if level is None:
+            level = self._log_level
+
         for name in names:
             if name in self._managed_loggers:
                 continue

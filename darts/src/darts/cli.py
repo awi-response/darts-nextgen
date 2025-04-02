@@ -101,11 +101,7 @@ def launcher(  # noqa: D103
     tracebacks_show_locals: bool = False,
 ):
     command, bound, _ = app.parse_args(tokens)
-    LoggingManager.add_logging_handlers(command.__name__, log_dir, tracebacks_show_locals)
-    if verbose:
-        logger.setLevel(logging.DEBUG)
-    else:
-        logger.setLevel(logging.INFO)
+    LoggingManager.add_logging_handlers(command.__name__, log_dir, verbose, tracebacks_show_locals)
     logger.debug(f"Running on Python version {sys.version} from {__name__} ({root_file})")
     return command(*bound.args, **bound.kwargs)
 

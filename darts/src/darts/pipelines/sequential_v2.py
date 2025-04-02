@@ -47,12 +47,17 @@ class _BasePipeline(ABC):
     binarization_threshold: float = 0.5
     mask_erosion_size: int = 10
     min_object_size: int = 32
-    quality_level: int | Literal["high_quality", "low_quality", "none"] = (1,)
+    quality_level: int | Literal["high_quality", "low_quality", "none"] = 1
     export_bands: list[str] = field(
         default_factory=lambda: ["probabilities", "binarized", "polygonized", "extent", "thumbnail"]
     )
     write_model_outputs: bool = False
     overwrite: bool = False
+
+    @abstractmethod
+    def _arcticdem_resolution(self) -> Literal[2, 10, 32]:
+        """Return the resolution of the ArcticDEM data."""
+        pass
 
     @abstractmethod
     def _get_tile_id(self, tilekey: Any) -> str:
@@ -81,7 +86,14 @@ class _BasePipeline(ABC):
         # Storing the configuration as JSON file
         self.output_data_dir.mkdir(parents=True, exist_ok=True)
         with open(self.output_data_dir / f"{current_time}.config.json", "w") as f:
-            json.dump(asdict(self), f)
+            config = asdict(self)
+            # Convert everything to json serializable
+            for key, value in config.items():
+                if isinstance(value, Path):
+                    config[key] = str(value.resolve())
+                elif isinstance(value, list):
+                    config[key] = [str(v.resolve()) if isinstance(v, Path) else v for v in value]
+            json.dump(config, f)
 
         from stopuhr import StopUhr
 
@@ -113,12 +125,16 @@ class _BasePipeline(ABC):
         if isinstance(self.model_files, Path):
             self.model_files = [self.model_files]
             self.write_model_outputs = False
-        models = {model_file: model_file for model_file in self.model_files}
+        models = {model_file.stem: model_file for model_file in self.model_files}
         ensemble = EnsembleV1(models, device=torch.device(self.device))
 
         # Create the datacubes if they do not exist
-        LoggingManager.apply_logging_handlers("smart_geocubes", level=logging.DEBUG)
-        accessor = smart_geocubes.ArcticDEM10m(self.arcticdem_dir)
+        LoggingManager.apply_logging_handlers("smart_geocubes")
+        arcticdem_resolution = self._arcticdem_resolution()
+        if arcticdem_resolution == 2:
+            accessor = smart_geocubes.ArcticDEM2m(self.arcticdem_dir)
+        elif arcticdem_resolution == 10:
+            accessor = smart_geocubes.ArcticDEM10m(self.arcticdem_dir)
         if not accessor.created:
             accessor.create(overwrite=False)
         accessor = smart_geocubes.TCTrend(self.tcvis_dir)
@@ -151,7 +167,7 @@ class _BasePipeline(ABC):
                     arcticdem = load_arcticdem(
                         tile.odc.geobox,
                         self.arcticdem_dir,
-                        resolution=2,
+                        resolution=arcticdem_resolution,
                         buffer=ceil(self.tpi_outer_radius / 2 * sqrt(2)),
                     )
                 with stopuhr("Loading TCVis", log=False):
@@ -197,7 +213,7 @@ class _BasePipeline(ABC):
                 results.append(
                     {
                         "tile_id": tile_id,
-                        "output_path": outpath,
+                        "output_path": str(outpath.resolve()),
                         "status": "success",
                         "error": None,
                     }
@@ -212,7 +228,7 @@ class _BasePipeline(ABC):
                 results.append(
                     {
                         "tile_id": tile_id,
-                        "output_path": outpath.resolve(),
+                        "output_path": str(outpath.resolve()),
                         "status": "failed",
                         "error": str(e),
                     }
@@ -282,6 +298,9 @@ class PlanetPipeline(_BasePipeline):
     orthotiles_dir: Path = Path("data/input/planet/PSOrthoTile")
     scenes_dir: Path = Path("data/input/planet/PSScene")
     image_ids: list = None
+
+    def _arcticdem_resolution(self) -> Literal[2]:
+        return 2
 
     def _get_tile_id(self, tilekey: Path) -> str:
         from darts_acquisition import parse_planet_type
@@ -387,6 +406,9 @@ class Sentinel2Pipeline(_BasePipeline):
     sentinel2_dir: Path = Path("data/input/sentinel2")
     image_ids: list = None
 
+    def _arcticdem_resolution(self) -> Literal[10]:
+        return 10
+
     def _get_tile_id(self, tilekey: Path):
         from darts_acquisition import parse_s2_tile_id
 
@@ -482,7 +504,10 @@ class AOISentinel2Pipeline(_BasePipeline):
     start_date: str = None
     end_date: str = None
     max_cloud_cover: int = 10
-    input_cache: Path = (Path("data/cache/input"),)
+    input_cache: Path = Path("data/cache/input")
+
+    def _arcticdem_resolution(self) -> Literal[10]:
+        return 10
 
     @cached_property
     def _s2ids(self) -> list[str]:
