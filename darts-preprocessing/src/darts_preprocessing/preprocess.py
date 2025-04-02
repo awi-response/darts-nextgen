@@ -26,9 +26,7 @@ else:
     logger.debug("GPU-accelerated xrspatial functions are not available.")
 
 
-@stopuhr.funkuhr(
-    "Preprocessing legacy fast", printer=logger.debug, print_kwargs=["tpi_outer_radius", "tpi_inner_radius"]
-)
+@stopuhr.funkuhr("Preprocessing arcticdem", printer=logger.debug, print_kwargs=["tpi_outer_radius", "tpi_inner_radius"])
 def preprocess_legacy_arcticdem_fast(
     ds_arcticdem: xr.Dataset, tpi_outer_radius: int, tpi_inner_radius: int, device: Literal["cuda", "cpu"] | int
 ):
@@ -80,7 +78,7 @@ def preprocess_legacy_arcticdem_fast(
     return ds_arcticdem
 
 
-@stopuhr.funkuhr("Preprocessing legacy fast", printer=logger.debug)
+@stopuhr.funkuhr("Preprocessing", printer=logger.debug)
 def preprocess_legacy_fast(
     ds_merged: xr.Dataset,
     ds_arcticdem: xr.Dataset,

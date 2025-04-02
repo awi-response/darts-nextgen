@@ -24,7 +24,7 @@ dependencies = [
     "pystac-client>=0.8.6",
     "odc-geo>=0.4.8",
     "odc-stac[botocore]>=0.3.10",
-    "smart-geocubes[stac,gee] >=0.0.4",
+    "smart-geocubes[stac,gee]>=0.0.6",
     "toml>=0.10.2",
     "zarr>=3.0.4",
     # Processing

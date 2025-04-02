@@ -195,7 +195,7 @@ def load_s2_from_gee(
         img = ee.Image(f"COPERNICUS/S2_SR_HARMONIZED/{s2id}")
     else:
         s2id = img.id().getInfo().split("/")[-1]
-    logger.debug(f"Loading Sentinel 2 tile '{s2id=}' from GEE")
+    logger.debug(f"Loading Sentinel 2 tile {s2id=} from GEE")
 
     if "SCL" not in bands_mapping.keys():
         bands_mapping["SCL"] = "scl"
@@ -204,7 +204,7 @@ def load_s2_from_gee(
     if cache_file is not None and cache_file.exists():
         ds_s2 = xr.open_dataset(cache_file, engine="h5netcdf").set_coords("spatial_ref")
         ds_s2.load()
-        logger.debug(f"Loaded '{s2id=}' from cache.")
+        logger.debug(f"Loaded {s2id=} from cache.")
     else:
         img = img.select(list(bands_mapping.keys()))
         ds_s2 = xr.open_dataset(
@@ -218,11 +218,11 @@ def load_s2_from_gee(
         ds_s2 = ds_s2.isel(time=0).drop_vars("time").rename({"X": "x", "Y": "y"}).transpose("y", "x")
         ds_s2 = ds_s2.odc.assign_crs(ds_s2.attrs["crs"])
         logger.debug(
-            f"Found dataset with shape {ds_s2.sizes} for tile '{s2id=}'."
+            f"Found dataset with shape {ds_s2.sizes} for tile {s2id=}."
             "Start downloading data from GEE. This may take a while."
         )
 
-        with stopuhr.stopuhr(f"Downloading data from GEE for '{s2id=}'", printer=logger.debug):
+        with stopuhr.stopuhr(f"Downloading data from GEE for {s2id=}", printer=logger.debug):
             ds_s2.load()
             if cache_file is not None:
                 ds_s2.to_netcdf(cache_file, engine="h5netcdf")
@@ -240,7 +240,7 @@ def load_s2_from_gee(
     # To workaround this, set all nan values to 0 and add this information to the quality_data_mask
     # This workaround is quite computational expensive, but it works for now
     # TODO: Find other solutions for this problem!
-    with stopuhr.stopuhr(f"Fixing nan values in '{s2id=}'", printer=logger.debug):
+    with stopuhr.stopuhr(f"Fixing nan values in {s2id=}", printer=logger.debug):
         for band in set(bands_mapping.values()) - {"scl"}:
             ds_s2["quality_data_mask"] = xr.where(ds_s2[band].isnull(), 0, ds_s2["quality_data_mask"])
             ds_s2[band] = ds_s2[band].fillna(0)
@@ -252,7 +252,7 @@ def load_s2_from_gee(
             scale, offset = scale_and_offset
         else:
             scale, offset = 0.0001, 0
-        logger.debug(f"Applying {scale=} and {offset=} to '{s2id=}' optical data")
+        logger.debug(f"Applying {scale=} and {offset=} to {s2id=} optical data")
         for band in set(bands_mapping.values()) - {"scl"}:
             ds_s2[band] = ds_s2[band] * scale + offset
 
@@ -314,7 +314,7 @@ def load_s2_from_stac(
             "Start downloading data from STAC. This may take a while."
         )
 
-        with stopuhr.stopuhr(f"Downloading data from STAC for '{s2id=}'", printer=logger.debug):
+        with stopuhr.stopuhr(f"Downloading data from STAC for {s2id=}", printer=logger.debug):
             # Need double loading since the first load transforms lazy-stac to dask and second actually downloads
             ds_s2.load().load()
             if cache_file is not None:
@@ -333,7 +333,7 @@ def load_s2_from_stac(
             scale, offset = scale_and_offset
         else:
             scale, offset = 0.0001, 0
-        logger.debug(f"Applying {scale=} and {offset=} to '{s2id=}' optical data")
+        logger.debug(f"Applying {scale=} and {offset=} to {s2id=} optical data")
         for band in set(bands_mapping.values()) - {"scl"}:
             ds_s2[band] = ds_s2[band] * scale + offset
 

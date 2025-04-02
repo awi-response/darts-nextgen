@@ -288,6 +288,7 @@ dependencies = [
     { name = "jmespath" },
     { name = "s3transfer" },
 ]
+sdist = { url = "https://files.pythonhosted.org/packages/c5/67/624011e0bf632818e786fcaa457e0a9421befede9ea7afe8dbe91ad4c8a3/boto3-1.37.25.tar.gz", hash = "sha256:23e9cbad028ef3723567f4556411ee8d0f732594316b4c78c174a03ba3ca3159", size = 111321 }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/12/6a/05352f633876b28bc311092ba0be5286f604e36d33a1347fff7045721d99/boto3-1.37.25-py3-none-any.whl", hash = "sha256:00a025c621198508dc20c45224baaa7bd2a695323d999cce08b0d4deab5ada6f", size = 139561 },
 ]
@@ -1050,7 +1051,7 @@ requires-dist = [
     { name = "segmentation-models-pytorch", marker = "extra == 'cuda126'", specifier = ">=0.4.0" },
     { name = "setuptools", specifier = ">=75.5.0" },
     { name = "shapely", specifier = ">=2.0.0" },
-    { name = "smart-geocubes", extras = ["gee", "stac"], specifier = ">=0.0.4" },
+    { name = "smart-geocubes", extras = ["gee", "stac"], specifier = ">=0.0.6" },
     { name = "stopuhr", specifier = ">=0.0.4" },
     { name = "timm", marker = "extra == 'cpu'", specifier = ">=1.0.13" },
     { name = "timm", marker = "extra == 'cuda118'", specifier = ">=1.0.13" },
@@ -3220,7 +3221,7 @@ name = "nvidia-cudnn-cu11"
 version = "9.1.0.70"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "nvidia-cublas-cu11", marker = "(platform_machine != 'x86_64' and extra == 'extra-13-darts-nextgen-cuda118') or (sys_platform != 'darwin' and extra == 'extra-13-darts-nextgen-cuda118') or (extra == 'extra-13-darts-nextgen-cpu' and extra == 'extra-13-darts-nextgen-cuda118') or (extra == 'extra-13-darts-nextgen-cpu' and extra == 'extra-13-darts-nextgen-cuda121') or (extra == 'extra-13-darts-nextgen-cpu' and extra == 'extra-13-darts-nextgen-cuda126') or (extra == 'extra-13-darts-nextgen-cuda118' and extra == 'extra-13-darts-nextgen-cuda121') or (extra == 'extra-13-darts-nextgen-cuda118' and extra == 'extra-13-darts-nextgen-cuda126') or (extra == 'extra-13-darts-nextgen-cuda121' and extra == 'extra-13-darts-nextgen-cuda126')" },
+    { name = "nvidia-cublas-cu11", marker = "(platform_machine != 'aarch64' and sys_platform == 'linux' and extra == 'extra-13-darts-nextgen-cuda118') or (platform_machine == 'aarch64' and extra == 'extra-13-darts-nextgen-cuda118' and extra == 'extra-13-darts-nextgen-cuda121') or (platform_machine == 'aarch64' and extra == 'extra-13-darts-nextgen-cuda118' and extra == 'extra-13-darts-nextgen-cuda126') or (sys_platform != 'linux' and extra == 'extra-13-darts-nextgen-cuda118' and extra == 'extra-13-darts-nextgen-cuda121') or (sys_platform != 'linux' and extra == 'extra-13-darts-nextgen-cuda118' and extra == 'extra-13-darts-nextgen-cuda126') or (sys_platform != 'linux' and extra == 'extra-13-darts-nextgen-cuda121' and extra == 'extra-13-darts-nextgen-cuda126') or (extra == 'extra-13-darts-nextgen-cpu' and extra == 'extra-13-darts-nextgen-cuda118') or (extra == 'extra-13-darts-nextgen-cpu' and extra == 'extra-13-darts-nextgen-cuda121') or (extra == 'extra-13-darts-nextgen-cpu' and extra == 'extra-13-darts-nextgen-cuda126') or (extra != 'extra-13-darts-nextgen-cuda118' and extra == 'extra-13-darts-nextgen-cuda121' and extra == 'extra-13-darts-nextgen-cuda126')" },
 ]
 wheels = [
     { url = "https://files.pythonhosted.org/packages/00/3b/0b776f04e364cd99e4cf152c2a9eadb5934c67c9a91429da55169a9447fd/nvidia_cudnn_cu11-9.1.0.70-py3-none-manylinux2014_x86_64.whl", hash = "sha256:e6135ac63fe9d5b0b89cfb35c3fc1c1349f2b995becadf2e9dc21bca89d9633d", size = 663919573 },
@@ -3232,7 +3233,7 @@ name = "nvidia-cudnn-cu12"
 version = "9.1.0.70"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "nvidia-cublas-cu12", version = "12.1.3.1", source = { registry = "https://pypi.org/simple" }, marker = "(platform_machine != 'x86_64' and extra == 'extra-13-darts-nextgen-cuda121') or (sys_platform != 'darwin' and extra == 'extra-13-darts-nextgen-cuda121') or (extra == 'extra-13-darts-nextgen-cpu' and extra == 'extra-13-darts-nextgen-cuda118') or (extra == 'extra-13-darts-nextgen-cpu' and extra == 'extra-13-darts-nextgen-cuda121') or (extra == 'extra-13-darts-nextgen-cpu' and extra == 'extra-13-darts-nextgen-cuda126') or (extra == 'extra-13-darts-nextgen-cuda118' and extra == 'extra-13-darts-nextgen-cuda121') or (extra == 'extra-13-darts-nextgen-cuda118' and extra == 'extra-13-darts-nextgen-cuda126') or (extra == 'extra-13-darts-nextgen-cuda121' and extra == 'extra-13-darts-nextgen-cuda126')" },
+    { name = "nvidia-cublas-cu12", version = "12.1.3.1", source = { registry = "https://pypi.org/simple" }, marker = "(platform_machine != 'aarch64' and sys_platform == 'linux' and extra == 'extra-13-darts-nextgen-cuda121') or (platform_machine == 'aarch64' and extra == 'extra-13-darts-nextgen-cuda121' and extra == 'extra-13-darts-nextgen-cuda126') or (sys_platform != 'linux' and extra == 'extra-13-darts-nextgen-cuda121' and extra == 'extra-13-darts-nextgen-cuda126') or (extra == 'extra-13-darts-nextgen-cpu' and extra == 'extra-13-darts-nextgen-cuda118') or (extra == 'extra-13-darts-nextgen-cpu' and extra == 'extra-13-darts-nextgen-cuda121') or (extra == 'extra-13-darts-nextgen-cpu' and extra == 'extra-13-darts-nextgen-cuda126') or (extra == 'extra-13-darts-nextgen-cuda118' and extra == 'extra-13-darts-nextgen-cuda121') or (extra == 'extra-13-darts-nextgen-cuda118' and extra == 'extra-13-darts-nextgen-cuda126')" },
     { name = "nvidia-cublas-cu12", version = "12.4.5.8", source = { registry = "https://pypi.org/simple" }, marker = "(platform_machine != 'aarch64' and sys_platform == 'linux' and extra != 'extra-13-darts-nextgen-cpu' and extra != 'extra-13-darts-nextgen-cuda118' and extra != 'extra-13-darts-nextgen-cuda121' and extra != 'extra-13-darts-nextgen-cuda126') or (extra == 'extra-13-darts-nextgen-cpu' and extra == 'extra-13-darts-nextgen-cuda118') or (extra == 'extra-13-darts-nextgen-cpu' and extra == 'extra-13-darts-nextgen-cuda121') or (extra == 'extra-13-darts-nextgen-cpu' and extra == 'extra-13-darts-nextgen-cuda126') or (extra == 'extra-13-darts-nextgen-cuda118' and extra == 'extra-13-darts-nextgen-cuda121') or (extra == 'extra-13-darts-nextgen-cuda118' and extra == 'extra-13-darts-nextgen-cuda126') or (extra == 'extra-13-darts-nextgen-cuda121' and extra == 'extra-13-darts-nextgen-cuda126')" },
 ]
 wheels = [
@@ -3328,7 +3329,7 @@ name = "nvidia-cusolver-cu11"
 version = "11.4.1.48"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "nvidia-cublas-cu11", marker = "(platform_machine != 'x86_64' and extra == 'extra-13-darts-nextgen-cuda118') or (sys_platform != 'darwin' and extra == 'extra-13-darts-nextgen-cuda118') or (extra == 'extra-13-darts-nextgen-cpu' and extra == 'extra-13-darts-nextgen-cuda118') or (extra == 'extra-13-darts-nextgen-cpu' and extra == 'extra-13-darts-nextgen-cuda121') or (extra == 'extra-13-darts-nextgen-cpu' and extra == 'extra-13-darts-nextgen-cuda126') or (extra == 'extra-13-darts-nextgen-cuda118' and extra == 'extra-13-darts-nextgen-cuda121') or (extra == 'extra-13-darts-nextgen-cuda118' and extra == 'extra-13-darts-nextgen-cuda126') or (extra == 'extra-13-darts-nextgen-cuda121' and extra == 'extra-13-darts-nextgen-cuda126')" },
+    { name = "nvidia-cublas-cu11", marker = "(platform_machine != 'aarch64' and sys_platform == 'linux' and extra == 'extra-13-darts-nextgen-cuda118') or (platform_machine == 'aarch64' and extra == 'extra-13-darts-nextgen-cuda118' and extra == 'extra-13-darts-nextgen-cuda121') or (platform_machine == 'aarch64' and extra == 'extra-13-darts-nextgen-cuda118' and extra == 'extra-13-darts-nextgen-cuda126') or (sys_platform != 'linux' and extra == 'extra-13-darts-nextgen-cuda118' and extra == 'extra-13-darts-nextgen-cuda121') or (sys_platform != 'linux' and extra == 'extra-13-darts-nextgen-cuda118' and extra == 'extra-13-darts-nextgen-cuda126') or (sys_platform != 'linux' and extra == 'extra-13-darts-nextgen-cuda121' and extra == 'extra-13-darts-nextgen-cuda126') or (extra == 'extra-13-darts-nextgen-cpu' and extra == 'extra-13-darts-nextgen-cuda118') or (extra == 'extra-13-darts-nextgen-cpu' and extra == 'extra-13-darts-nextgen-cuda121') or (extra == 'extra-13-darts-nextgen-cpu' and extra == 'extra-13-darts-nextgen-cuda126') or (extra != 'extra-13-darts-nextgen-cuda118' and extra == 'extra-13-darts-nextgen-cuda121' and extra == 'extra-13-darts-nextgen-cuda126')" },
 ]
 wheels = [
     { url = "https://files.pythonhosted.org/packages/55/ee/939ff0104991dd7bdabb4c9767994c612ba0e1c9a55672a1ddd42f5e5b16/nvidia_cusolver_cu11-11.4.1.48-py3-none-manylinux1_x86_64.whl", hash = "sha256:ca538f545645b7e6629140786d3127fe067b3d5a085bd794cde5bfe877c8926f", size = 128240842 },
@@ -3347,9 +3348,9 @@ resolution-markers = [
     "python_full_version < '3.12' and platform_machine != 'aarch64' and sys_platform == 'linux'",
 ]
 dependencies = [
-    { name = "nvidia-cublas-cu12", version = "12.1.3.1", source = { registry = "https://pypi.org/simple" }, marker = "(platform_machine != 'x86_64' and extra == 'extra-13-darts-nextgen-cuda121') or (sys_platform != 'darwin' and extra == 'extra-13-darts-nextgen-cuda121') or (extra == 'extra-13-darts-nextgen-cpu' and extra == 'extra-13-darts-nextgen-cuda118') or (extra == 'extra-13-darts-nextgen-cpu' and extra == 'extra-13-darts-nextgen-cuda121') or (extra == 'extra-13-darts-nextgen-cpu' and extra == 'extra-13-darts-nextgen-cuda126') or (extra == 'extra-13-darts-nextgen-cuda118' and extra == 'extra-13-darts-nextgen-cuda121') or (extra == 'extra-13-darts-nextgen-cuda118' and extra == 'extra-13-darts-nextgen-cuda126') or (extra == 'extra-13-darts-nextgen-cuda121' and extra == 'extra-13-darts-nextgen-cuda126')" },
-    { name = "nvidia-cusparse-cu12", version = "12.1.0.106", source = { registry = "https://pypi.org/simple" }, marker = "(platform_machine != 'x86_64' and extra == 'extra-13-darts-nextgen-cuda121') or (sys_platform != 'darwin' and extra == 'extra-13-darts-nextgen-cuda121') or (extra == 'extra-13-darts-nextgen-cpu' and extra == 'extra-13-darts-nextgen-cuda118') or (extra == 'extra-13-darts-nextgen-cpu' and extra == 'extra-13-darts-nextgen-cuda121') or (extra == 'extra-13-darts-nextgen-cpu' and extra == 'extra-13-darts-nextgen-cuda126') or (extra == 'extra-13-darts-nextgen-cuda118' and extra == 'extra-13-darts-nextgen-cuda121') or (extra == 'extra-13-darts-nextgen-cuda118' and extra == 'extra-13-darts-nextgen-cuda126') or (extra == 'extra-13-darts-nextgen-cuda121' and extra == 'extra-13-darts-nextgen-cuda126')" },
-    { name = "nvidia-nvjitlink-cu12", version = "12.8.93", source = { registry = "https://pypi.org/simple" }, marker = "(platform_machine != 'x86_64' and extra == 'extra-13-darts-nextgen-cuda121') or (sys_platform != 'darwin' and extra == 'extra-13-darts-nextgen-cuda121') or (extra == 'extra-13-darts-nextgen-cpu' and extra == 'extra-13-darts-nextgen-cuda118') or (extra == 'extra-13-darts-nextgen-cpu' and extra == 'extra-13-darts-nextgen-cuda121') or (extra == 'extra-13-darts-nextgen-cpu' and extra == 'extra-13-darts-nextgen-cuda126') or (extra == 'extra-13-darts-nextgen-cuda118' and extra == 'extra-13-darts-nextgen-cuda121') or (extra == 'extra-13-darts-nextgen-cuda118' and extra == 'extra-13-darts-nextgen-cuda126') or (extra == 'extra-13-darts-nextgen-cuda121' and extra == 'extra-13-darts-nextgen-cuda126')" },
+    { name = "nvidia-cublas-cu12", version = "12.1.3.1", source = { registry = "https://pypi.org/simple" }, marker = "(platform_machine != 'aarch64' and sys_platform == 'linux' and extra == 'extra-13-darts-nextgen-cuda121') or (platform_machine == 'aarch64' and extra == 'extra-13-darts-nextgen-cuda121' and extra == 'extra-13-darts-nextgen-cuda126') or (sys_platform != 'linux' and extra == 'extra-13-darts-nextgen-cuda121' and extra == 'extra-13-darts-nextgen-cuda126') or (extra == 'extra-13-darts-nextgen-cpu' and extra == 'extra-13-darts-nextgen-cuda118') or (extra == 'extra-13-darts-nextgen-cpu' and extra == 'extra-13-darts-nextgen-cuda121') or (extra == 'extra-13-darts-nextgen-cpu' and extra == 'extra-13-darts-nextgen-cuda126') or (extra == 'extra-13-darts-nextgen-cuda118' and extra == 'extra-13-darts-nextgen-cuda121') or (extra == 'extra-13-darts-nextgen-cuda118' and extra == 'extra-13-darts-nextgen-cuda126')" },
+    { name = "nvidia-cusparse-cu12", version = "12.1.0.106", source = { registry = "https://pypi.org/simple" }, marker = "(platform_machine != 'aarch64' and sys_platform == 'linux' and extra == 'extra-13-darts-nextgen-cuda121') or (platform_machine == 'aarch64' and extra == 'extra-13-darts-nextgen-cuda121' and extra == 'extra-13-darts-nextgen-cuda126') or (sys_platform != 'linux' and extra == 'extra-13-darts-nextgen-cuda121' and extra == 'extra-13-darts-nextgen-cuda126') or (extra == 'extra-13-darts-nextgen-cpu' and extra == 'extra-13-darts-nextgen-cuda118') or (extra == 'extra-13-darts-nextgen-cpu' and extra == 'extra-13-darts-nextgen-cuda121') or (extra == 'extra-13-darts-nextgen-cpu' and extra == 'extra-13-darts-nextgen-cuda126') or (extra == 'extra-13-darts-nextgen-cuda118' and extra == 'extra-13-darts-nextgen-cuda121') or (extra == 'extra-13-darts-nextgen-cuda118' and extra == 'extra-13-darts-nextgen-cuda126')" },
+    { name = "nvidia-nvjitlink-cu12", version = "12.8.93", source = { registry = "https://pypi.org/simple" }, marker = "(platform_machine != 'aarch64' and sys_platform == 'linux' and extra == 'extra-13-darts-nextgen-cuda121') or (platform_machine == 'aarch64' and extra == 'extra-13-darts-nextgen-cuda121' and extra == 'extra-13-darts-nextgen-cuda126') or (sys_platform != 'linux' and extra == 'extra-13-darts-nextgen-cuda121' and extra == 'extra-13-darts-nextgen-cuda126') or (extra == 'extra-13-darts-nextgen-cpu' and extra == 'extra-13-darts-nextgen-cuda118') or (extra == 'extra-13-darts-nextgen-cpu' and extra == 'extra-13-darts-nextgen-cuda121') or (extra == 'extra-13-darts-nextgen-cpu' and extra == 'extra-13-darts-nextgen-cuda126') or (extra == 'extra-13-darts-nextgen-cuda118' and extra == 'extra-13-darts-nextgen-cuda121') or (extra == 'extra-13-darts-nextgen-cuda118' and extra == 'extra-13-darts-nextgen-cuda126')" },
 ]
 wheels = [
     { url = "https://files.pythonhosted.org/packages/bc/1d/8de1e5c67099015c834315e333911273a8c6aaba78923dd1d1e25fc5f217/nvidia_cusolver_cu12-11.4.5.107-py3-none-manylinux1_x86_64.whl", hash = "sha256:8a7ec542f0412294b15072fa7dab71d31334014a69f953004ea7a118206fe0dd", size = 124161928 },
@@ -3397,7 +3398,7 @@ resolution-markers = [
     "python_full_version < '3.12' and platform_machine != 'aarch64' and sys_platform == 'linux'",
 ]
 dependencies = [
-    { name = "nvidia-nvjitlink-cu12", version = "12.8.93", source = { registry = "https://pypi.org/simple" }, marker = "(platform_machine != 'x86_64' and extra == 'extra-13-darts-nextgen-cuda121') or (sys_platform != 'darwin' and extra == 'extra-13-darts-nextgen-cuda121') or (extra == 'extra-13-darts-nextgen-cpu' and extra == 'extra-13-darts-nextgen-cuda118') or (extra == 'extra-13-darts-nextgen-cpu' and extra == 'extra-13-darts-nextgen-cuda121') or (extra == 'extra-13-darts-nextgen-cpu' and extra == 'extra-13-darts-nextgen-cuda126') or (extra == 'extra-13-darts-nextgen-cuda118' and extra == 'extra-13-darts-nextgen-cuda121') or (extra == 'extra-13-darts-nextgen-cuda118' and extra == 'extra-13-darts-nextgen-cuda126') or (extra == 'extra-13-darts-nextgen-cuda121' and extra == 'extra-13-darts-nextgen-cuda126')" },
+    { name = "nvidia-nvjitlink-cu12", version = "12.8.93", source = { registry = "https://pypi.org/simple" }, marker = "(platform_machine != 'aarch64' and sys_platform == 'linux' and extra == 'extra-13-darts-nextgen-cuda121') or (platform_machine == 'aarch64' and extra == 'extra-13-darts-nextgen-cuda121' and extra == 'extra-13-darts-nextgen-cuda126') or (sys_platform != 'linux' and extra == 'extra-13-darts-nextgen-cuda121' and extra == 'extra-13-darts-nextgen-cuda126') or (extra == 'extra-13-darts-nextgen-cpu' and extra == 'extra-13-darts-nextgen-cuda118') or (extra == 'extra-13-darts-nextgen-cpu' and extra == 'extra-13-darts-nextgen-cuda121') or (extra == 'extra-13-darts-nextgen-cpu' and extra == 'extra-13-darts-nextgen-cuda126') or (extra == 'extra-13-darts-nextgen-cuda118' and extra == 'extra-13-darts-nextgen-cuda121') or (extra == 'extra-13-darts-nextgen-cuda118' and extra == 'extra-13-darts-nextgen-cuda126')" },
 ]
 wheels = [
     { url = "https://files.pythonhosted.org/packages/65/5b/cfaeebf25cd9fdec14338ccb16f6b2c4c7fa9163aefcf057d86b9cc248bb/nvidia_cusparse_cu12-12.1.0.106-py3-none-manylinux1_x86_64.whl", hash = "sha256:f3b50f42cf363f86ab21f720998517a659a48131e8d538dc02f8768237bd884c", size = 195958278 },
@@ -5097,7 +5098,7 @@ wheels = [
 
 [[package]]
 name = "smart-geocubes"
-version = "0.0.4"
+version = "0.0.6"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "geopandas" },
@@ -5109,9 +5110,9 @@ dependencies = [
     { name = "xarray" },
     { name = "zarr" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/f5/a9/71a79fd43db7287d1c4073b9a2e7e54166bade7f19c27673f374008b6a60/smart_geocubes-0.0.4.tar.gz", hash = "sha256:10640b55537828c92491f2a54984991b6d55d7f5ad070c9752057492183e8f65", size = 11432937 }
+sdist = { url = "https://files.pythonhosted.org/packages/b4/39/8d216e13f3048d0a9959522d4cf6710de3c4ab266ae6b1ea6afee14e13bc/smart_geocubes-0.0.6.tar.gz", hash = "sha256:b1476eb1f48345d76c2ed4dd531e6702e6e18cf416fa0c80153bc92011469246", size = 11433023 }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/2f/99/38a8bd4b6ee5d9dc3f186e902487abee7af089c410ee5c521791864d8e9c/smart_geocubes-0.0.4-py3-none-any.whl", hash = "sha256:a933209b0c71d4995243191653f4bbefe341cc24e6388c1f92f296420a536e51", size = 25060 },
+    { url = "https://files.pythonhosted.org/packages/02/d3/46c03c64ef4b7f704a5252c3562ac3eed7c662927d48a185c6e759533811/smart_geocubes-0.0.6-py3-none-any.whl", hash = "sha256:d5ec365a0a0c8157250860049d11a0fdd6349e5985d4e0bb458f0249d2ad4c5f", size = 25148 },
 ]
 
 [package.optional-dependencies]
@@ -5370,18 +5371,18 @@ resolution-markers = [
     "python_full_version >= '3.13' and platform_machine == 'x86_64' and sys_platform == 'darwin'",
     "python_full_version == '3.12.*' and platform_machine == 'x86_64' and sys_platform == 'darwin'",
     "python_full_version < '3.12' and platform_machine == 'x86_64' and sys_platform == 'darwin'",
-    "python_full_version >= '3.13' and platform_machine == 'aarch64' and sys_platform == 'linux'",
-    "python_full_version == '3.12.*' and platform_machine == 'aarch64' and sys_platform == 'linux'",
     "python_full_version >= '3.13' and platform_machine != 'aarch64' and sys_platform == 'linux'",
     "python_full_version == '3.12.*' and platform_machine != 'aarch64' and sys_platform == 'linux'",
     "python_full_version >= '3.13' and platform_machine != 'x86_64' and sys_platform == 'darwin'",
     "python_full_version == '3.12.*' and platform_machine != 'x86_64' and sys_platform == 'darwin'",
     "python_full_version >= '3.13' and sys_platform != 'darwin' and sys_platform != 'linux'",
     "python_full_version == '3.12.*' and sys_platform != 'darwin' and sys_platform != 'linux'",
-    "python_full_version < '3.12' and platform_machine == 'aarch64' and sys_platform == 'linux'",
+    "python_full_version >= '3.13' and platform_machine == 'aarch64' and sys_platform == 'linux'",
+    "python_full_version == '3.12.*' and platform_machine == 'aarch64' and sys_platform == 'linux'",
     "python_full_version < '3.12' and platform_machine != 'aarch64' and sys_platform == 'linux'",
     "python_full_version < '3.12' and platform_machine != 'x86_64' and sys_platform == 'darwin'",
     "python_full_version < '3.12' and sys_platform != 'darwin' and sys_platform != 'linux'",
+    "python_full_version < '3.12' and platform_machine == 'aarch64' and sys_platform == 'linux'",
 ]
 dependencies = [
     { name = "filelock", marker = "extra == 'extra-13-darts-nextgen-cuda121' or (extra == 'extra-13-darts-nextgen-cpu' and extra == 'extra-13-darts-nextgen-cuda118') or (extra == 'extra-13-darts-nextgen-cuda118' and extra == 'extra-13-darts-nextgen-cuda126') or (extra == 'extra-13-darts-nextgen-cpu' and extra != 'extra-13-darts-nextgen-cuda121' and extra == 'extra-13-darts-nextgen-cuda126')" },
@@ -5444,18 +5445,18 @@ resolution-markers = [
     "python_full_version >= '3.13' and platform_machine == 'x86_64' and sys_platform == 'darwin'",
     "python_full_version == '3.12.*' and platform_machine == 'x86_64' and sys_platform == 'darwin'",
     "python_full_version < '3.12' and platform_machine == 'x86_64' and sys_platform == 'darwin'",
-    "python_full_version >= '3.13' and platform_machine == 'aarch64' and sys_platform == 'linux'",
-    "python_full_version == '3.12.*' and platform_machine == 'aarch64' and sys_platform == 'linux'",
     "python_full_version >= '3.13' and platform_machine != 'aarch64' and sys_platform == 'linux'",
     "python_full_version == '3.12.*' and platform_machine != 'aarch64' and sys_platform == 'linux'",
-    "python_full_version < '3.12' and platform_machine == 'aarch64' and sys_platform == 'linux'",
-    "python_full_version < '3.12' and platform_machine != 'aarch64' and sys_platform == 'linux'",
     "python_full_version >= '3.13' and platform_machine != 'x86_64' and sys_platform == 'darwin'",
     "python_full_version == '3.12.*' and platform_machine != 'x86_64' and sys_platform == 'darwin'",
     "python_full_version >= '3.13' and sys_platform != 'darwin' and sys_platform != 'linux'",
     "python_full_version == '3.12.*' and sys_platform != 'darwin' and sys_platform != 'linux'",
+    "python_full_version >= '3.13' and platform_machine == 'aarch64' and sys_platform == 'linux'",
+    "python_full_version == '3.12.*' and platform_machine == 'aarch64' and sys_platform == 'linux'",
+    "python_full_version < '3.12' and platform_machine != 'aarch64' and sys_platform == 'linux'",
     "python_full_version < '3.12' and platform_machine != 'x86_64' and sys_platform == 'darwin'",
     "python_full_version < '3.12' and sys_platform != 'darwin' and sys_platform != 'linux'",
+    "python_full_version < '3.12' and platform_machine == 'aarch64' and sys_platform == 'linux'",
 ]
 dependencies = [
     { name = "filelock", marker = "(extra == 'extra-13-darts-nextgen-cpu' and extra == 'extra-13-darts-nextgen-cuda118') or (extra == 'extra-13-darts-nextgen-cpu' and extra == 'extra-13-darts-nextgen-cuda121') or (extra == 'extra-13-darts-nextgen-cpu' and extra == 'extra-13-darts-nextgen-cuda126') or (extra == 'extra-13-darts-nextgen-cuda118' and extra == 'extra-13-darts-nextgen-cuda121') or (extra == 'extra-13-darts-nextgen-cuda118' and extra == 'extra-13-darts-nextgen-cuda126') or (extra == 'extra-13-darts-nextgen-cuda121' and extra == 'extra-13-darts-nextgen-cuda126') or (extra != 'extra-13-darts-nextgen-cpu' and extra != 'extra-13-darts-nextgen-cuda118' and extra != 'extra-13-darts-nextgen-cuda121' and extra != 'extra-13-darts-nextgen-cuda126')" },
@@ -5544,18 +5545,18 @@ resolution-markers = [
     "python_full_version >= '3.13' and platform_machine == 'x86_64' and sys_platform == 'darwin'",
     "python_full_version == '3.12.*' and platform_machine == 'x86_64' and sys_platform == 'darwin'",
     "python_full_version < '3.12' and platform_machine == 'x86_64' and sys_platform == 'darwin'",
-    "python_full_version >= '3.13' and platform_machine == 'aarch64' and sys_platform == 'linux'",
-    "python_full_version == '3.12.*' and platform_machine == 'aarch64' and sys_platform == 'linux'",
     "python_full_version >= '3.13' and platform_machine != 'aarch64' and sys_platform == 'linux'",
     "python_full_version == '3.12.*' and platform_machine != 'aarch64' and sys_platform == 'linux'",
     "python_full_version >= '3.13' and platform_machine != 'x86_64' and sys_platform == 'darwin'",
     "python_full_version == '3.12.*' and platform_machine != 'x86_64' and sys_platform == 'darwin'",
     "python_full_version >= '3.13' and sys_platform != 'darwin' and sys_platform != 'linux'",
     "python_full_version == '3.12.*' and sys_platform != 'darwin' and sys_platform != 'linux'",
-    "python_full_version < '3.12' and platform_machine == 'aarch64' and sys_platform == 'linux'",
+    "python_full_version >= '3.13' and platform_machine == 'aarch64' and sys_platform == 'linux'",
+    "python_full_version == '3.12.*' and platform_machine == 'aarch64' and sys_platform == 'linux'",
     "python_full_version < '3.12' and platform_machine != 'aarch64' and sys_platform == 'linux'",
     "python_full_version < '3.12' and platform_machine != 'x86_64' and sys_platform == 'darwin'",
     "python_full_version < '3.12' and sys_platform != 'darwin' and sys_platform != 'linux'",
+    "python_full_version < '3.12' and platform_machine == 'aarch64' and sys_platform == 'linux'",
 ]
 dependencies = [
     { name = "filelock", marker = "extra == 'extra-13-darts-nextgen-cuda118' or (extra == 'extra-13-darts-nextgen-cpu' and extra == 'extra-13-darts-nextgen-cuda121') or (extra == 'extra-13-darts-nextgen-cpu' and extra == 'extra-13-darts-nextgen-cuda126') or (extra == 'extra-13-darts-nextgen-cuda121' and extra == 'extra-13-darts-nextgen-cuda126')" },
@@ -5660,18 +5661,18 @@ resolution-markers = [
     "python_full_version >= '3.13' and platform_machine == 'x86_64' and sys_platform == 'darwin'",
     "python_full_version == '3.12.*' and platform_machine == 'x86_64' and sys_platform == 'darwin'",
     "python_full_version < '3.12' and platform_machine == 'x86_64' and sys_platform == 'darwin'",
-    "python_full_version >= '3.13' and platform_machine == 'aarch64' and sys_platform == 'linux'",
-    "python_full_version == '3.12.*' and platform_machine == 'aarch64' and sys_platform == 'linux'",
     "python_full_version >= '3.13' and platform_machine != 'aarch64' and sys_platform == 'linux'",
     "python_full_version == '3.12.*' and platform_machine != 'aarch64' and sys_platform == 'linux'",
     "python_full_version >= '3.13' and platform_machine != 'x86_64' and sys_platform == 'darwin'",
     "python_full_version == '3.12.*' and platform_machine != 'x86_64' and sys_platform == 'darwin'",
     "python_full_version >= '3.13' and sys_platform != 'darwin' and sys_platform != 'linux'",
     "python_full_version == '3.12.*' and sys_platform != 'darwin' and sys_platform != 'linux'",
-    "python_full_version < '3.12' and platform_machine == 'aarch64' and sys_platform == 'linux'",
+    "python_full_version >= '3.13' and platform_machine == 'aarch64' and sys_platform == 'linux'",
+    "python_full_version == '3.12.*' and platform_machine == 'aarch64' and sys_platform == 'linux'",
     "python_full_version < '3.12' and platform_machine != 'aarch64' and sys_platform == 'linux'",
     "python_full_version < '3.12' and platform_machine != 'x86_64' and sys_platform == 'darwin'",
     "python_full_version < '3.12' and sys_platform != 'darwin' and sys_platform != 'linux'",
+    "python_full_version < '3.12' and platform_machine == 'aarch64' and sys_platform == 'linux'",
 ]
 dependencies = [
     { name = "numpy", marker = "extra == 'extra-13-darts-nextgen-cuda121' or (extra == 'extra-13-darts-nextgen-cpu' and extra == 'extra-13-darts-nextgen-cuda118') or (extra == 'extra-13-darts-nextgen-cuda118' and extra == 'extra-13-darts-nextgen-cuda126') or (extra == 'extra-13-darts-nextgen-cpu' and extra != 'extra-13-darts-nextgen-cuda121' and extra == 'extra-13-darts-nextgen-cuda126')" },
@@ -5690,12 +5691,12 @@ name = "torchvision"
 version = "0.21.0"
 source = { registry = "https://download.pytorch.org/whl/cpu" }
 resolution-markers = [
-    "python_full_version >= '3.13' and platform_machine == 'aarch64' and sys_platform == 'linux'",
-    "python_full_version == '3.12.*' and platform_machine == 'aarch64' and sys_platform == 'linux'",
-    "python_full_version < '3.12' and platform_machine == 'aarch64' and sys_platform == 'linux'",
     "python_full_version >= '3.13' and platform_machine != 'x86_64' and sys_platform == 'darwin'",
     "python_full_version == '3.12.*' and platform_machine != 'x86_64' and sys_platform == 'darwin'",
+    "python_full_version >= '3.13' and platform_machine == 'aarch64' and sys_platform == 'linux'",
+    "python_full_version == '3.12.*' and platform_machine == 'aarch64' and sys_platform == 'linux'",
     "python_full_version < '3.12' and platform_machine != 'x86_64' and sys_platform == 'darwin'",
+    "python_full_version < '3.12' and platform_machine == 'aarch64' and sys_platform == 'linux'",
 ]
 dependencies = [
     { name = "numpy", marker = "(platform_machine != 'x86_64' and sys_platform == 'darwin' and extra == 'extra-13-darts-nextgen-cpu') or (platform_machine == 'aarch64' and sys_platform == 'linux' and extra == 'extra-13-darts-nextgen-cpu') or (sys_platform != 'darwin' and sys_platform != 'linux' and extra == 'extra-13-darts-nextgen-cpu' and extra == 'extra-13-darts-nextgen-cuda118') or (sys_platform != 'darwin' and sys_platform != 'linux' and extra == 'extra-13-darts-nextgen-cpu' and extra == 'extra-13-darts-nextgen-cuda121') or (sys_platform != 'darwin' and sys_platform != 'linux' and extra == 'extra-13-darts-nextgen-cpu' and extra == 'extra-13-darts-nextgen-cuda126') or (sys_platform != 'darwin' and sys_platform != 'linux' and extra == 'extra-13-darts-nextgen-cuda118' and extra == 'extra-13-darts-nextgen-cuda121') or (sys_platform != 'darwin' and sys_platform != 'linux' and extra == 'extra-13-darts-nextgen-cuda118' and extra == 'extra-13-darts-nextgen-cuda126') or (sys_platform != 'darwin' and sys_platform != 'linux' and extra == 'extra-13-darts-nextgen-cuda121' and extra == 'extra-13-darts-nextgen-cuda126') or (sys_platform == 'darwin' and extra == 'extra-13-darts-nextgen-cpu' and extra == 'extra-13-darts-nextgen-cuda118') or (sys_platform == 'darwin' and extra == 'extra-13-darts-nextgen-cpu' and extra == 'extra-13-darts-nextgen-cuda121') or (sys_platform == 'darwin' and extra == 'extra-13-darts-nextgen-cpu' and extra == 'extra-13-darts-nextgen-cuda126') or (sys_platform == 'darwin' and extra == 'extra-13-darts-nextgen-cuda118' and extra == 'extra-13-darts-nextgen-cuda121') or (sys_platform == 'darwin' and extra == 'extra-13-darts-nextgen-cuda118' and extra == 'extra-13-darts-nextgen-cuda126') or (sys_platform == 'darwin' and extra == 'extra-13-darts-nextgen-cuda121' and extra == 'extra-13-darts-nextgen-cuda126') or (sys_platform == 'linux' and extra == 'extra-13-darts-nextgen-cpu' and extra == 'extra-13-darts-nextgen-cuda118') or (sys_platform == 'linux' and extra == 'extra-13-darts-nextgen-cpu' and extra == 'extra-13-darts-nextgen-cuda121') or (sys_platform == 'linux' and extra == 'extra-13-darts-nextgen-cpu' and extra == 'extra-13-darts-nextgen-cuda126') or (sys_platform == 'linux' and extra == 'extra-13-darts-nextgen-cuda118' and extra == 'extra-13-darts-nextgen-cuda121') or (sys_platform == 'linux' and extra == 'extra-13-darts-nextgen-cuda118' and extra == 'extra-13-darts-nextgen-cuda126') or (sys_platform == 'linux' and extra == 'extra-13-darts-nextgen-cuda121' and extra == 'extra-13-darts-nextgen-cuda126')" },
@@ -5769,18 +5770,18 @@ resolution-markers = [
     "python_full_version >= '3.13' and platform_machine == 'x86_64' and sys_platform == 'darwin'",
     "python_full_version == '3.12.*' and platform_machine == 'x86_64' and sys_platform == 'darwin'",
     "python_full_version < '3.12' and platform_machine == 'x86_64' and sys_platform == 'darwin'",
-    "python_full_version >= '3.13' and platform_machine == 'aarch64' and sys_platform == 'linux'",
-    "python_full_version == '3.12.*' and platform_machine == 'aarch64' and sys_platform == 'linux'",
     "python_full_version >= '3.13' and platform_machine != 'aarch64' and sys_platform == 'linux'",
     "python_full_version == '3.12.*' and platform_machine != 'aarch64' and sys_platform == 'linux'",
     "python_full_version >= '3.13' and platform_machine != 'x86_64' and sys_platform == 'darwin'",
     "python_full_version == '3.12.*' and platform_machine != 'x86_64' and sys_platform == 'darwin'",
     "python_full_version >= '3.13' and sys_platform != 'darwin' and sys_platform != 'linux'",
     "python_full_version == '3.12.*' and sys_platform != 'darwin' and sys_platform != 'linux'",
-    "python_full_version < '3.12' and platform_machine == 'aarch64' and sys_platform == 'linux'",
+    "python_full_version >= '3.13' and platform_machine == 'aarch64' and sys_platform == 'linux'",
+    "python_full_version == '3.12.*' and platform_machine == 'aarch64' and sys_platform == 'linux'",
     "python_full_version < '3.12' and platform_machine != 'aarch64' and sys_platform == 'linux'",
     "python_full_version < '3.12' and platform_machine != 'x86_64' and sys_platform == 'darwin'",
     "python_full_version < '3.12' and sys_platform != 'darwin' and sys_platform != 'linux'",
+    "python_full_version < '3.12' and platform_machine == 'aarch64' and sys_platform == 'linux'",
 ]
 dependencies = [
     { name = "numpy", marker = "extra == 'extra-13-darts-nextgen-cuda118' or (extra == 'extra-13-darts-nextgen-cpu' and extra == 'extra-13-darts-nextgen-cuda121') or (extra == 'extra-13-darts-nextgen-cpu' and extra == 'extra-13-darts-nextgen-cuda126') or (extra == 'extra-13-darts-nextgen-cuda121' and extra == 'extra-13-darts-nextgen-cuda126')" },
@@ -5876,7 +5877,7 @@ resolution-markers = [
     "python_full_version < '3.12' and platform_machine != 'aarch64' and sys_platform == 'linux'",
 ]
 dependencies = [
-    { name = "filelock", marker = "(platform_machine != 'x86_64' and extra == 'extra-13-darts-nextgen-cuda121') or (sys_platform != 'darwin' and extra == 'extra-13-darts-nextgen-cuda121') or (extra == 'extra-13-darts-nextgen-cpu' and extra == 'extra-13-darts-nextgen-cuda118') or (extra == 'extra-13-darts-nextgen-cpu' and extra == 'extra-13-darts-nextgen-cuda121') or (extra == 'extra-13-darts-nextgen-cpu' and extra == 'extra-13-darts-nextgen-cuda126') or (extra == 'extra-13-darts-nextgen-cuda118' and extra == 'extra-13-darts-nextgen-cuda121') or (extra == 'extra-13-darts-nextgen-cuda118' and extra == 'extra-13-darts-nextgen-cuda126') or (extra == 'extra-13-darts-nextgen-cuda121' and extra == 'extra-13-darts-nextgen-cuda126')" },
+    { name = "filelock", marker = "(python_full_version < '3.13' and platform_machine != 'aarch64' and sys_platform == 'linux' and extra == 'extra-13-darts-nextgen-cuda121') or (python_full_version >= '3.13' and platform_machine != 'aarch64' and extra == 'extra-13-darts-nextgen-cuda121' and extra == 'extra-13-darts-nextgen-cuda126') or (platform_machine == 'aarch64' and extra == 'extra-13-darts-nextgen-cuda121' and extra == 'extra-13-darts-nextgen-cuda126') or (sys_platform != 'linux' and extra == 'extra-13-darts-nextgen-cuda121' and extra == 'extra-13-darts-nextgen-cuda126') or (extra == 'extra-13-darts-nextgen-cpu' and extra == 'extra-13-darts-nextgen-cuda118') or (extra == 'extra-13-darts-nextgen-cpu' and extra == 'extra-13-darts-nextgen-cuda121') or (extra == 'extra-13-darts-nextgen-cpu' and extra == 'extra-13-darts-nextgen-cuda126') or (extra == 'extra-13-darts-nextgen-cuda118' and extra == 'extra-13-darts-nextgen-cuda121') or (extra == 'extra-13-darts-nextgen-cuda118' and extra == 'extra-13-darts-nextgen-cuda126')" },
 ]
 wheels = [
     { url = "https://files.pythonhosted.org/packages/86/17/d9a5cf4fcf46291856d1e90762e36cbabd2a56c7265da0d1d9508c8e3943/triton-3.1.0-cp311-cp311-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:0f34f6e7885d1bf0eaaf7ba875a5f0ce6f3c13ba98f9503651c1e6dc6757ed5c", size = 209506424 },

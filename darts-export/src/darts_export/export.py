@@ -19,15 +19,13 @@ def _export_raster(tile: xr.Dataset, name: str, out_dir: Path, fname: str | None
         tile[name].rio.to_raster(fpath, driver="GTiff", compress="LZW")
 
 
-def _export_vector(
-    tile: xr.Dataset, name: str, out_dir: Path, minimum_mapping_unit: int = 32, fname: str | None = None
-):
+def _export_vector(tile: xr.Dataset, name: str, out_dir: Path, fname: str | None = None):
     if fname is None:
         fname = name
     fpath_gpkg = out_dir / f"{fname}.gpkg"
     fpath_parquet = out_dir / f"{fname}.parquet"
     with stopuhr.stopuhr(f"Exporting {name} to {fpath_gpkg.resolve()} and {fpath_parquet.resolve()}", logger.debug):
-        polygon_gdf = vectorization.vectorize(tile, name, minimum_mapping_unit=minimum_mapping_unit)
+        polygon_gdf = vectorization.vectorize(tile, name)
         polygon_gdf.to_file(fpath_gpkg, layer=f"{fname}")
         polygon_gdf.to_parquet(fpath_parquet)
 
