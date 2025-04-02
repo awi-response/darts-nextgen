@@ -26,9 +26,9 @@ This is te successor of the thaw-slump-segmentation (pipeline), with which the f
 3. Run the Sentinel 2 based pipeline on an area of interest:
 
     ```sh
-    uv run darts run-native-sentinel2-pipeline-from-aoi \
+    uv run darts run-sequential-aoi-sentinel2-pipeline \
       --aoi-shapefile path/to/your/aoi.geojson \
-      --model-file path/to/your/model/checkpoint \
+      --model-files path/to/your/model/checkpoint \
       --start-date 2024-07 \
       --end-date 2024-09
     ```

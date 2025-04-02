@@ -50,6 +50,12 @@ To get help for a specific command, run:
 uv run darts the-specific-command --help
 ```
 
+### Device selection
+
+By default, the CLI will automatic select the device for functions that support it.
+To force a specific device, you can use the `--device` parameter.
+Read more about the device selection in the [device guide](guides/devices.md).
+
 ### Config files
 
 The CLI supports config files in TOML format to reduce the amount of parameters you need to pass or to safe different configurations.
@@ -61,25 +67,30 @@ For more information about the config file,  see the [config guide](guides/confi
 
 ### Log files
 
-By default the CLI sets up a logging handler at `DEBUG` level for the `darts` specific packages found in this workspace.
+By default the CLI sets up a logging handler at `INFO` level for the `darts` specific packages found in this workspace.
+The log-level can be changed via the `--verbose` flag of the CLI to set it to `DEBUG`.
 Running any command will output a logging file at the logging directory, which can be specified via the `--log-dir` parameter.
 The logging file will be named after the command and the current timestamp.
 If you want to change the logging behavior in python code, you can check out the [logging guide](guides/logging.md).
 
 ## Running a pipeline based on Sentinel 2 data
 
-The `run-native-sentinel2-pipeline-from-aoi` automatically downloads and processes Sentinel 2 data based on an Area of Interest (AOI) in GeoJSON format.
+The `run-sequential-aoi-sentinel2-pipeline` automatically downloads and processes Sentinel 2 data based on an Area of Interest (AOI) in GeoJSON format.
 Before running you need access to a trained model.
-Note, that only special checkpoints can be used, as described in the [architecture guide](dev/arch.md).
+Note, that only special checkpoints can be used, as described in the [architecture guide](dev/arch.md#pytorch-model-checkpoints).
 In future versions, downloading of the model via huggingface will be supported, but for now you need to ask the developers for a valid model checkpoint.
 
 To run the pipeline run:
 
 ```sh
-uv run darts run-native-sentinel2-pipeline-from-aoi --aoi-shapefile path/to/your/aoi.geojson --model-file path/to/your/model/checkpoint --start-date 2024-07 --end-date 2024-09
+uv run darts run-sequential-aoi-sentinel2-pipeline --aoi-shapefile path/to/your/aoi.geojson --model-files path/to/your/model/checkpoint --start-date 2024-07 --end-date 2024-09
 ```
 
-Run `uv run darts run-native-sentinel2-pipeline-from-aoi --help` for more configuration options.
+Run `uv run darts run-sequential-aoi-sentinel2-pipeline --help` for more configuration options.
+
+!!! tip "Pipeline v2"
+
+    The [Pipeline v2 Guide](./guides/pipeline-v2.md) provides a more in-depth explanation of the pipeline and its components.
 
 ## Running a pipeline based on PLANET data
 
@@ -193,7 +204,7 @@ A list of all options can be found in the [config guide](guides/config.md) or by
 Finally run the pipeline with the following command. Additional parameters can be passed via the CLI, which will overwrite the config file.
 
 ```sh
-rye run darts run-native-planet-pipeline-fast --config-file path/to/your/config.toml
+rye run darts run-sequential-planet-pipeline-fast --config-file path/to/your/config.toml
 ```
 
 ## Creating your own pipeline

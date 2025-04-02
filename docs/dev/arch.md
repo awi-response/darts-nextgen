@@ -1,9 +1,6 @@
 
 # Architecture describtion
 
-!!! danger "Old documentation"
-    This document is not up-to-date. E.g. Rye is not used anymore.
-
 This repository is a workspace repository, managed by [uv](https://docs.astral.sh/uv/).
 Read more about workspaces at the [uv docs](https://docs.astral.sh/uv/concepts/projects/workspaces/).
 Each workspace-member starts with `darts-*` and can be seen as an own package or module, except the `darts` directory which is the top-level package.
@@ -30,7 +27,7 @@ The public facing API of each package MUST follow the [API paradigms](#api-parad
 | `darts-export`          | Data     | Saves the results from inference and combines the result to the final DARTS dataset               | GeoPandas, rasterio                    |
 | `darts-utils`           | Data     | Shared utilities for data processing                                                              |                                        |
 
-The packages are currently designed around the [v1 Pipeline](guides/pipeline-v1.md).
+The packages are currently designed around the [v2 Pipeline](../guides/pipeline-v2.md).
 
 ### Conceptual migration from thaw-slump-segmentation
 
@@ -40,8 +37,13 @@ The packages are currently designed around the [v1 Pipeline](guides/pipeline-v1.
 - The `darts-superresolution` package is the successor of the `superresolution` repository.
 - The `darts-segmentation` package is the successor of the `train` and `prepare_data` script.
 
-The following diagram visualizes how the new packages work together based on the first version of the pipeline. Note that this diagram is not up-to-date.
+The following diagram visualizes how the new packages are meant to work together.
 ![DARTS nextgen architecture](../assets/darts_nextgen_architecture.png){ loading=lazy }
+
+!!! warning "This is a mock"
+
+    This diagram is not realised in any form. It just exists for demonstrational purposes.
+    To see an example of a realized pipeline based on this architecture please see the [Pipeline v2 Guide](../guides/pipeline-v2.md)
 
 ### Create a new package
 
@@ -79,60 +81,7 @@ All packages have at all time the same version.
 The versioning is done via git-tags and the [uv dynamic versioning tool](https://github.com/ninoseki/uv-dynamic-versioning).
 Hence, the version of the `pyproject.toml` of each subpackage is ignored and has no meaning.
 
-## APIs between pipeline steps
-
-!!! danger "Old documentation"
-    This section is not up-to-date and should probably.
-
-The following diagram visualizes the steps of the major `packages` of the pipeline:
-![DARTS nextgen pipeline steps](../assets/darts_nextgen_pipeline-steps.png){ loading=lazy }
-
-Each Tile should be represented as a single `xr.Dataset` with each feature / band as `DataVariable`.
-Each DataVariable should have their `data_source` documented in the `attrs`, aswell as `long_name` and `units` if any for plotting.
-A `_FillValue` should also be set for no-data with `.rio.write_nodata("no-data-value")`
-
-### Preprocessing Output
-
-Coordinates: `x`, `y` and `spatial_ref` (from rioxarray)
-
-| DataVariable         | shape  | dtype   | no-data | attrs                         | note                               |
-| -------------------- | ------ | ------- | ------- | ----------------------------- | ---------------------------------- |
-| `blue`               | (x, y) | uint16  | 0       | data_source, long_name, units |                                    |
-| `green`              | (x, y) | uint16  | 0       | data_source, long_name, units |                                    |
-| `red`                | (x, y) | uint16  | 0       | data_source, long_name, units |                                    |
-| `nir`                | (x, y) | uint16  | 0       | data_source, long_name, units |                                    |
-| `ndvi`               | (x, y) | uint16  | 0       | data_source, long_name        | Values between 0-20.000 (+1, *1e4) |
-| `relative_elevation` | (x, y) | int16   | 0       | data_source, long_name, units |                                    |
-| `slope`              | (x, y) | float32 | nan     | data_source, long_name        |                                    |
-| `tc_brightness`      | (x, y) | uint8   | -       | data_source, long_name        |                                    |
-| `tc_greenness`       | (x, y) | uint8   | -       | data_source, long_name        |                                    |
-| `tc_wetness`         | (x, y) | uint8   | -       | data_source, long_name        |                                    |
-| `valid_data_mask`    | (x, y) | bool    | -       | data_source, long_name        |                                    |
-| `quality_data_mask`  | (x, y) | bool    | -       | data_source, long_name        |                                    |
-
-### Segmentation / Ensemble Output
-
-Coordinates: `x`, `y` and `spatial_ref` (from rioxarray)
-
-| DataVariable                | shape  | dtype   | no-data | attrs     |
-| --------------------------- | ------ | ------- | ------- | --------- |
-| [Output from Preprocessing] |        |         |         |           |
-| `probabilities`             | (x, y) | float32 | nan     | long_name |
-| `probabilities-model-X*`    | (x, y) | float32 | nan     | long_name |
-
-\*: optional intermedia probabilities in an ensemble
-
-### Postprocessing Output
-
-Coordinates: `x`, `y` and `spatial_ref` (from rioxarray)
-
-| DataVariable                | shape  | dtype | no-data | attrs            | note                 |
-| --------------------------- | ------ | ----- | ------- | ---------------- | -------------------- |
-| [Output from Preprocessing] |        |       |         |                  |                      |
-| `probabilities_percent`     | (x, y) | uint8 | 255     | long_name, units | Values between 0-100 |
-| `binarized_segmentation`    | (x, y) | uint8 | -       | long_name        |                      |
-
-### PyTorch Model checkpoints
+## PyTorch Model checkpoints
 
 Each checkpoint is stored as a torch `.pt` tensor file. The checkpoint MUST have the following structure:
 
@@ -149,6 +98,10 @@ Each checkpoint is stored as a torch `.pt` tensor file. The checkpoint MUST have
 }
 ```
 
+!!! tip "Pre-Deprecation warning"
+
+    It is planned to switch from our custom structure to huggingface model accessors.
+
 ## API paradigms
 
 The packages should pass the data as Xarray Datasets between each other. Datasets can hold coordinate information aswell as other metadata (like CRS) in a single self-describing object.
@@ -164,10 +117,22 @@ Since different `tiles` do not share the same coordinates or metadata, each `til
 - Function names should be verbs, e.g. `process`, `ensemble`, `do_inference`.
 - If a function is stateless it should NOT be part of a class or wrapper
 - If a function is stateful it should be part of a class or wrapper, this is important for Ray
+- Each Tile should be represented as a single `xr.Dataset` with each feature / band as `DataVariable`.
+- Each DataVariable should have their `data_source` documented in the `attrs`, aswell as `long_name` and `units` if any for plotting.
+- A `_FillValue` should also be set for no-data with `.rio.write_nodata("no-data-value")`.
+
+!!! tip "Components"
+
+    The goal of these paradigms is to write functions which work as [Components](../guides/components.md).
+    Potential users can then later pick their components and put them together in their custom pipeline, utilizing their own parallelization framework.
 
 ### Examples
 
 Here are some examples, how these API paradigms should look like.
+
+!!! warning "This is a mock"
+
+    Even if some real packages are shown, these examples use mock-functions / non-existing functions and will not work .
 
 1. Single transformation
 
@@ -217,23 +182,23 @@ Here are some examples, how these API paradigms should look like.
 
     ```py
     from pathlib import Path
-    import darts_preprocess
-    import darts_inference
+    import darts_preprocessing
+    import darts_ensemble
 
     DATA_DIR = Path("./data/")
-    MODEL_DIR = Path("./models/")
+    MODEL_FILE = Path("./models/model.pt")
     OUT_DIR = Path("./out/")
 
     # Inference is a stateful transformation, because it needs to load the model
     # Hence, the 
-    ensemble = darts_inference.Ensemble.load(MODEL_DIR)
+    ensemble = darts_ensemble.EnsembleV1(MODEL_FILE)
 
     # The data directory contains subfolders which then hold the input data
     for dir in DATA_DIR:
         name = dir.name
         
         # Load the files from the processing directory
-        ds = darts_preprocess.load_and_preprocess(dir)
+        ds = darts_preprocessing.load_and_preprocess(dir)
 
         # Do the inferencce
         ds = ensemble.inference(ds)

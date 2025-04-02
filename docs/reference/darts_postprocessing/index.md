@@ -10,4 +10,6 @@
         classes: true
         modules: false
       members: true
+- [binarize](binarize.md)
+- [erode_mask](erode_mask.md)
 - [prepare_export](prepare_export.md)

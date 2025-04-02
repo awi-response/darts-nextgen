@@ -59,6 +59,10 @@ Install the python environment for CPU-only use:
 uv sync --extra cpu
 ```
 
+!!! danger
+    Either `--extra cpu` or `--extra cudaXXX` must be specified.
+    Without important libraries like PyTorch will not be installed and the environment will not work.
+
 ### Workaround for CUDA related errors
 
 If CUDA is not installed correctly, some CUDA optional packages are missing or the wrong version of CUDA is installed, conda / mamba can be used as a workaround.

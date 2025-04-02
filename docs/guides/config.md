@@ -94,5 +94,5 @@ model-file = "./models/s2-tcvis-final-large_2025-02-12.ckpt"
 Running the command:
 
 ```sh
-uv run darts run-native-sentinel2-pipeline-from-aoi --aoi-shapefile path/to/your/aoi.geojson --start-date 2024-07 --end-date 2024-09
+uv run darts run-sequential-aoi-sentinel2-pipeline --aoi-shapefile path/to/your/aoi.geojson --start-date 2024-07 --end-date 2024-09
 ```

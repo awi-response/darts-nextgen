@@ -13,11 +13,12 @@ nav:
   - Overview: overview.md
   - Guides:
       - Installation: guides/installation.md
+      - Pipeline v2: guides/pipeline-v2.md
       - DARTS Components: guides/components.md
+      - Devices: guides/devices.md
       - Config Files: guides/config.md
       - Logging: guides/logging.md
       - Training: guides/training.md
-      - Pipeline v1: guides/pipeline-v1.md
   - Dev:
       - Contribute: contribute.md
       - Architecture: dev/arch.md
@@ -91,6 +92,8 @@ nav:
           - <code class='doc-symbol doc-symbol-nav doc-symbol-function'></code>missing_outputs: reference/darts_export/missing_outputs.md
       - <code class='doc-symbol doc-symbol-nav doc-symbol-module'></code>darts_postprocessing:
           - reference/darts_postprocessing/index.md
+          - <code class='doc-symbol doc-symbol-nav doc-symbol-function'></code>binarize: reference/darts_postprocessing/binarize.md
+          - <code class='doc-symbol doc-symbol-nav doc-symbol-function'></code>erode_mask: reference/darts_postprocessing/erode_mask.md
           - <code class='doc-symbol doc-symbol-nav doc-symbol-function'></code>prepare_export: reference/darts_postprocessing/prepare_export.md
       - <code class='doc-symbol doc-symbol-nav doc-symbol-module'></code>darts_preprocessing:
           - reference/darts_preprocessing/index.md

@@ -6,13 +6,8 @@ The dev section should help us developers to understand the codebase and decisio
 
 ## ToDos
 
-- [x] Write ToDo List
-- [x] Update Training Guide -> Add Sweep
-- [ ] Update Architecture Docs
 - [ ] Add components guide
-- [x] Move the guides pages to the guides folder
-- [ ] Guide on how to measure times
-- [x] Deprecate old pipeliens
-- [x] Add components and public commands API ref
   - [ ] Further document them
-  - [x] and specify import behaviour through inits
+  - [ ] Document the required inputs and output data_vars and attrs
+    - [ ] In API ref
+    - [ ] In Components Guide

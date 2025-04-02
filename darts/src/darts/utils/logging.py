@@ -37,9 +37,20 @@ class LoggingManagerSingleton:
         self._managed_loggers = []
         self._log_level = DARTS_LEVEL
 
-    def setup_logging(self):
-        """Set up logging for the application."""
+    @property
+    def logger(self):
+        """Get the logger for the application."""
+        return logging.getLogger("darts")
+
+    def setup_logging(self, verbose: bool = False):
+        """Set up logging for the application.
+
+        Args:
+            verbose (bool): Whether to set the log level to DEBUG.
+
+        """
         # Set up logging for our own modules
+        self._log_level = logging.DEBUG if verbose else DARTS_LEVEL
         logging.getLogger("darts").setLevel(DARTS_LEVEL)
         logging.captureWarnings(True)
 
