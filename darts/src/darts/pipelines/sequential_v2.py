@@ -296,7 +296,7 @@ class PlanetPipeline(_BasePipeline):
             logger.exception(e)
             raise e
 
-    def _tileinfo(self) -> list[tuple[Path, Path]]:
+    def _tileinfos(self) -> list[tuple[Path, Path]]:
         out = []
         # Find all PlanetScope orthotiles
         for fpath in self.orthotiles_dir.glob("*/*/"):
@@ -399,7 +399,7 @@ class Sentinel2Pipeline(_BasePipeline):
             logger.exception(e)
             raise e
 
-    def _tileinfo(self) -> list[tuple[Path, Path]]:
+    def _tileinfos(self) -> list[tuple[Path, Path]]:
         out = []
         for fpath in self.sentinel2_dir.glob("*/"):
             scene_id = fpath.name
@@ -494,7 +494,7 @@ class AOISentinel2Pipeline(_BasePipeline):
         # In case of the GEE tilekey is also the s2id
         return tilekey
 
-    def _tileinfo(self) -> list[tuple[str, Path]]:
+    def _tileinfos(self) -> list[tuple[str, Path]]:
         out = []
         for s2id in self._s2ids:
             outpath = self.output_data_dir / s2id
