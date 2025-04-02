@@ -3,6 +3,7 @@
 import logging
 from pathlib import Path
 
+import stopuhr
 import torch
 import xarray as xr
 from darts_segmentation.segment import SMPSegmenter
@@ -35,6 +36,11 @@ class EnsembleV1:
         )
         self.models = {k: SMPSegmenter(v, device=device) for k, v in model_paths.items()}
 
+    @stopuhr.funkuhr(
+        "Ensemble inference",
+        printer=logger.debug,
+        print_kwargs=["patch_size", "overlap", "batch_size", "reflection", "keep_inputs"],
+    )
     def segment_tile(
         self,
         tile: xr.Dataset,
@@ -51,7 +57,7 @@ class EnsembleV1:
             patch_size (int): The size of the patches. Defaults to 1024.
             overlap (int): The size of the overlap. Defaults to 16.
             batch_size (int): The batch size for the prediction, NOT the batch_size of input tiles.
-            Tensor will be sliced into patches and these again will be infered in batches. Defaults to 8.
+                Tensor will be sliced into patches and these again will be infered in batches. Defaults to 8.
             reflection (int): Reflection-Padding which will be applied to the edges of the tensor. Defaults to 0.
             keep_inputs (bool, optional): Whether to keep the input probabilities in the output. Defaults to False.
 
@@ -90,7 +96,7 @@ class EnsembleV1:
             patch_size (int): The size of the patches. Defaults to 1024.
             overlap (int): The size of the overlap. Defaults to 16.
             batch_size (int): The batch size for the prediction, NOT the batch_size of input tiles.
-            Tensor will be sliced into patches and these again will be infered in batches. Defaults to 8.
+                Tensor will be sliced into patches and these again will be infered in batches. Defaults to 8.
             reflection (int): Reflection-Padding which will be applied to the edges of the tensor. Defaults to 0.
             keep_inputs (bool, optional): Whether to keep the input probabilities in the output. Defaults to False.
 
@@ -123,11 +129,10 @@ class EnsembleV1:
 
         Args:
             input (xr.Dataset | list[xr.Dataset]): A single tile or a list of tiles.
-            tile (xr.Dataset): Input tile from preprocessing.
             patch_size (int): The size of the patches. Defaults to 1024.
             overlap (int): The size of the overlap. Defaults to 16.
             batch_size (int): The batch size for the prediction, NOT the batch_size of input tiles.
-            Tensor will be sliced into patches and these again will be infered in batches. Defaults to 8.
+                Tensor will be sliced into patches and these again will be infered in batches. Defaults to 8.
             reflection (int): Reflection-Padding which will be applied to the edges of the tensor. Defaults to 0.
             keep_inputs (bool, optional): Whether to keep the input probabilities in the output. Defaults to False.
 

@@ -1,12 +1,12 @@
 """PLANET related data loading. Should be used temporary and maybe moved to the acquisition package."""
 
 import logging
-import time
 from datetime import datetime
 from pathlib import Path
 from typing import Literal
 
 import rioxarray  # noqa: F401
+import stopuhr
 import xarray as xr
 
 logger = logging.getLogger(__name__.replace("darts_", "darts."))
@@ -70,6 +70,7 @@ def parse_planet_type(fpath: Path) -> Literal["orthotile", "scene"]:
     )
 
 
+@stopuhr.funkuhr("Loading Planet scene", printer=logger.debug, print_kwargs=True)
 def load_planet_scene(fpath: str | Path) -> xr.Dataset:
     """Load a PlanetScope satellite GeoTIFF file and return it as an xarray datset.
 
@@ -83,8 +84,6 @@ def load_planet_scene(fpath: str | Path) -> xr.Dataset:
         FileNotFoundError: If no matching TIFF file is found in the specified path.
 
     """
-    start_time = time.time()
-
     # Convert to Path object if a string is provided
     fpath = fpath if isinstance(fpath, Path) else Path(fpath)
 
@@ -117,10 +116,10 @@ def load_planet_scene(fpath: str | Path) -> xr.Dataset:
             }
         )
     ds_planet.attrs = {"tile_id": fpath.parent.stem if planet_type == "orthotile" else fpath.stem}
-    logger.debug(f"Loaded Planet scene in {time.time() - start_time} seconds.")
     return ds_planet
 
 
+@stopuhr.funkuhr("Loading Planet masks", printer=logger.debug, print_kwargs=True)
 def load_planet_masks(fpath: str | Path) -> xr.Dataset:
     """Load the valid and quality data masks from a Planet scene.
 
@@ -136,8 +135,6 @@ def load_planet_masks(fpath: str | Path) -> xr.Dataset:
             - 'quality_data_mask': A mask indicating high quality (1) and low quality (0).
 
     """
-    start_time = time.time()
-
     # Convert to Path object if a string is provided
     fpath = fpath if isinstance(fpath, Path) else Path(fpath)
 
@@ -165,5 +162,4 @@ def load_planet_masks(fpath: str | Path) -> xr.Dataset:
         "long_name": "Quality data mask",
         "description": "0 = Invalid, 1 = Low Quality, 2 = High Quality",
     }
-    logger.debug(f"Loaded data masks in {time.time() - start_time} seconds.")
     return qa_ds

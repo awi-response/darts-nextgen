@@ -26,7 +26,7 @@ The following sections will explain the different extra flags and groups which c
 ## CUDA and CPU-only installations
 
 Several CUDA versions can be used, but it may happen that some problems occur on different systems.
-Currently CUDA 11.8, 12.1, 12.4, and 12.6 are supported, but sometimes other versions work as well.
+Currently CUDA 11.8, 12.1, and 12.6 are supported, but sometimes other versions work as well.
 We use python extra dependencies, so it is possible to specify the CUDA version via an `--extra` flag in the `uv sync` command.
 
 You can check the currently installed CUDA version via:
@@ -45,7 +45,6 @@ To install the python environment for a specific CUDA version use one of the fol
 ```sh
 uv sync --extra cuda118
 uv sync --extra cuda121
-uv sync --extra cuda124
 uv sync --extra cuda126
 ```
 
@@ -58,6 +57,34 @@ Install the python environment for CPU-only use:
 
 ```sh
 uv sync --extra cpu
+```
+
+!!! danger
+    Either `--extra cpu` or `--extra cudaXXX` must be specified.
+    Without important libraries like PyTorch will not be installed and the environment will not work.
+
+### Workaround for CUDA related errors
+
+If CUDA is not installed correctly, some CUDA optional packages are missing or the wrong version of CUDA is installed, conda / mamba can be used as a workaround.
+
+First create a new conda environment and activate it:
+
+```sh
+mamba create -n darts-nextgen-cuda-env
+mamba activate darts-nextgen-cuda-env
+```
+
+Then install CUDA toolkit and required system packages via conda / mamba:
+
+```sh
+mamba install cuda-toolkit nvidia::cuda-nvrtc
+...
+```
+
+Now you can (while the conda / mamba environment is active) sync your uv environment.
+
+```sh
+uv sync --...
 ```
 
 ## Training specific dependencies

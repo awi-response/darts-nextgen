@@ -2,7 +2,9 @@
 
 import importlib.metadata
 
-from darts_postprocessing.prepare_export import prepare_export as prepare_export
+from darts_postprocessing.postprocess import binarize as binarize
+from darts_postprocessing.postprocess import erode_mask as erode_mask
+from darts_postprocessing.postprocess import prepare_export as prepare_export
 
 try:
     __version__ = importlib.metadata.version("darts-nextgen")

@@ -1,5 +1,7 @@
 """Training script for DARTS segmentation."""
 
+from typing import Any
+
 import lightning as L  # noqa: N812
 import segmentation_models_pytorch as smp
 import torch.optim as optim
@@ -17,7 +19,7 @@ class SMPSegmenter(L.LightningModule):
         gamma: float = 0.9,
         focal_loss_alpha: float | None = None,
         focal_loss_gamma: float = 2.0,
-        **kwargs,
+        **kwargs: dict[str, Any],
     ):
         """Initialize the SMPSegmenter.
 
@@ -29,7 +31,7 @@ class SMPSegmenter(L.LightningModule):
                 Alpha must be in [0...1] range, high values will give more weight to positive class.
                 None will not weight samples. Defaults to None.
             focal_loss_gamma (float, optional): Focal loss power factor. Defaults to 2.0.
-            kwargs: Additional keyword arguments which should be saved to the hyperparameter file.
+            kwargs (dict[str, Any]): Additional keyword arguments which should be saved to the hyperparameter file.
 
         """
         super().__init__()

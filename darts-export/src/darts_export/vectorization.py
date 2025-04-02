@@ -7,7 +7,7 @@ import geopandas as gpd
 import numpy as np
 import shapely
 import xarray
-from rasterio.features import shapes, sieve
+from rasterio.features import shapes
 from skimage import measure
 
 
@@ -113,7 +113,6 @@ def vectorize(
     xdat: xarray.Dataset,
     layername: str = "binarized_segmentation",
     polygonization_func: str = "rasterio",
-    minimum_mapping_unit=32,
 ) -> gpd.GeoDataFrame:
     """Vectorize an inference result dataset.
 
@@ -126,7 +125,6 @@ def vectorize(
         layername (str, optional): the name of the layer in `xdat` to polygonize
         polygonization_func (str, optional): the method to utilize for polygonization, either 'gdal' or 'rasterio',
             the default.
-        minimum_mapping_unit (int, optional): polygons smaller than this number are removed. Defaults to 32.
 
     Returns:
         _type_: _description_
@@ -134,12 +132,11 @@ def vectorize(
     """
     layer = xdat[layername]
 
-    # MIN POLYGON for sieving
-    if minimum_mapping_unit > 0:
-        sieved = sieve(layer.to_numpy(), minimum_mapping_unit)
-        bin_labelled = measure.label(sieved)
-    else:
-        bin_labelled = measure.label(layer)
+    # Turn layer into int8 if bool
+    if layer.dtype == "bool":
+        layer = layer.astype("uint8")
+
+    bin_labelled = measure.label(layer)
 
     if polygonization_func.lower() == "gdal":
         gdf_polygons = gdal_polygonization(bin_labelled, layer)

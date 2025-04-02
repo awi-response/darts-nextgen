@@ -3,8 +3,12 @@
 import logging
 import time
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import toml
+
+if TYPE_CHECKING:
+    import pytorch_lightning as pl
 
 logger = logging.getLogger(__name__)
 
@@ -21,7 +25,7 @@ def test_smp(
     device: int | str = "auto",
     wandb_entity: str | None = None,
     wandb_project: str | None = None,
-):
+) -> "pl.Trainer":
     """Run the testing of the SMP model.
 
     The data structure of the training data expects the "preprocessing" step to be done beforehand,
@@ -29,18 +33,12 @@ def test_smp(
 
     ```sh
     preprocessed-data/ # the top-level directory
-    ├── cross-val/ # this directory contains the data for the training and validation
-    │   ├── x/
-    │   └── y/
-    ├── val-test/ # this directory contains the data for the random selected validation set
-    │   ├── x/
-    │   └── y/
-    └── test/ # this directory contains the data for the left-out-region test set
-        ├── x/
-        └── y/
+    ├── config.toml
+    ├── cross-val.zarr/ # this zarr group contains the dataarrays x and y for the training and validation
+    ├── test.zarr/ # this zarr group contains the dataarrays x and y for the left-out-region test set
+    ├── val-test.zarr/ # this zarr group contains the dataarrays x and y for the random selected validation set
+    └── labels.geojson
     ```
-
-    `x` and `y` are the directories which contain torch-tensor files (.pt) for the input and target data.
 
     Args:
         train_data_dir (Path): Path to the training data directory (top-level).

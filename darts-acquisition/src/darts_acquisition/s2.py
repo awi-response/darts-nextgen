@@ -1,13 +1,13 @@
 """Sentinel 2 related data loading. Should be used temporary and maybe moved to the acquisition package."""
 
 import logging
-import time
 from pathlib import Path
 
 import ee
 import geopandas as gpd
 import odc.geo.xr
 import rioxarray  # noqa: F401
+import stopuhr
 import xarray as xr
 from odc.geo.geobox import GeoBox
 from pystac_client import Client
@@ -15,6 +15,7 @@ from pystac_client import Client
 logger = logging.getLogger(__name__.replace("darts_", "darts."))
 
 
+@stopuhr.funkuhr("Converting Sentinel 2 masks", printer=logger.debug)
 def convert_masks(ds_s2: xr.Dataset) -> xr.Dataset:
     """Convert the Sentinel 2 scl mask into our own mask format inplace.
 
@@ -31,13 +32,7 @@ def convert_masks(ds_s2: xr.Dataset) -> xr.Dataset:
     """
     assert "scl" in ds_s2.data_vars, "The dataset does not contain the SCL band."
 
-    ds_s2["quality_data_mask"] = xr.zeros_like(ds_s2["scl"], dtype="uint8").assign_attrs(
-        {
-            "data_source": "s2",
-            "long_name": "Quality Data Mask",
-            "description": "0 = Invalid, 1 = Low Quality, 2 = High Quality",
-        }
-    )
+    ds_s2["quality_data_mask"] = xr.zeros_like(ds_s2["scl"], dtype="uint8")
     # TODO: What about nan values?
     invalids = ds_s2["scl"].fillna(0).isin([0, 1])
     low_quality = ds_s2["scl"].isin([3, 8, 9, 11])
@@ -45,6 +40,10 @@ def convert_masks(ds_s2: xr.Dataset) -> xr.Dataset:
     # ds_s2["quality_data_mask"] = ds_s2["quality_data_mask"].where(invalids, 0)
     ds_s2["quality_data_mask"] = xr.where(low_quality, 1, ds_s2["quality_data_mask"])
     ds_s2["quality_data_mask"] = xr.where(high_quality, 2, ds_s2["quality_data_mask"])
+
+    ds_s2["quality_data_mask"].attrs["data_source"] = "s2"
+    ds_s2["quality_data_mask"].attrs["long_name"] = "Quality Data Mask"
+    ds_s2["quality_data_mask"].attrs["description"] = "0 = Invalid, 1 = Low Quality, 2 = High Quality"
 
     # TODO: Delete this?
     # ds_s2 = ds_s2.drop_vars("scl")
@@ -76,6 +75,7 @@ def parse_s2_tile_id(fpath: str | Path) -> tuple[str, str, str]:
     return planet_crop_id, s2_tile_id, tile_id
 
 
+@stopuhr.funkuhr("Loading Sentinel 2 scene from file", printer=logger.debug, print_kwargs=True)
 def load_s2_scene(fpath: str | Path) -> xr.Dataset:
     """Load a Sentinel 2 satellite GeoTIFF file and return it as an xarray datset.
 
@@ -89,8 +89,6 @@ def load_s2_scene(fpath: str | Path) -> xr.Dataset:
         FileNotFoundError: If no matching TIFF file is found in the specified path.
 
     """
-    start_time = time.time()
-
     # Convert to Path object if a string is provided
     fpath = fpath if isinstance(fpath, Path) else Path(fpath)
 
@@ -110,18 +108,18 @@ def load_s2_scene(fpath: str | Path) -> xr.Dataset:
     ds_s2 = s2_da.fillna(0).rio.write_nodata(0).astype("uint16").assign_coords({"band": bands}).to_dataset(dim="band")
 
     for var in ds_s2.data_vars:
-        ds_s2[var].assign_attrs(
-            {"data_source": "s2", "long_name": f"Sentinel 2 {var.capitalize()}", "units": "Reflectance"}
-        )
+        ds_s2[var].attrs["data_source"] = "s2"
+        ds_s2[var].attrs["long_name"] = f"Sentinel 2 {var.capitalize()}"
+        ds_s2[var].attrs["units"] = "Reflectance"
 
     planet_crop_id, s2_tile_id, tile_id = parse_s2_tile_id(fpath)
     ds_s2.attrs["planet_crop_id"] = planet_crop_id
     ds_s2.attrs["s2_tile_id"] = s2_tile_id
     ds_s2.attrs["tile_id"] = tile_id
-    logger.debug(f"Loaded Sentinel 2 scene in {time.time() - start_time} seconds.")
     return ds_s2
 
 
+@stopuhr.funkuhr("Loading Sentinel 2 masks", printer=logger.debug, print_kwargs=["fpath"])
 def load_s2_masks(fpath: str | Path, reference_geobox: GeoBox) -> xr.Dataset:
     """Load the valid and quality data masks from a Sentinel 2 scene.
 
@@ -136,8 +134,6 @@ def load_s2_masks(fpath: str | Path, reference_geobox: GeoBox) -> xr.Dataset:
             - 'quality_data_mask': A mask indicating high quality (1) and low quality (0).
 
     """
-    start_time = time.time()
-
     # Convert to Path object if a string is provided
     fpath = fpath if isinstance(fpath, Path) else Path(fpath)
 
@@ -166,10 +162,10 @@ def load_s2_masks(fpath: str | Path, reference_geobox: GeoBox) -> xr.Dataset:
     da_scl = xr.Dataset({"scl": da_scl.sel(band=1).fillna(0).drop_vars("band").astype("uint8")})
     da_scl = convert_masks(da_scl)
 
-    logger.debug(f"Loaded data masks in {time.time() - start_time} seconds.")
     return da_scl
 
 
+@stopuhr.funkuhr("Loading Sentinel 2 scene from GEE", printer=logger.debug, print_kwargs=["img"])
 def load_s2_from_gee(
     img: str | ee.Image,
     bands_mapping: dict = {"B2": "blue", "B3": "green", "B4": "red", "B8": "nir"},
@@ -194,8 +190,6 @@ def load_s2_from_gee(
         xr.Dataset: The loaded dataset
 
     """
-    tick_fstart = time.perf_counter()
-
     if isinstance(img, str):
         s2id = img
         img = ee.Image(f"COPERNICUS/S2_SR_HARMONIZED/{s2id}")
@@ -223,23 +217,22 @@ def load_s2_from_gee(
         ds_s2.attrs["time"] = str(ds_s2.time.values[0])
         ds_s2 = ds_s2.isel(time=0).drop_vars("time").rename({"X": "x", "Y": "y"}).transpose("y", "x")
         ds_s2 = ds_s2.odc.assign_crs(ds_s2.attrs["crs"])
-        tick_send = time.perf_counter()
-        logger.debug(f"Found dataset with shape {ds_s2.sizes} for tile {s2id=} in {tick_send - tick_fstart} seconds.")
+        logger.debug(
+            f"Found dataset with shape {ds_s2.sizes} for tile {s2id=}."
+            "Start downloading data from GEE. This may take a while."
+        )
 
-        logger.debug(f"Start downloading {s2id=} from GEE. This may take a while.")
-        tick_dstart = time.perf_counter()
-        ds_s2.load()
-        if cache_file is not None:
-            ds_s2.to_netcdf(cache_file, engine="h5netcdf")
-        tick_dend = time.perf_counter()
-        logger.debug(f"Downloaded and cached the data for tile {s2id=} in {tick_dend - tick_dstart} seconds.")
+        with stopuhr.stopuhr(f"Downloading data from GEE for {s2id=}", printer=logger.debug):
+            ds_s2.load()
+            if cache_file is not None:
+                ds_s2.to_netcdf(cache_file, engine="h5netcdf")
 
     ds_s2 = ds_s2.rename_vars(bands_mapping)
 
     for var in ds_s2.data_vars:
-        ds_s2[var].assign_attrs(
-            {"data_source": "s2-gee", "long_name": f"Sentinel 2 {var.capitalize()}", "units": "Reflectance"}
-        )
+        ds_s2[var].attrs["data_source"] = "s2-gee"
+        ds_s2[var].attrs["long_name"] = f"Sentinel 2 {var.capitalize()}"
+        ds_s2[var].attrs["units"] = "Reflectance"
 
     ds_s2 = convert_masks(ds_s2)
 
@@ -247,17 +240,19 @@ def load_s2_from_gee(
     # To workaround this, set all nan values to 0 and add this information to the quality_data_mask
     # This workaround is quite computational expensive, but it works for now
     # TODO: Find other solutions for this problem!
-    for band in set(bands_mapping.values()) - {"scl"}:
-        ds_s2["quality_data_mask"] = xr.where(ds_s2[band].isnull(), 0, ds_s2["quality_data_mask"])
-        ds_s2[band] = ds_s2[band].fillna(0)
-        # Turn real nan values (scl is nan) into invalid data
-        ds_s2[band] = ds_s2[band].where(~ds_s2["scl"].isnull())
+    with stopuhr.stopuhr(f"Fixing nan values in {s2id=}", printer=logger.debug):
+        for band in set(bands_mapping.values()) - {"scl"}:
+            ds_s2["quality_data_mask"] = xr.where(ds_s2[band].isnull(), 0, ds_s2["quality_data_mask"])
+            ds_s2[band] = ds_s2[band].fillna(0)
+            # Turn real nan values (scl is nan) into invalid data
+            ds_s2[band] = ds_s2[band].where(~ds_s2["scl"].isnull())
 
     if scale_and_offset:
         if isinstance(scale_and_offset, tuple):
             scale, offset = scale_and_offset
         else:
             scale, offset = 0.0001, 0
+        logger.debug(f"Applying {scale=} and {offset=} to {s2id=} optical data")
         for band in set(bands_mapping.values()) - {"scl"}:
             ds_s2[band] = ds_s2[band] * scale + offset
 
@@ -267,6 +262,7 @@ def load_s2_from_gee(
     return ds_s2
 
 
+@stopuhr.funkuhr("Loading Sentinel 2 scene from STAC", printer=logger.debug, print_kwargs=["s2id"])
 def load_s2_from_stac(
     s2id: str,
     bands_mapping: dict = {"B02_10m": "blue", "B03_10m": "green", "B04_10m": "red", "B08_10m": "nir"},
@@ -291,8 +287,6 @@ def load_s2_from_stac(
         xr.Dataset: The loaded dataset
 
     """
-    tick_fstart = time.perf_counter()
-
     if "SCL_20m" not in bands_mapping.keys():
         bands_mapping["SCL_20m"] = "scl"
 
@@ -315,23 +309,22 @@ def load_s2_from_stac(
         )
         ds_s2.attrs["time"] = str(ds_s2.time.values[0])
         ds_s2 = ds_s2.isel(time=0).drop_vars("time")
-        tick_send = time.perf_counter()
-        logger.debug(f"Found a dataset with shape {ds_s2.sizes} for tile {s2id=} in {tick_send - tick_fstart} seconds.")
+        logger.debug(
+            f"Found a dataset with shape {ds_s2.sizes} for tile {s2id=}."
+            "Start downloading data from STAC. This may take a while."
+        )
 
-        logger.debug(f"Start downloading {s2id=} from S3. This may take a while.")
-        tick_dstart = time.perf_counter()
-        # Need double loading since the first load transforms lazy-stac to dask and second actually downloads the data
-        ds_s2.load().load()
-        if cache_file is not None:
-            ds_s2.to_netcdf(cache_file, engine="h5netcdf")
-        tick_dend = time.perf_counter()
-        logger.debug(f"Downloaded and cached the data for tile {s2id=} in {tick_dend - tick_dstart} seconds.")
+        with stopuhr.stopuhr(f"Downloading data from STAC for {s2id=}", printer=logger.debug):
+            # Need double loading since the first load transforms lazy-stac to dask and second actually downloads
+            ds_s2.load().load()
+            if cache_file is not None:
+                ds_s2.to_netcdf(cache_file, engine="h5netcdf")
 
     ds_s2 = ds_s2.rename_vars(bands_mapping)
     for var in ds_s2.data_vars:
-        ds_s2[var].assign_attrs(
-            {"data_source": "s2-gee", "long_name": f"Sentinel 2 {var.capitalize()}", "units": "Reflectance"}
-        )
+        ds_s2[var].attrs["data_source"] = "s2-stac"
+        ds_s2[var].attrs["long_name"] = f"Sentinel 2 {var.capitalize()}"
+        ds_s2[var].attrs["units"] = "Reflectance"
 
     ds_s2 = convert_masks(ds_s2)
 
@@ -340,6 +333,7 @@ def load_s2_from_stac(
             scale, offset = scale_and_offset
         else:
             scale, offset = 0.0001, 0
+        logger.debug(f"Applying {scale=} and {offset=} to {s2id=} optical data")
         for band in set(bands_mapping.values()) - {"scl"}:
             ds_s2[band] = ds_s2[band] * scale + offset
 
@@ -349,6 +343,7 @@ def load_s2_from_stac(
     return ds_s2
 
 
+@stopuhr.funkuhr("Searching for Sentinel 2 tiles via Earth Engine", printer=logger.debug, print_kwargs=True)
 def get_s2ids_from_shape_ee(
     aoi_shapefile: Path,
     start_date: str,
@@ -367,11 +362,6 @@ def get_s2ids_from_shape_ee(
         set[str]: Unique Sentinel 2 tile IDs.
 
     """
-    logger.debug(
-        f"Searching for Sentinel 2 tiles via Earth Engine: "
-        f"{aoi_shapefile=} {start_date=} {end_date=} {max_cloud_cover=}."
-    )
-    tick_fstart = time.perf_counter()
     aoi = gpd.read_file(aoi_shapefile)
     aoi = aoi.to_crs("EPSG:4326")
     s2ids = set()
@@ -384,11 +374,11 @@ def get_s2ids_from_shape_ee(
             .filterMetadata("CLOUDY_PIXEL_PERCENTAGE", "less_than", max_cloud_cover)
         )
         s2ids.update(ic.aggregate_array("system:index").getInfo())
-    tick_fend = time.perf_counter()
-    logger.debug(f"Found {len(s2ids)} Sentinel 2 tiles via ee in {tick_fend - tick_fstart} seconds.")
+    logger.debug(f"Found {len(s2ids)} Sentinel 2 tiles via ee.")
     return s2ids
 
 
+@stopuhr.funkuhr("Searching for Sentinel 2 tiles via STAC", printer=logger.debug, print_kwargs=True)
 def get_s2ids_from_shape_stac(
     aoi_shapefile: Path,
     start_date: str,
@@ -411,10 +401,6 @@ def get_s2ids_from_shape_stac(
         set[str]: Unique Sentinel 2 tile IDs.
 
     """
-    logger.debug(
-        f"Searching for Sentinel 2 tiles via STAC: {aoi_shapefile=} {start_date=} {end_date=} {max_cloud_cover=}."
-    )
-    tick_fstart = time.perf_counter()
     aoi = gpd.read_file(aoi_shapefile)
     catalog = Client.open("https://stac.dataspace.copernicus.eu/v1/")
     s2ids = set()
@@ -427,6 +413,5 @@ def get_s2ids_from_shape_stac(
             query=[f"eo:cloud_cover<={max_cloud_cover}"],
         )
         s2ids.update(search.get_all_items())
-    tick_fend = time.perf_counter()
-    logger.debug(f"Found {len(s2ids)} Sentinel 2 tiles via stac in {tick_fend - tick_fstart} seconds.")
+    logger.debug(f"Found {len(s2ids)} Sentinel 2 tiles via stac.")
     return s2ids

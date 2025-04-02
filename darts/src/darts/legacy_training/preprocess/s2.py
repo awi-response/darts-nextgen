@@ -123,6 +123,43 @@ def preprocess_s2_train_data(
 ):
     """Preprocess Sentinel 2 data for training.
 
+    The data is split into a cross-validation, a validation-test and a test set:
+
+        - `cross-val` is meant to be used for train and validation
+        - `val-test` (5%) random leave-out for testing the randomness distribution shift of the data
+        - `test` leave-out region for testing the spatial distribution shift of the data
+
+    Each split is stored as a zarr group, containing a x and a y dataarray.
+    The x dataarray contains the input data with the shape (n_patches, n_bands, patch_size, patch_size).
+    The y dataarray contains the labels with the shape (n_patches, patch_size, patch_size).
+    Both dataarrays are chunked along the n_patches dimension.
+    This results in super fast random access to the data, because each sample / patch is stored in a separate chunk and
+    therefore in a separate file.
+
+    Through the parameters `test_val_split` and `test_regions`, the test and validation split can be controlled.
+    To `test_regions` can a list of admin 1 or admin 2 region names, based on the region shapefile maintained by
+    https://github.com/wmgeolab/geoBoundaries, be supplied to remove intersecting scenes from the dataset and
+    put them in the test-split.
+    With the `test_val_split` parameter, the ratio between further splitting of a test-validation set can be controlled.
+
+    Through `exclude_nopositve` and `exclude_nan`, respective patches can be excluded from the final data.
+
+    Further, a `config.toml` file is saved in the `train_data_dir` containing the configuration used for the
+    preprocessing.
+    Addionally, a `labels.geojson` file is saved in the `train_data_dir` containing the joined labels geometries used
+    for the creation of the binarized label-masks, containing also information about the split via the `mode` column.
+
+    The final directory structure of `train_data_dir` will look like this:
+
+    ```sh
+    train_data_dir/
+    ├── config.toml
+    ├── cross-val.zarr/
+    ├── test.zarr/
+    ├── val-test.zarr/
+    └── labels.geojson
+    ```
+
     Args:
         bands (list[str]): The bands to be used for training. Must be present in the preprocessing.
         sentinel2_dir (Path): The directory containing the Sentinel 2 scenes.
@@ -168,10 +205,10 @@ def preprocess_s2_train_data(
     from darts_segmentation.training.prepare_training import create_training_patches
     from dask.distributed import Client, LocalCluster
     from lovely_tensors import monkey_patch
-    from numcodecs import Blosc
     from odc.stac import configure_rio
     from rich.progress import track
-    from zarr.storage import DirectoryStore
+    from zarr.codecs import BloscCodec
+    from zarr.storage import LocalStore
 
     from darts.utils.cuda import debug_info, decide_device
     from darts.utils.earthengine import init_ee
@@ -207,9 +244,9 @@ def preprocess_s2_train_data(
         train_data_dir.mkdir(exist_ok=True, parents=True)
 
         zgroups = {
-            "cross-val": zarr.group(store=DirectoryStore(train_data_dir / "cross-val.zarr"), overwrite=True),
-            "val-test": zarr.group(store=DirectoryStore(train_data_dir / "val-test.zarr"), overwrite=True),
-            "test": zarr.group(store=DirectoryStore(train_data_dir / "test.zarr"), overwrite=True),
+            "cross-val": zarr.group(store=LocalStore(train_data_dir / "cross-val.zarr"), overwrite=True),
+            "val-test": zarr.group(store=LocalStore(train_data_dir / "val-test.zarr"), overwrite=True),
+            "test": zarr.group(store=LocalStore(train_data_dir / "test.zarr"), overwrite=True),
         }
         # We need do declare the number of patches to 0, because we can't know the final number of patches
         for root in zgroups.values():
@@ -219,7 +256,7 @@ def preprocess_s2_train_data(
                 # shards=(100, len(bands), patch_size, patch_size),
                 chunks=(1, len(bands), patch_size, patch_size),
                 dtype="float32",
-                compressor=Blosc(cname="lz4", clevel=9),
+                compressors=BloscCodec(cname="lz4", clevel=9),
             )
             root.create(
                 name="y",
@@ -227,7 +264,7 @@ def preprocess_s2_train_data(
                 # shards=(100, patch_size, patch_size),
                 chunks=(1, patch_size, patch_size),
                 dtype="uint8",
-                compressor=Blosc(cname="lz4", clevel=9),
+                compressors=BloscCodec(cname="lz4", clevel=9),
             )
 
         # Find all Sentinel 2 scenes and split into train+val (cross-val), val-test (variance) and test (region)

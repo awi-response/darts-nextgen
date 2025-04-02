@@ -26,14 +26,48 @@ This is te successor of the thaw-slump-segmentation (pipeline), with which the f
 3. Run the Sentinel 2 based pipeline on an area of interest:
 
     ```sh
-    uv run darts run-native-sentinel2-pipeline-from-aoi \
+    uv run darts run-sequential-aoi-sentinel2-pipeline \
       --aoi-shapefile path/to/your/aoi.geojson \
-      --model-file path/to/your/model/checkpoint \
+      --model-files path/to/your/model/checkpoint \
       --start-date 2024-07 \
       --end-date 2024-09
     ```
 
-Continue reading with an [Overview](overview.md) for more detailed information or the [Install Guide](guides/installation.md) for detailed information about the installation.
+<div class="grid cards" markdown>
+
+-   :material-lightbulb-on:{ .lg .middle } __Overview__
+
+    ---
+
+    Get an overview on how this project works and how to run different pipelines.
+
+    [:octicons-arrow-right-24: Get Started](overview.md)
+
+-   :material-folder-download:{ .lg .middle } __Install__
+
+    ---
+
+    View detailed instructions on how to install the project for different environments and setup, e.g. with CUDA.
+
+    [:octicons-arrow-right-24: Install](guides/installation.md)
+
+-   :material-book-cog:{ .lg .middle } __Pipeline Components__
+
+    ---
+
+    Learn about the different components of the pipeline and how they work together.
+
+    [:octicons-arrow-right-24: Components](guides/components.md)
+
+-   :material-scale-balance:{ .lg .middle } __API Reference__
+
+    ---
+
+    View the API reference of the components.
+
+    [:octicons-arrow-right-24: Reference](reference/index.md)
+
+</div>
 
 ## Contribute
 

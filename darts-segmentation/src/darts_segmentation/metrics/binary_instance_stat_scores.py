@@ -247,7 +247,6 @@ class BinaryInstanceFBetaScore(BinaryInstanceStatScores):
             beta (float): The beta parameter for the F-beta score.
             threshold (float, optional): Threshold for binarizing the prediction.
                 Has no effect if the prediction is already binarized. Defaults to 0.5.
-            matching_threshold (float, optional): The threshold for matching instances. Defaults to 0.5.
             multidim_average (Literal["global", "samplewise"], optional): How the average over multiple batches is
                 calculated. Defaults to "global".
             ignore_index (int | None, optional): Ignores an invalid class. Defaults to None.
@@ -308,7 +307,6 @@ class BinaryInstanceF1Score(BinaryInstanceFBetaScore):
         Args:
             threshold (float, optional): Threshold for binarizing the prediction.
                 Has no effect if the prediction is already binarized. Defaults to 0.5.
-            matching_threshold (float, optional): The threshold for matching instances. Defaults to 0.5.
             multidim_average (Literal["global", "samplewise"], optional): How the average over multiple batches is
                 calculated. Defaults to "global".
             ignore_index (int | None, optional): Ignores an invalid class. Defaults to None.
@@ -346,6 +344,11 @@ class BinaryInstanceConfusionMatrix(BinaryInstanceStatScores):
     def __init__(
         self,
         normalize: bool | None = None,
+        threshold: float = 0.5,
+        matching_threshold: float = 0.5,
+        multidim_average: Literal["global", "samplewise"] = "global",
+        ignore_index: int | None = None,
+        validate_args: bool = True,
         **kwargs: Any,
     ) -> None:
         """Create a new instance of the BinaryInstanceConfusionMatrix metric.
@@ -367,7 +370,14 @@ class BinaryInstanceConfusionMatrix(BinaryInstanceStatScores):
             ValueError: If `normalize` is not a bool.
 
         """
-        super().__init__(**kwargs)
+        super().__init__(
+            threshold=threshold,
+            matching_threshold=matching_threshold,
+            multidim_average=multidim_average,
+            ignore_index=ignore_index,
+            validate_args=False,
+            **kwargs,
+        )
         if normalize is not None and not isinstance(normalize, bool):
             raise ValueError(f"Argument `normalize` needs to be of bool type but got {type(normalize)}")
         self.normalize = normalize

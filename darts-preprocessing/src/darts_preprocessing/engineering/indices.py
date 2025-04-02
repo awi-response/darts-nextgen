@@ -1,13 +1,14 @@
 """Calculation of spectral indices from optical data."""
 
 import logging
-import time
 
+import stopuhr
 import xarray as xr
 
 logger = logging.getLogger(__name__.replace("darts_", "darts."))
 
 
+@stopuhr.funkuhr("Calculating NDVI", printer=logger.debug, print_kwargs=["nir_band", "red_band"])
 def calculate_ndvi(planet_scene_dataset: xr.Dataset, nir_band: str = "nir", red_band: str = "red") -> xr.Dataset:
     """Calculate NDVI from an xarray Dataset containing spectral bands.
 
@@ -36,8 +37,6 @@ def calculate_ndvi(planet_scene_dataset: xr.Dataset, nir_band: str = "nir", red_
         This index is commonly used in remote sensing to assess vegetation health and density.
 
     """
-    start = time.time()
-    logger.debug(f"Calculating NDVI from {nir_band=} and {red_band=}.")
     # Calculate NDVI using the formula
     nir = planet_scene_dataset[nir_band].astype("float32")
     r = planet_scene_dataset[red_band].astype("float32")
@@ -51,5 +50,4 @@ def calculate_ndvi(planet_scene_dataset: xr.Dataset, nir_band: str = "nir", red_
     ndvi = ndvi.astype("uint16")
 
     ndvi = ndvi.assign_attrs({"data_source": "planet", "long_name": "NDVI"}).to_dataset(name="ndvi")
-    logger.debug(f"NDVI calculated in {time.time() - start} seconds.")
     return ndvi

@@ -8,6 +8,7 @@ dependencies = [
     "cyclopts>=3.1.0",
     "lovely-numpy>=0.2.13",
     "setuptools>=75.5.0",
+    "stopuhr>=0.0.4",
     "names-generator>=0.2.0",
     # IO
     "boto3>=1.37.7",
@@ -23,14 +24,15 @@ dependencies = [
     "pystac-client>=0.8.6",
     "odc-geo>=0.4.8",
     "odc-stac[botocore]>=0.3.10",
+    "smart-geocubes[stac,gee]>=0.0.6",
     "toml>=0.10.2",
-    "zarr[jupyter]>=2.18.3, <3",
+    "zarr>=3.0.4",
     # Processing
     "albumentations>=1.4.21",
     "scikit-image>=0.20",
     "scipy>=1.14.1",
     "xarray-spatial>=0.4.0",
-    "dask>=2024.11.0",
+    "dask>=2024.11.0,<2025.3.0",
     "distributed>=2024.12.0",
     "geocube>=0.7.0",
     "numpy>=1.26.3, <2",
@@ -53,7 +55,7 @@ dependencies = [
     "darts-preprocessing",
     "darts-segmentation",
     "darts-superresolution",
-    "darts-utils"
+    "darts-utils",
 ]
 readme = "README.md"
 requires-python = ">= 3.11"
@@ -115,19 +117,6 @@ cuda121 = [
     "cuda-python>=12.6.2.post1",
     "pynvml==11.4.1",
 ]
-cuda124 = [
-    "torch>=2.2.0",
-    "torchvision>=0.17.0",
-    "segmentation-models-pytorch>=0.4.0",
-    "lovely-tensors>=0.1.17",
-    "timm>=1.0.13",
-    # CUDA-only
-    "cucim-cu12>=24.8",
-    "cupy-cuda12x>=13.3.0",
-    "cupy-xarray",
-    "cuda-python>=12.6.2.post1",
-    "pynvml==11.4.1",
-]
 cuda126 = [
     "torch>=2.2.0",
     "torchvision>=0.17.0",
@@ -143,8 +132,7 @@ cuda126 = [
 ]
 training = [
     "lightning>=2.4.0",
-    # "psycopg2>=2.9.10",
-    "psycopg[binary]",
+    "psycopg2-binary>=2.9.10",
     "torchmetrics>=1.6.0",
     "wandb>=0.18.7",
     "optuna>=4.1.0",
@@ -205,7 +193,6 @@ conflicts = [
     { extra = "cpu" },
     { extra = "cuda118" },
     { extra = "cuda121" },
-    { extra = "cuda124" },
     { extra = "cuda126" },
   ],
 ]
@@ -216,14 +203,12 @@ torch = [
   { index = "pytorch-cpu", extra = "cpu" },
   { index = "pytorch-cu118", extra = "cuda118" },
   { index = "pytorch-cu121", extra = "cuda121" },
-  { index = "pytorch-cu124", extra = "cuda124" },
   { index = "pytorch-cu126", extra = "cuda126" },
 ]
 torchvision = [
   { index = "pytorch-cpu", extra = "cpu" },
   { index = "pytorch-cu118", extra = "cuda118" },
   { index = "pytorch-cu121", extra = "cuda121" },
-  { index = "pytorch-cu124", extra = "cuda124" },
   { index = "pytorch-cu126", extra = "cuda126" },
 ]
 darts-acquisition = { workspace = true }
@@ -248,11 +233,6 @@ explicit = true
 [[tool.uv.index]]
 name = "pytorch-cu121"
 url = "https://download.pytorch.org/whl/cu121"
-explicit = true
-
-[[tool.uv.index]]
-name = "pytorch-cu124"
-url = "https://download.pytorch.org/whl/cu124"
 explicit = true
 
 [[tool.uv.index]]
