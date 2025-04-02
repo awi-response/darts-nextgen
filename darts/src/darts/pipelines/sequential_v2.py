@@ -31,7 +31,7 @@ class _BasePipeline(ABC):
     The main class must be also a dataclass, to fully inherit all parameter of this class (and the mixins).
     """
 
-    model_files: Path | list[Path] = None
+    model_files: list[Path] = None
     output_data_dir: Path = Path("data/output")
     arcticdem_dir: Path = Path("data/download/arcticdem")
     tcvis_dir: Path = Path("data/download/tcvis")
