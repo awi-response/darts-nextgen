@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any, TypedDict
 
 import segmentation_models_pytorch as smp
+import stopuhr
 import torch
 import torch.nn as nn
 import xarray as xr
@@ -122,6 +123,11 @@ class SMPSegmenter:
         # TODO: Test this
         return torch.stack(bands, dim=0).reshape(len(tiles), len(self.config["input_combination"]), *bands[0].shape)
 
+    @stopuhr.funkuhr(
+        "Segmenting tile",
+        logger.debug,
+        print_kwargs=["patch_size", "overlap", "batch_size", "reflection"],
+    )
     def segment_tile(
         self, tile: xr.Dataset, patch_size: int = 1024, overlap: int = 16, batch_size: int = 8, reflection: int = 0
     ) -> xr.Dataset:
@@ -152,9 +158,7 @@ class SMPSegmenter:
         # Highly sophisticated DL-based predictor
         # TODO: is there a better way to pass metadata?
         tile["probabilities"] = tile["red"].copy(data=probabilities.cpu().numpy())
-        tile["probabilities"].attrs = {
-            "long_name": "Probabilities",
-        }
+        tile["probabilities"].attrs = {"long_name": "Probabilities"}
         tile["probabilities"] = tile["probabilities"].fillna(float("nan")).rio.write_nodata(float("nan"))
 
         # Cleanup cuda memory
@@ -163,6 +167,11 @@ class SMPSegmenter:
 
         return tile
 
+    @stopuhr.funkuhr(
+        "Segmenting tiles",
+        logger.debug,
+        print_kwargs=["patch_size", "overlap", "batch_size", "reflection"],
+    )
     def segment_tile_batched(
         self,
         tiles: list[xr.Dataset],
@@ -201,9 +210,7 @@ class SMPSegmenter:
         for tile, probs in zip(tiles, probabilities):
             # TODO: is there a better way to pass metadata?
             tile["probabilities"] = tile["red"].copy(data=probs.cpu().numpy())
-            tile["probabilities"].attrs = {
-                "long_name": "Probabilities",
-            }
+            tile["probabilities"].attrs = {"long_name": "Probabilities"}
             tile["probabilities"] = tile["probabilities"].fillna(float("nan")).rio.write_nodata(float("nan"))
 
         # Cleanup cuda memory

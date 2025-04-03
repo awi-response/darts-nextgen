@@ -1,11 +1,8 @@
 """Image superresolution of Sentinel 2 imagery for the DARTS dataset."""
 
+import importlib.metadata
 
-def hello() -> str:
-    """Say hello to the user.
-
-    Returns:
-        str: Greating message.
-
-    """
-    return "Hello from darts-superresolution!"
+try:
+    __version__ = importlib.metadata.version("darts-nextgen")
+except importlib.metadata.PackageNotFoundError:
+    __version__ = "0.0.0"

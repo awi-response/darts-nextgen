@@ -21,45 +21,29 @@ jobs:
   update-version:
     runs-on: ubuntu-latest
 
+    permissions:
+      contents: write
+      id-token: write
+
+    env:
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
     outputs:
-      VERSION: ${{ steps.get_version.outputs.VERSION }}
+      VERSION: ${{ steps.update_version.outputs.tag-number }}
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v2
-
-      - name: Install rye
-        uses: eifinger/setup-rye@v4
+        uses: actions/checkout@v4
         with:
-          enable-cache: true
-          version: '0.39.0'
+          fetch-depth: 0
 
-      # Do a version bump to the package
-      - name: Update version in pyproject.toml
-        run: |
-          rye version --bump ${{ github.event.inputs.bump }}
-          cd darts-acquisition && rye version --bump ${{ github.event.inputs.bump }}
-          cd ../darts-ensemble && rye version --bump ${{ github.event.inputs.bump }}
-          cd ../darts-export && rye version --bump ${{ github.event.inputs.bump }}
-          cd ../darts-pipeline && rye version --bump ${{ github.event.inputs.bump }}
-          cd ../darts-preprocessing && rye version --bump ${{ github.event.inputs.bump }}
-          cd ../darts-postprocessing && rye version --bump ${{ github.event.inputs.bump }}
-          cd ../darts-segmentation && rye version --bump ${{ github.event.inputs.bump }}
-          cd ../darts-superresolution && rye version --bump ${{ github.event.inputs.bump }}
-          cd ../darts-utils && rye version --bump ${{ github.event.inputs.bump }}
-
-      # Get the new version with rye version and save it as an variable
-      - name: Get new version
-        id: get_version
-        run: echo "VERSION=$(rye version)" >> $GITHUB_OUTPUT
-
-      - name: Commit changes
-        run: |
-          git config --global user.name 'github-actions'
-          git config --global user.email 'github-actions@github.com'
-          git add pyproject.toml
-          git commit -m "${{ github.event.inputs.bump }} version bump to ${{ steps.get_version.outputs.VERSION }}"
-          git push
+      # Do a version bump on the package
+      - name: Update version by bumping git tag
+        id: update_version
+        uses: leonsteinhaeuser/git-tag-bump@v1.1.0
+        with:
+          args: >-
+            --bump ${{ github.event.inputs.bump }} --v-prefix --create --actor-name "GitHub Actions" --actor-mail "github-actions[bot]@users.noreply.github.com"
 
   build-and-publish:
     runs-on: ubuntu-latest
@@ -73,22 +57,20 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v2
-
-      - name: Install rye
-        uses: eifinger/setup-rye@v4
+        uses: actions/checkout@v4
         with:
-          enable-cache: true
-          version: '0.39.0'
+          fetch-depth: 0
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          version: '0.6.7'
+
+      - name: Set up Python
+        run: uv python install
 
       - name: Build package
-        run: rye build --all
-
-      # TODO: Run tests
-
-      # - name: Publish to PyPI
-      #   run: |
-      #     rye publish --token ${{ secrets.PYPI_TOKEN }} --yes
+        run: uv build
 
       - name: Create GitHub Release
         id: create_release
@@ -96,10 +78,14 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          tag_name: v${{ needs.update-version.outputs.VERSION }}
+          tag_name: ${{ needs.update-version.outputs.VERSION }}
           release_name: Release ${{ needs.update-version.outputs.VERSION }}
           draft: false
           prerelease: false
+
+      # TODO: Setup PyPI publishing
+      # - name: Publish to PyPI
+      #   run: uv publish --trusted-publishing always
 
   build-and-publish-docs:
     runs-on: ubuntu-latest
@@ -117,10 +103,13 @@ jobs:
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
 
-      - name: Setup Python
-        uses: actions/setup-python@v5
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
         with:
-          python-version: '3.11'
+          version: '0.6.7'
+
+      - name: Set up Python
+        run: uv python install
 
       - name: Get cache id
         run: echo "cache_id=$(date --utc '+%V')" >> $GITHUB_ENV
@@ -134,8 +123,10 @@ jobs:
             mkdocs-material
 
       - name: Install dependencies
-        run: |
-          pip install "mkdocs-material[imaging]>=9.5.38" "mkdocstrings[python]>=0.26.1" "mike>=2.1.3" "mkdocs-git-revision-date-localized-plugin>=1.2.9" "mkdocs-git-committers-plugin-2>=2.3.0"
+        run: uv sync --extra training --extra cpu --group docs
+
+      - name: Install dependencies
+        run: uv sync --extra training --extra cpu --group docs
 
       - name: Publish documentation
-        run: mike deploy --push --update-aliases ${{ needs.update-version.outputs.VERSION }} latest
+        run: uv run mike deploy --push --update-aliases ${{ needs.update-version.outputs.VERSION }} latest

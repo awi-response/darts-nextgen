@@ -7,13 +7,11 @@ sentinel2-dir = "data/input/sentinel2"
 orthotiles-dir = "data/input/planet/PSOrthoTile"
 scenes-dir = "data/input/planet/PSScene"
 output-data-dir = "data/output"
-model-dir = "models"
-tcvis-model-name = "RTS_v6_tcvis.pt"
-notcvis-model-name = "RTS_v6_notcvis.pt"
-arcticdem-slope-vrt = "data/input/ArcticDEM/slope.vrt"
-arcticdem-elevation-vrt = "data/input/ArcticDEM/elevation.vrt"
+model-files = ["models/RTS_v6_tcvis.pt", "models/RTS_v6_notcvis.pt"]
 arcticdem-dir = "data/download/arcticdem"
 tcvis-dir = "data/download/tcvis"
+overwrite = false # planet inference only
+image-ids = ['20210724_194944_103c', '20210731_200455_92_2262'] # planet inference only, remove to process all images
 
 [darts.preprocess]
 tpi-outer-radius = 100
@@ -24,20 +22,3 @@ patch-size = 1024
 overlap = 256
 batch-size = 2
 reflection = 32
-
-[darts.training]
-bands = [
-    'blue',
-    'green',
-    'red',
-    'nir',
-    'ndvi',
-    'tc_brightness',
-    'tc_greenness',
-    'tc_wetness',
-    'relative_elevation',
-    'slope',
-]
-train-data-dir = "data/training"
-include-allzero = false
-include-nan-edges = true

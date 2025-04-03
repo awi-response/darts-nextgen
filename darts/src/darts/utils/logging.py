@@ -5,14 +5,17 @@ import time
 from pathlib import Path
 
 import cyclopts
-from rich.console import Console
+from darts_utils.rich import RichManager
 from rich.logging import RichHandler
 
 # A global level to easy change the log level for interal darts modules
 # -> is different from the log level of other libraries (always INFO)
-DARTS_LEVEL = logging.DEBUG
+DARTS_LEVEL = logging.INFO
 
 logger = logging.getLogger(__name__)
+
+# Console singleton to access the console from anywhere
+# console = Console()
 
 
 class LoggingManagerSingleton:
@@ -32,28 +35,46 @@ class LoggingManagerSingleton:
         self._rich_handler = None
         self._file_handler = None
         self._managed_loggers = []
+        self._log_level = DARTS_LEVEL
 
-    def setup_logging(self):
-        """Set up logging for the application."""
+    @property
+    def logger(self):
+        """Get the logger for the application."""
+        return logging.getLogger("darts")
+
+    def setup_logging(self, verbose: bool = False):
+        """Set up logging for the application.
+
+        Args:
+            verbose (bool): Whether to set the log level to DEBUG.
+
+        """
         # Set up logging for our own modules
+        self._log_level = logging.DEBUG if verbose else DARTS_LEVEL
         logging.getLogger("darts").setLevel(DARTS_LEVEL)
         logging.captureWarnings(True)
 
-    def add_logging_handlers(self, command: str, console: Console, log_dir: Path, tracebacks_show_locals: bool = False):
+    def add_logging_handlers(
+        self, command: str, log_dir: Path, verbose: bool = False, tracebacks_show_locals: bool = False
+    ):
         """Add logging handlers (rich-console and file) to the application.
 
         Args:
             command (str): The command that is run.
-            console (Console): The rich console to log everything to.
             log_dir (Path): The directory to save the logs to.
+            verbose (bool): Whether to set the log level to DEBUG.
             tracebacks_show_locals (bool): Whether to show local variables in tracebacks.
 
         """
         import distributed
-        import lightning as L  # noqa: N812
         import torch
         import torch.utils.data
         import xarray as xr
+
+        try:
+            import lightning as L  # noqa: N812
+        except ImportError:
+            L = None  # noqa: N806
 
         if self._rich_handler is not None or self._file_handler is not None:
             logger.warning("Logging handlers already added.")
@@ -63,10 +84,13 @@ class LoggingManagerSingleton:
         current_time = time.strftime("%Y-%m-%d_%H-%M-%S")
 
         # Configure the rich console handler
+        traceback_suppress = [cyclopts, torch, torch.utils.data, xr, distributed]
+        if L:
+            traceback_suppress.append(L)
         rich_handler = RichHandler(
-            console=console,
+            console=RichManager.console,
             rich_tracebacks=True,
-            tracebacks_suppress=[cyclopts, L, torch, torch.utils.data, xr, distributed],
+            tracebacks_suppress=traceback_suppress,
             tracebacks_show_locals=tracebacks_show_locals,
         )
         rich_handler.setFormatter(
@@ -87,19 +111,25 @@ class LoggingManagerSingleton:
         )
         self._file_handler = file_handler
 
+        self._log_level = logging.DEBUG if verbose else DARTS_LEVEL
+
         darts_logger = logging.getLogger("darts")
         darts_logger.addHandler(rich_handler)
         darts_logger.addHandler(file_handler)
-        darts_logger.setLevel(DARTS_LEVEL)
+        darts_logger.setLevel(self._log_level)
 
-    def apply_logging_handlers(self, *names: str, level: int = logging.INFO):
+    def apply_logging_handlers(self, *names: str, level: int | None = None):
         """Apply the logging handlers to a (third-party) logger.
 
         Args:
             names (str): The names of the loggers to apply the handlers to.
-            level (int): The log level to set for the logger.
+            level (int | None, optional): The log level to set for the loggers. If None, use the manager level.
+                Defaults to None.
 
         """
+        if level is None:
+            level = self._log_level
+
         for name in names:
             if name in self._managed_loggers:
                 continue

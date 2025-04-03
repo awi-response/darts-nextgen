@@ -9,7 +9,7 @@ import torch
 import xarray as xr
 
 # TODO: move erode_mask to darts_utils, since uasge is not limited to prepare_export
-from darts_postprocessing.prepare_export import erode_mask
+from darts_postprocessing.postprocess import erode_mask
 from geocube.api.core import make_geocube
 
 from darts_segmentation.utils import create_patches

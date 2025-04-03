@@ -1,6 +1,8 @@
 """Utility functions for legacy training."""
 
 import logging
+import secrets
+import string
 from datetime import datetime
 from pathlib import Path
 
@@ -61,6 +63,54 @@ def convert_lightning_checkpoint(
     logger.info(f"Saved converted checkpoint to {out_checkpoint.resolve()}")
 
 
+def get_value_from_trial(trial, constrains, param: str):
+    """Get a value from an optuna trial based on the constrains.
+
+    Args:
+        trial (optuna.Trial): The optuna trial
+        constrains (dict): The constrains for the parameter
+        param (str): The parameter name
+
+    Raises:
+        ValueError: Unknown distribution
+        ValueError: Unknown constrains
+
+    Returns:
+        str | float | int: The value suggested by optuna
+
+    """
+    # Handle bad case first: user didn't specified the "distribution key"
+    if "distribution" not in constrains.keys():
+        if "value" in constrains.keys():
+            res = constrains["value"]
+        elif "values" in constrains.keys():
+            res = trial.suggest_categorical(param, constrains["values"])
+        elif "min" in constrains.keys() and "max" in constrains.keys():
+            res = trial.suggest_float(param, constrains["min"], constrains["max"])
+        else:
+            raise ValueError(f"Unknown constrains for parameter {param}")
+
+        return res
+
+    # Now handle the good case where the user specified the distribution
+    distribution = constrains["distribution"]
+    match distribution:
+        case "categorical":
+            res = trial.suggest_categorical(param, constrains["values"])
+        case "int_uniform":
+            res = trial.suggest_int(param, constrains["min"], constrains["max"])
+        case "uniform":
+            res = trial.suggest_float(param, constrains["min"], constrains["max"])
+        case "q_uniform":
+            res = trial.suggest_float(param, constrains["min"], constrains["max"], step=constrains["q"])
+        case "log_uniform_values":
+            res = trial.suggest_float(param, constrains["min"], constrains["max"], log=True)
+        case _:
+            raise ValueError(f"Unknown distribution {distribution}")
+
+    return res
+
+
 def suggest_optuna_params_from_wandb_config(trial, config: dict):
     """Get optuna parameters from a wandb sweep config.
 
@@ -69,9 +119,6 @@ def suggest_optuna_params_from_wandb_config(trial, config: dict):
     Args:
         trial (optuna.Trial): The optuna trial
         config (dict): The wandb sweep config
-
-    Raises:
-        ValueError: If the distribution is not recognized.
 
     Returns:
         dict: A dict of parameters with the values suggested from optuna.
@@ -131,31 +178,45 @@ def suggest_optuna_params_from_wandb_config(trial, config: dict):
 
     conv = {}
     for param, constrains in wandb_params.items():
-        # Handle bad case first: user didn't specified the "distribution key"
-        if "distribution" not in constrains.keys():
-            if "value" in constrains.keys():
-                conv[param] = constrains["value"]
-            elif "values" in constrains.keys():
-                conv[param] = trial.suggest_categorical(param, constrains["values"])
-            elif "min" in constrains.keys() and "max" in constrains.keys():
-                conv[param] = trial.suggest_float(param, constrains["min"], constrains["max"])
-            else:
-                raise ValueError(f"Unknown constrains for parameter {param}")
-            continue
-
-        # Now handle the good case where the user specified the distribution
-        distribution = constrains["distribution"]
-        if distribution == "categorical":
-            conv[param] = trial.suggest_categorical(param, constrains["values"])
-        elif distribution == "int_uniform":
-            conv[param] = trial.suggest_int(param, constrains["min"], constrains["max"])
-        elif distribution == "uniform":
-            conv[param] = trial.suggest_float(param, constrains["min"], constrains["max"])
-        elif distribution == "q_uniform":
-            conv[param] = trial.suggest_float(param, constrains["min"], constrains["max"], step=constrains["q"])
-        elif distribution == "log_uniform_values":
-            conv[param] = trial.suggest_float(param, constrains["min"], constrains["max"], log=True)
-        else:
-            raise ValueError(f"Unknown distribution {distribution}")
-
+        conv[param] = get_value_from_trial(trial, constrains, param)
     return conv
+
+
+def generate_id(length: int = 8) -> str:
+    """Generate a random base-36 string of `length` digits.
+
+    This method is taken from the wandb SDK.
+
+    There are ~2.8T base-36 8-digit strings. Generating 210k ids will have a ~1% chance of collision.
+
+    Args:
+        length (int, optional): The length of the string. Defaults to 8.
+
+    Returns:
+        str: A random base-36 string of `length` digits.
+
+    """
+    alphabet = string.ascii_lowercase + string.digits
+    return "".join(secrets.choice(alphabet) for _ in range(length))
+
+
+def get_generated_name(artifact_dir: Path) -> str:
+    """Generate a random name with a count attached.
+
+    The count is calculated by the number of existing directories in the specified artifact directory.
+    The final name is in the format '{somename}-{somesecondname}-{count+1}'.
+
+    Args:
+        artifact_dir (Path): The directory of existing runs.
+
+    Returns:
+        str: The final name.
+
+    """
+    from names_generator import generate_name
+
+    run_name = generate_name(style="hyphen")
+    # Count the number of existing runs in the artifact_dir, increase the number by one and append it to the name
+    run_count = sum(1 for p in artifact_dir.glob("*") if p.is_dir())
+    run_name = f"{run_name}-{run_count + 1}"
+    return run_name

@@ -17,6 +17,8 @@ logs
 wandb
 lightning_logs
 artifacts
+cufile.log
+.nfs*
 
 # Mkdocs
 .cache
@@ -38,3 +40,6 @@ requirements-dev.lock
 config.toml
 .env
 configs/
+
+# Custom local scripts
+scripts-local/
