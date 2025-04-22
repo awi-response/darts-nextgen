@@ -1,0 +1,49 @@
+# This CITATION.cff file was generated with cffinit.
+# Visit https://bit.ly/cffinit to generate yours today!
+
+cff-version: 1.2.0
+title: DARTS-nextgen
+message: >-
+  If you use this software, please cite it using the
+  metadata from this file.
+type: software
+authors:
+  - given-names: Ingmar
+    family-names: Nitze
+    email: ingmar.nitze@awi.de
+    affiliation: Alfred Wegener Institute for Polar and Marine Research
+    orcid: 'https://orcid.org/0000-0002-1165-6852'
+  - given-names: Konrad
+    family-names: Heidler
+    affiliation: Technical University Munich
+    orcid: 'https://orcid.org/0000-0001-8226-0727'
+  - given-names: Jonas
+    family-names: Küpper
+    orcid: 'https://orcid.org/0000-0001-6728-7411'
+    affiliation: Alfred Wegener Institute for Polar and Marine Research
+    email: jonas.kuepper@awi.de
+  - given-names: Tobias
+    family-names: Hölzer
+    email: tobias.hoelzer@awi.de
+    affiliation: Alfred Wegener Institute for Polar and Marine Research
+    orcid: 'https://orcid.org/0009-0005-9058-0882'
+identifiers:
+  - type: url
+    value: 'https://github.com/awi-response/darts-nextgen'
+  - type: doi
+    value: 10.5281/zenodo.15261545
+repository-code: 'https://github.com/awi-response/darts-nextgen'
+url: 'https://awi-response.github.io/darts-nextgen/'
+abstract: >-
+  Panarctic Database of Active Layer Detachment Slides and
+  Retrogressive Thaw Slumps from Deep Learning on High
+  Resolution Satellite Imagery. This is te successor of the
+  thaw-slump-segmentation (pipeline), with which the first
+  version of the DARTS dataset was created.
+keywords:
+  - deep learning
+  - segmentation
+  - permafrost
+  - retrogressive thaw slumps
+  - geospatial
+license: MIT
