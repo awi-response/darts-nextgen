@@ -11,8 +11,8 @@ from xrspatial.utils import has_cuda_and_cupy
 logger = logging.getLogger(__name__.replace("darts_", "darts."))
 
 if has_cuda_and_cupy():
-    import cupy as cp
-    import cupy_xarray  # noqa: F401
+    import cupy as cp  # type: ignore
+    import cupy_xarray  # noqa: F401 # type: ignore
 
 
 @stopuhr.funkuhr("Calculating TPI", printer=logger.debug, print_kwargs=["outer_radius", "inner_radius"])

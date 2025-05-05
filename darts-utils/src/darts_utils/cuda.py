@@ -6,7 +6,7 @@ import gc
 def free_cupy():
     """Free the CUDA memory of cupy."""
     try:
-        import cupy as cp
+        import cupy as cp  # type: ignore
     except ImportError:
         cp = None
 

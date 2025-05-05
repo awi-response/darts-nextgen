@@ -16,8 +16,8 @@ logger = logging.getLogger(__name__.replace("darts_", "darts."))
 
 
 if has_cuda_and_cupy():
-    import cupy as cp
-    import cupy_xarray  # noqa: F401
+    import cupy as cp  # type: ignore
+    import cupy_xarray  # noqa: F401 # type: ignore
 
     DEFAULT_DEVICE = "cuda"
     logger.debug("GPU-accelerated xrspatial functions are available.")

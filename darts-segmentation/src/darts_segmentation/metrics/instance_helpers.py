@@ -3,8 +3,8 @@
 import torch
 
 try:
-    import cupy as cp
-    from cucim.skimage.measure import label as label_gpu
+    import cupy as cp  # type: ignore
+    from cucim.skimage.measure import label as label_gpu  # type: ignore
 
     CUCIM_AVAILABLE = True
 except ImportError:
@@ -82,9 +82,9 @@ def match_instances(
         assert instances_preds.dim() == 2, f"Expected 2 dimensions, got {instances_preds.dim()}"
         assert instances_target.dtype == torch.uint8, f"Expected torch.uint8, got {instances_target.dtype}"
         assert instances_preds.dtype == torch.uint8, f"Expected torch.uint8, got {instances_preds.dtype}"
-        assert (
-            instances_target.shape == instances_preds.shape
-        ), f"Shapes do not match: {instances_target.shape} and {instances_preds.shape}"
+        assert instances_target.shape == instances_preds.shape, (
+            f"Shapes do not match: {instances_target.shape} and {instances_preds.shape}"
+        )
 
     height, width = instances_target.shape
     ntargets = instances_target.max().item()

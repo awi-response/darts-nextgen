@@ -20,7 +20,7 @@ def debug_info():
     logger.debug(f"LD_LIBRARY_PATH: {os.environ.get('LD_LIBRARY_PATH')}")
 
     try:
-        from pynvml import (
+        from pynvml import (  # type: ignore
             nvmlDeviceGetCount,
             nvmlDeviceGetHandleByIndex,
             nvmlDeviceGetMemoryInfo,
@@ -50,7 +50,7 @@ def debug_info():
         logger.debug("Module 'pynvml' not found, darts is probably installed without CUDA support.")
 
     try:
-        import cupy
+        import cupy  # type: ignore
 
         logger.debug(f"Cupy version: {cupy.__version__}")
         # This is the version which is installed (dynamically linked via PATH or LD_LIBRARY_PATH) in the environment
@@ -82,7 +82,7 @@ def debug_info():
         logger.debug("Module 'numba.cuda' not found, darts is probably installed without CUDA support.")
 
     try:
-        import cucim
+        import cucim  # type: ignore
 
         logger.debug(f"Cucim version: {cucim.__version__}")
     except ImportError:
@@ -119,7 +119,7 @@ def decide_device(device: Literal["cuda", "cpu", "auto"] | int | None) -> Litera
             return "cpu"
 
         try:
-            from pynvml import (
+            from pynvml import (  # type: ignore
                 nvmlDeviceGetCount,
                 nvmlDeviceGetHandleByIndex,
                 nvmlDeviceGetMemoryInfo,
