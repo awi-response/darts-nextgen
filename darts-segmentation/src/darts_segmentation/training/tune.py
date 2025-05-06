@@ -11,14 +11,18 @@ import logging
 import time
 from dataclasses import asdict
 from pathlib import Path
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 
 from darts_segmentation.training.scoring import check_score_is_unstable
+
+if TYPE_CHECKING:
+    import pandas as pd
+
 
 logger = logging.getLogger(__name__.replace("darts_", "darts."))
 
 
-def tune(
+def tune_smp(
     hpconfig: Path,
     # Data
     train_data_dir: Path,
@@ -48,7 +52,7 @@ def tune(
     # Wandb config
     wandb_entity: str | None = None,
     wandb_project: str | None = None,
-):
+) -> tuple[float, "pd.DataFrame"]:
     """Tune the hyper-parameters of the model using cross-validation and random states.
 
     Please see https://smp.readthedocs.io/en/latest/index.html for model configurations of architecture and encoder.
@@ -122,7 +126,6 @@ def tune(
                 - "empty": Whether the image is empty
                 The index should refer to the index of the sample in the zarr data.
             This directory should be created by a preprocessing script.
-        batch_size (int): Batch size for training and validation.
         data_split_method (Literal["random", "region", "sample"] | None, optional):
             The method to use for splitting the data into a train and a test set.
             "random" will split the data randomly, the seed is always 42 and the size of the test set can be

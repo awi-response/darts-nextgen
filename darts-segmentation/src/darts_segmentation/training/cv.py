@@ -23,7 +23,7 @@ def _gen_seed(n_randoms: int) -> list[int]:
     return seeds
 
 
-def cross_validation(
+def cross_validation_smp(
     # Data
     train_data_dir: Path,
     data_split_method: Literal["random", "region", "sample"] | None = None,

@@ -10,9 +10,11 @@ The "model creation process" (training) is implemented as a three-level hierarch
 
 [TOC]
 
+## Preprocessing the data
+
 ???+ note "Preprocessed data"
-    All training scripts expect data to be present in preprocessed form.
-    This means that the `train_data_dir` must look like this:
+All training scripts expect data to be present in preprocessed form.
+This means that the `train_data_dir` must look like this:
 
     ```sh
     train_data_dir/
@@ -41,207 +43,7 @@ The "model creation process" (training) is implemented as a three-level hierarch
 
     Ideally, use the preprocessing functions explained below to create this structure.
 
-## Artifacts and Naming
-
-Training artefacts are stored in an organized way so that one does not get lost in 1000s of different directories.
-Especially when tuning hyperparameters, a lot of different runs are created, which can be difficult to track.
-
-For organisation, each tune, cv and training run has it's own name, which _can_ be provided manually, but is usually generated automatically.
-The name can only be provided manually for the call-level - hence when tuning one can only provide the name for the tune, respective cross-validations and training runs are named automatically based on the provided name.
-If no name is provided, a random, but human-readable name is generated.
-Further, a random 8-character id is also generated for each run, primarily for tracking purposes with Weights & Biases.
-
-The naming scheme is as follows:
-
-- `tune_name`: automatically generated or provided
-- `cv_name`: `{tune_name}-cv{hp_index}` if called by tune, else automatically generated or provided
-- `run_name`: `{cv_name}-run-f{fold_index}s{seed}` if called by cross-validation (or indirect tune), else automatically generated or provided
-- `run_id`: 8-character id
-
-Artifacts are stored in the following hierarchy:
-
-- Created by runs of tunes: `{artifact_dir}/{tune_name}/{cv_name}/{run_name}-{run_id}`
-- Created by runs of cross-validations: `{artifact_dir}/_cross_validations/{cv_name}/{run_name}-{run_id}`
-- Created by single runs: `{artifact_dir}/_runs/{run_name}-{run_id}`
-
-This way, the top-level `artifact_dir` is kept clean and organized,
-
-The cross-validation will not only contain the artifacts from the training runs but also a `run_infos.parquet` file with information about each run / experiment.
-This dataframe contains a `fold`, `seed`, `duration`, `checkpoint`, `is_unstable`, `is_unstable` and metrics columns, where the metrics are taken from the `trainer.callback_metrics`.
-The `is_unstable` column indicates whether the score-metrics of the run were unstable (not finite or zero).
-Further, it also contains a `score` and a `score_is_unstable` column, which contains the score and a boolean indicating whether any run of the cross-validation was unstable.
-These columns contain the same value for every row (run), since they are valid for the complete cross-validation.
-
-Weights & Biases is optionally used for further tracking and logging.
-`wandb_project` and `wandb_entity` can be used to specify the project and entity for logging.
-Wandb will create a run `run_id` named `{run_name}`, meaning the id can be used to directly access the run via link and the name can be used for searching a run.
-For cross-validation and tuning `cv_name` and `tune_name` are set as `job_type` and `group` to emulate sweeps.
-This is a workaround and could potentially fixed if wandb will update their client library to allow the manual creation of sweeps.
-
-## About random-state
-
-All random state of the tuning and the cross-validation is seeded to 42.
-Random state of the training can be specified through a parameter.
-The cross-validation will not only cross-validates along different folds but also over different random seeds.
-Thus, for a single cross-validation with 5 folds and 3 seeds, 15 runs will be executed.
-
-## About data splits cross-validation
-
-The general idea behind the process of a tune or a cross-validation follows the [`scikit-learn` cross-validation process](https://scikit-learn.org/stable/modules/cross_validation.html).
-![sk-learn training process](../assets/sklearn-workflow.png){ loading=lazy }
-
-The initial training/test data split is performed by using the `data_split_method` and `data_split_by` parameters.
-`data_split_method` can be one of the following:
-
-- `"random"` will split the data randomly, the seed is always 42 and the size of the test set can be specified by providing a float between 0 and 1 to `data_split_by`.
-- `"region"` will split the data by one or multiple regions, which can be specified by providing a str or list of str to `data_split_by`.
-- `"sample"` will split the data by sample ids, which can be specified similar to `"region"`.
-- `None`, no split is done and the complete dataset is used for both training and testing.
-
-While cross-validating, the data can further be split into a training and validation set.
-One can specify the fraction of the validation set by providing an integer to `total_folds`.
-Higher values will result in smaller, validation sets and therefore more fold-combinations.
-To reduce the number of folds actually run, one can provide the `n_folds` parameter to limit the number of folds actually run.
-Thus, some folds will be skipped.
-The "folding" is based on `scikit-learn` and currently supports the following folding methods, which can be specified by the `fold_method` parameter:
-
-- `"kfold"`: Split the data into `total_folds` folds, where each fold can be used as a validation set. Uses `sklearn.model_selection.KFold`.
-- `"stratified"`: Will use the `"empty"` column of the metadata to create `total_folds` shuffled folds where each fold contains the same amount of empty and non-empty samples. Uses `sklearn.model_selection.StratifiedKFold`.
-- `"shuffle"`: Similar to `"stratified"`, but the order of the data is shuffled before splitting. Uses `sklearn.model_selection.StratifiedShuffleSplit`.
-- `"region"`: Will use the `"region"` column of the metadata to create `total_folds` folds where each fold splits the data by one or multiple regions. Uses `sklearn.model_selection.GroupShuffleSplit`.
-- `"region-stratified"`: Merge of the `"region"` and `"stratified"` methods. Uses `sklearn.model_selection.StratifiedGroupKFold`.
-
-Even in normal training a single KFold split is used to split between training and validation.
-This can be disabled by setting `fold_method` to `None`.
-In such cases, the validation set becomes equal to the training set, meaning longer validation time and the metrics are always calculated on seen data.
-This is useful for e.g. the final training of a model before deployment.
-
-## Scoring strategies of cross-validation
-
-To turn the information (metrics) gathered of a single cross-validation into a useful score, we need to somehow aggregate the metrics.
-In cases we are only interested in a single metric, this is easy: we can easily compute the mean.
-This metric can be specified by the `scoring_metric` parameter of the cross validation.
-It is also possible to use multiple metrics by specifying a list of metrics in the `scoring_metric` parameter.
-This, however, makes it a little more complicated.
-
-Multi-metric scoring is implemented as combine-then-reduce, meaning that first for each fold the metrics are combined using the specified strategy, and then the results are reduced via mean.
-The combining strategy can be specified by the `multi_score_strategy` parameter.
-As of now, there are four strategies implemented: `"arithmetic"`, `"geometric"`, `"harmonic"` and `"min"`.
-
-The following visualization should help visualize how the different strategies work.
-Note that the loss is interpreted as "lower is better" and has also a broader range of possible values, exceeding 1.
-For the multi-metric scoring with IoU and Loss the arithmetic and geometric strategies are very instable.
-The scores for very low loss values where so high that the scores needed to be clipped to the range [0, 1] for the visualization to be able to show the behaviour of these strategies.
-However, especially the geometric mean shows a smoother curve than the harmonic mean for the multi-metric scoring with IoU and Recall.
-This should show that the strategy should be chosen carefully and in respect to the metrics used.
-
-|        |                                                                                      |
-| -----: | ---------------------------------------------------------------------------------------- |
-| IoU & Loss | ![Scoring strategies for JaccardIndex and Loss](../assets/score_strategies_iou_loss.png){ loading=lazy } |
-| IoU & Recall | ![Scoring strategies for JaccardIndex and Recall](../assets/score_strategies_iou_recall.png){ loading=lazy }|
-
-??? tip "Code to reproduce the visualization"
-
-    If you are unsure which strategy to use, you can use this code snippet to make a visualization based on your metrics:
-
-    ```py
-    import numpy as np
-    import xarray as xr
-
-    a = np.arange(0, 1, 0.01)
-    a = xr.DataArray(a, dims=["a"], coords={"a": a})
-    # 1 / ... indicates "lower is better" - replace it if needed
-    b = np.arange(0, 2, 0.01)
-    b = 1 / xr.DataArray(b, dims=["b"], coords={"b": b})
-
-    def viz_strategies(a, b):
-        harmonic = 2 / (1 / a + 1 / b)
-        geometric = np.sqrt(a * b)
-        arithmetic = (a + b) / 2
-        minimum = np.minimum(a, b)
-
-        harmonic = harmonic.rename("harmonic mean")
-        geometric = geometric.rename("geometric mean")
-        arithmetic = arithmetic.rename("arithmetic mean")
-        minimum = minimum.rename("minimum")
-
-        fig, axs = plt.subplots(1, 4, figsize=(25, 5))
-        axs = axs.flatten()
-        harmonic.plot(ax=axs[0])
-        axs[0].set_title("Harmonic")
-        geometric.plot(ax=axs[1], vmax=min(geometric.max(), 1))
-        axs[1].set_title("Geometric")
-        arithmetic.plot(ax=axs[2], vmax=min(arithmetic.max(), 1))
-        axs[2].set_title("Arithmetic")
-        minimum.plot(ax=axs[3])
-        axs[3].set_title("Minimum")
-        return fig
-
-    viz_strategies(a, b).show()
-    ```
-
-Each score can be provided by either ":higher" or ":lower" to indicate the direction of the metrics.
-This allows to correctly combine multiple metrics by doing 1/metric before calculation if a metric is ":lower".
-If no direction is provided, it is assumed to be ":higher".
-Has no real effect on the single score calculation, since only the mean is calculated there.
-
-!!! abstract "Available metrics"
-    - `"val/JaccardIndex"`
-    - `"val/Recall"`
-    TODO add more from trainer class
-    TODO: Implement https://lightning.ai/docs/pytorch/stable/api/lightning.pytorch.callbacks.ThroughputMonitor.html
-
-## Hyperparameter Tuning
-
-With the tuning script hyperparameters can be tuned by running a sweep.
-The sweep uses cross-validation to evaluate the performance of a single hyperparameter configuration.
-
-How the hyperparameters should be sweeped can be configured in a YAML or Toml file, specified by the `hpconfig` parameter.
-This file must contain a key called "hyperparameters" containing a list of hyperparameters distributions.
-These distributions can either be explicit defined by another dictionary containing a "distribution" key,
-or they can be implicit defined by a single value, a list or a dictionary containing a "low" and "high" key.
-
-The following distributions are supported:
-    - "uniform": Uniform distribution - must have a "low" and "high" value
-    - "loguniform": Log-uniform distribution - must have a "low" and "high" value
-    - "intuniform": Integer uniform distribution - must have a "low" and "high" value (both are inclusive)
-    - "choice": Choice distribution - must have a list of "choices" for explicit case, else just pass a list
-    - "value": Fixed value distribution - must have a "value" key for explicit case, else just pass a value
-
-Because the configuration file doesn't use the `darts` key, it can also be merged into the normal configuration file and specified by the `hpconfig` parameter to also use that file.
-
-??? question "Why using a separate configuration file?"
-
-    - It makes creating different sweeps easier
-    - It separates the sweep configuration from the normal configuration
-    - It allows for using dicts in the config - this is not possible right now due to the way we handle the main configuration file.
-
-Per default, a random search is performed, where the number of samples can be specified by `n_trials`.
-If `n_trials` is set to "grid", a grid search is performed instead.
-However, this expects to be every hyperparameter to be configured as either constant value or a choice / list.
-
-Optionally it is possible to retrain and test with the best hyperparameter configuration by setting `retrain_and_test` to `True`.
-This will retrain the model on the complete train split without folding and test the data on the test split.
-
-## Recommendations & best practices
-
-TODO
-
-- Best folding method: `"region-stratified"`
-- Best multi-scoring strategy: `"geometric"` for recall+iou, else `"harmonic"`
-- Test split should be `"region"` to the hardest region.
-
-## Preprocess the data
-
-
-!!! danger "Out of date"
-
-    The following sections are out of date.
-
-The train, validation and test flow ist best descriped in the following image:
-![DARTS training process](../assets/training-process.png){ loading=lazy }
-
-To split your sentinel 2 data into the three different datasets and preprocess it, you can use the following command:
+To preprocess sentinel 2 data into the necessary structure, you can use the following command:
 
 ```sh
 [uv run] darts preprocess-s2-train-data --your-args-here ...
@@ -255,27 +57,22 @@ To split your sentinel 2 data into the three different datasets and preprocess i
     [uv run] darts preprocess-planet-train-data --your-args-here ...
     ```
 
-This will create three data splits:
-
-- `cross-val`, used for train and validation
-- `val-test` 5% random leave-out for testing the randomness distribution shift of the data
-- `test` leave-out region for testing the spatial distribution shift of the data
+This will run the v2 preprocessing used by the v2 segmentation pipeline, but instead of passing the preprocessed data it creates patches of a fixed size and stores them into the `data.zarr` array.
+Further, it will also create the necessary metadata, config and labels files.
 
 The final train data is saved to disk in form of zarr arrays with dimensions `[n, c, h, w]` and `[n, h, w]` for the labels respectivly, with chunksizes of `n=1`.
 Hence, every sample is saved in a separate chunk and therefore in a seperate file on disk, but all managed by zarr.
 
-The preprocessing is done with the same components used in the segmentation pipeline.
+The preprocessing is done with the same components used in the v2 segmentation pipeline.
 Hence, the same configuration options are available.
-In addition, this preprocessing splits larger images into smaller patches of a fixed size.
-Size and overlap can be configured in the configuration file or via the arguments of the CLI.
 
 ??? tip "You can also use the underlying functions directly:"
 
-    ::: darts.legacy_training.preprocess_s2_train_data
+    ::: darts.training.preprocess_s2_train_data
         options:
             heading_level: 3
 
-    ::: darts.legacy_training.preprocess_planet_train_data
+    ::: darts.training.preprocess_planet_train_data
         options:
             heading_level: 3
 
@@ -290,7 +87,7 @@ To train a simple SMP (Segmentation Model Pytorch) model you can use the command
 Configurations for the architecture and encoder can be found in the [SMP documentation](https://smp.readthedocs.io/en/latest/index.html) for model configurations.
 
 !!! warning "Change defaults"
-    Even though the defaults from the CLI are somewhat useful, it is recommended to create a config file and change the behavior of the training there.
+Even though the defaults from the CLI are somewhat useful, it is recommended to create a config file and change the behavior of the training there.
 
 This will train a model with the `cross-val` data and save the model to disk.
 You don't need to specify the concrete path to the `cross-val` split, the training script expects that the `--train-data-dir` points to the root directory of the splits, hence, the same path used in the preprocessing should be specified.
@@ -307,7 +104,6 @@ Wandb logs are always stored under `{wandb_entity}/{wandb_project}/{run_name}`, 
 However, they are further grouped by the `trial_name` (via job_type), if specified.
 Both `run_name` and `run_id` are also stored in the hparams of each checkpoint.
 
-
 You can now test the model on the other two splits (`val-test` and `test`) with the following command:
 
 ```sh
@@ -323,15 +119,15 @@ To convert the model to a format, you need to convert is first:
 
 ??? tip "You can also use the underlying functions directly:"
 
-    ::: darts.legacy_training.train_smp
+    ::: darts_segmentation.training.train_smp
         options:
             heading_level: 3
 
-    ::: darts.legacy_training.test_smp
+    ::: darts_segmentation.training.test_smp
         options:
             heading_level: 3
 
-    ::: darts.legacy_training.convert_lightning_checkpoint
+    ::: darts_segmentation.training.convert_lightning_checkpoint
         options:
             heading_level: 3
 
@@ -388,6 +184,220 @@ uv run darts optuna-sweep-smp --your-args-here ... --device 1 --sweep-id <sweep-
     Therefore, the total number of runs done by a runner is `n-trials * n_folds * n_randoms`.
     This should ensure that a single random good (or bad) run does not influence the overall result of a hyperparameter-combination.
 
+## Hyperparameter Tuning
+
+With the tuning script hyperparameters can be tuned by running a sweep.
+The sweep uses cross-validation to evaluate the performance of a single hyperparameter configuration.
+
+How the hyperparameters should be sweeped can be configured in a YAML or Toml file, specified by the `hpconfig` parameter.
+This file must contain a key called `"hyperparameters"` containing a list of hyperparameters distributions.
+These distributions can either be explicit defined by another dictionary containing a `"distribution"` key,
+or they can be implicit defined by a single value, a list or a dictionary containing a `"low"` and `"high"` key.
+
+The following distributions are supported:
+
+- `"uniform"`: Uniform distribution - must have a `"low"` and `"high"` value
+- `"loguniform"`: Log-uniform distribution - must have a `"low"` and `"high"` value
+- `"intuniform"`: Integer uniform distribution - must have a `"low"` and `"high"` value (both are inclusive)
+- `"choice"`: Choice distribution - must have a list of `"choices"` for explicit case, else just pass a list
+- `"value"`: Fixed value distribution - must have a `"value"` key for explicit case, else just pass a value
+
+And the following hyperparameters can be configured:
+
+| Hyperparameter        | Type          | Default  |
+| --------------------- | ------------- | -------- |
+| model_arch            | str           | "Unet"   |
+| model_encoder         | str           | "dpn107" |
+| model_encoder_weights | str or None   | None     |
+| augment               | bool          | True     |
+| learning_rate         | float         | 1e-3     |
+| gamma                 | float         | 0.9      |
+| focal_loss_alpha      | float or None | None     |
+| focal_loss_gamma      | float         | 2.0      |
+| batch_size            | int           | 8        |
+
+Because the configuration file doesn't use the `darts` key, it can also be merged into the normal configuration file and specified by the `hpconfig` parameter to also use that file.
+
+??? question "Why using a separate configuration file?"
+
+    - It makes creating different sweeps easier
+    - It separates the sweep configuration from the normal configuration
+    - It allows for using dicts in the config - this is not possible right now due to the way we handle the main configuration file.
+
+Per default, a random search is performed, where the number of samples can be specified by `n_trials`.
+If `n_trials` is set to "grid", a grid search is performed instead.
+However, this expects to be every hyperparameter to be configured as either constant value or a choice / list.
+
+Optionally it is possible to retrain and test with the best hyperparameter configuration by setting `retrain_and_test` to `True`.
+This will retrain the model on the complete train split without folding and test the data on the test split.
+
+## Understanding internal workings
+
+### Artifacts and Naming
+
+Training artefacts are stored in an organized way so that one does not get lost in 1000s of different directories.
+Especially when tuning hyperparameters, a lot of different runs are created, which can be difficult to track.
+
+For organisation, each tune, cv and training run has it's own name, which _can_ be provided manually, but is usually generated automatically.
+The name can only be provided manually for the call-level - hence when tuning one can only provide the name for the tune, respective cross-validations and training runs are named automatically based on the provided name.
+If no name is provided, a random, but human-readable name is generated.
+Further, a random 8-character id is also generated for each run, primarily for tracking purposes with Weights & Biases.
+
+The naming scheme is as follows:
+
+- `tune_name`: automatically generated or provided
+- `cv_name`: `{tune_name}-cv{hp_index}` if called by tune, else automatically generated or provided
+- `run_name`: `{cv_name}-run-f{fold_index}s{seed}` if called by cross-validation (or indirect tune), else automatically generated or provided
+- `run_id`: 8-character id
+
+Artifacts are stored in the following hierarchy:
+
+- Created by runs of tunes: `{artifact_dir}/{tune_name}/{cv_name}/{run_name}-{run_id}`
+- Created by runs of cross-validations: `{artifact_dir}/_cross_validations/{cv_name}/{run_name}-{run_id}`
+- Created by single runs: `{artifact_dir}/_runs/{run_name}-{run_id}`
+
+This way, the top-level `artifact_dir` is kept clean and organized,
+
+The cross-validation will not only contain the artifacts from the training runs but also a `run_infos.parquet` file with information about each run / experiment.
+This dataframe contains a `fold`, `seed`, `duration`, `checkpoint`, `is_unstable`, `is_unstable` and metrics columns, where the metrics are taken from the `trainer.callback_metrics`.
+The `is_unstable` column indicates whether the score-metrics of the run were unstable (not finite or zero).
+Further, it also contains a `score` and a `score_is_unstable` column, which contains the score and a boolean indicating whether any run of the cross-validation was unstable.
+These columns contain the same value for every row (run), since they are valid for the complete cross-validation.
+
+Weights & Biases is optionally used for further tracking and logging.
+`wandb_project` and `wandb_entity` can be used to specify the project and entity for logging.
+Wandb will create a run `run_id` named `{run_name}`, meaning the id can be used to directly access the run via link and the name can be used for searching a run.
+For cross-validation and tuning `cv_name` and `tune_name` are set as `job_type` and `group` to emulate sweeps.
+This is a workaround and could potentially fixed if wandb will update their client library to allow the manual creation of sweeps.
+
+### About random-state
+
+All random state of the tuning and the cross-validation is seeded to 42.
+Random state of the training can be specified through a parameter.
+The cross-validation will not only cross-validates along different folds but also over different random seeds.
+Thus, for a single cross-validation with 5 folds and 3 seeds, 15 runs will be executed.
+
+### About data splits cross-validation
+
+The general idea behind the process of a tune or a cross-validation follows the [`scikit-learn` cross-validation process](https://scikit-learn.org/stable/modules/cross_validation.html).
+![sk-learn training process](../assets/sklearn-workflow.png){ loading=lazy }
+
+The initial training/test data split is performed by using the `data_split_method` and `data_split_by` parameters.
+`data_split_method` can be one of the following:
+
+- `"random"` will split the data randomly, the seed is always 42 and the size of the test set can be specified by providing a float between 0 and 1 to `data_split_by`.
+- `"region"` will split the data by one or multiple regions, which can be specified by providing a str or list of str to `data_split_by`.
+- `"sample"` will split the data by sample ids, which can be specified similar to `"region"`.
+- `None`, no split is done and the complete dataset is used for both training and testing.
+
+While cross-validating, the data can further be split into a training and validation set.
+One can specify the fraction of the validation set by providing an integer to `total_folds`.
+Higher values will result in smaller, validation sets and therefore more fold-combinations.
+To reduce the number of folds actually run, one can provide the `n_folds` parameter to limit the number of folds actually run.
+Thus, some folds will be skipped.
+The "folding" is based on `scikit-learn` and currently supports the following folding methods, which can be specified by the `fold_method` parameter:
+
+- `"kfold"`: Split the data into `total_folds` folds, where each fold can be used as a validation set. Uses [sklearn.model_selection.KFold][].
+- `"stratified"`: Will use the `"empty"` column of the metadata to create `total_folds` shuffled folds where each fold contains the same amount of empty and non-empty samples. Uses [sklearn.model_selection.StratifiedKFold][].
+- `"shuffle"`: Similar to `"stratified"`, but the order of the data is shuffled before splitting. Uses [sklearn.model_selection.StratifiedShuffleSplit][].
+- `"region"`: Will use the `"region"` column of the metadata to create `total_folds` folds where each fold splits the data by one or multiple regions. Uses [sklearn.model_selection.GroupShuffleSplit][].
+- `"region-stratified"`: Merge of the `"region"` and `"stratified"` methods. Uses [sklearn.model_selection.StratifiedGroupKFold][].
+
+Even in normal training a single KFold split is used to split between training and validation.
+This can be disabled by setting `fold_method` to `None`.
+In such cases, the validation set becomes equal to the training set, meaning longer validation time and the metrics are always calculated on seen data.
+This is useful for e.g. the final training of a model before deployment.
+
+??? tip "Using DartsDataModule"
+
+    The data splitting is implemented by the [darts_segmentation.training.data.DartsDataModule][] and can therefore be used in other settings as well.
+
+    ::: darts_segmentation.training.data.DartsDataModule
+        options:
+            heading_level: 3
+            members: false
+
+### Scoring strategies of cross-validation
+
+To turn the information (metrics) gathered of a single cross-validation into a useful score, we need to somehow aggregate the metrics.
+In cases we are only interested in a single metric, this is easy: we can easily compute the mean.
+This metric can be specified by the `scoring_metric` parameter of the cross validation.
+It is also possible to use multiple metrics by specifying a list of metrics in the `scoring_metric` parameter.
+This, however, makes it a little more complicated.
+
+Multi-metric scoring is implemented as combine-then-reduce, meaning that first for each fold the metrics are combined using the specified strategy, and then the results are reduced via mean.
+The combining strategy can be specified by the `multi_score_strategy` parameter.
+As of now, there are four strategies implemented: `"arithmetic"`, `"geometric"`, `"harmonic"` and `"min"`.
+
+The following visualization should help visualize how the different strategies work.
+Note that the loss is interpreted as "lower is better" and has also a broader range of possible values, exceeding 1.
+For the multi-metric scoring with IoU and Loss the arithmetic and geometric strategies are very instable.
+The scores for very low loss values where so high that the scores needed to be clipped to the range [0, 1] for the visualization to be able to show the behaviour of these strategies.
+However, especially the geometric mean shows a smoother curve than the harmonic mean for the multi-metric scoring with IoU and Recall.
+This should show that the strategy should be chosen carefully and in respect to the metrics used.
+
+|              |                                                                                                              |
+| -----------: | ------------------------------------------------------------------------------------------------------------ |
+|   IoU & Loss | ![Scoring strategies for JaccardIndex and Loss](../assets/score_strategies_iou_loss.png){ loading=lazy }     |
+| IoU & Recall | ![Scoring strategies for JaccardIndex and Recall](../assets/score_strategies_iou_recall.png){ loading=lazy } |
+
+??? tip "Code to reproduce the visualization"
+
+    If you are unsure which strategy to use, you can use this code snippet to make a visualization based on your metrics:
+
+    ```py
+    import numpy as np
+    import xarray as xr
+
+    a = np.arange(0, 1, 0.01)
+    a = xr.DataArray(a, dims=["a"], coords={"a": a})
+    # 1 / ... indicates "lower is better" - replace it if needed
+    b = np.arange(0, 2, 0.01)
+    b = 1 / xr.DataArray(b, dims=["b"], coords={"b": b})
+
+    def viz_strategies(a, b):
+        harmonic = 2 / (1 / a + 1 / b)
+        geometric = np.sqrt(a * b)
+        arithmetic = (a + b) / 2
+        minimum = np.minimum(a, b)
+
+        harmonic = harmonic.rename("harmonic mean")
+        geometric = geometric.rename("geometric mean")
+        arithmetic = arithmetic.rename("arithmetic mean")
+        minimum = minimum.rename("minimum")
+
+        fig, axs = plt.subplots(1, 4, figsize=(25, 5))
+        axs = axs.flatten()
+        harmonic.plot(ax=axs[0])
+        axs[0].set_title("Harmonic")
+        geometric.plot(ax=axs[1], vmax=min(geometric.max(), 1))
+        axs[1].set_title("Geometric")
+        arithmetic.plot(ax=axs[2], vmax=min(arithmetic.max(), 1))
+        axs[2].set_title("Arithmetic")
+        minimum.plot(ax=axs[3])
+        axs[3].set_title("Minimum")
+        return fig
+
+    viz_strategies(a, b).show()
+    ```
+
+Each score can be provided by either ":higher" or ":lower" to indicate the direction of the metrics.
+This allows to correctly combine multiple metrics by doing 1/metric before calculation if a metric is ":lower".
+If no direction is provided, it is assumed to be ":higher".
+Has no real effect on the single score calculation, since only the mean is calculated there.
+
+!!! abstract "Available metrics" - `"val/JaccardIndex"` - `"val/Recall"`
+TODO add more from trainer class
+TODO: Implement https://lightning.ai/docs/pytorch/stable/api/lightning.pytorch.callbacks.ThroughputMonitor.html
+
+## Recommendations & best practices
+
+TODO
+
+- Best folding method: `"region-stratified"`
+- Best multi-scoring strategy: `"geometric"` for combinations of recall, precision, f1 and jaccard index / iou, else `"harmonic"`
+- Test split should be `"region"` to the hardest region.
+
 ## Example config and sweep-config files
 
 For better readability, the example config file uses different sub-headings which are not necessary and could be named differently or even removed.
@@ -429,7 +439,6 @@ The resulting file structure would look like this:
         └── training/
             └── planet_native_tcvis_896_partial/
 ```
-
 
 ```toml title="configs/planet-sweep-config.toml"
 [darts.wandb]

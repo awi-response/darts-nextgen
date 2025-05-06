@@ -9,16 +9,18 @@ import cyclopts
 from darts_utils.rich import RichManager
 
 from darts import __version__
-from darts.legacy_training import (
-    convert_lightning_checkpoint,
-    optuna_sweep_smp,
+from darts.pipelines import AOISentinel2Pipeline, PlanetPipeline, Sentinel2Pipeline
+from darts.training import (
     preprocess_planet_train_data,
     preprocess_s2_train_data,
+)
+from darts.training.smp import (
+    convert_lightning_checkpoint,
+    cross_validation_smp,
     test_smp,
     train_smp,
-    wandb_sweep_smp,
+    tune_smp,
 )
-from darts.pipelines import AOISentinel2Pipeline, PlanetPipeline, Sentinel2Pipeline
 from darts.utils.config import ConfigParser
 from darts.utils.logging import LoggingManager
 
@@ -87,8 +89,8 @@ app.command(group=train_group)(preprocess_s2_train_data)
 app.command(group=train_group)(train_smp)
 app.command(group=train_group)(test_smp)
 app.command(group=train_group)(convert_lightning_checkpoint)
-app.command(group=train_group)(wandb_sweep_smp)
-app.command(group=train_group)(optuna_sweep_smp)
+app.command(group=train_group)(cross_validation_smp)
+app.command(group=train_group)(tune_smp)
 
 
 # Intercept the logging behavior to add a file handler

@@ -1,4 +1,4 @@
-"""Preprocessing functions for training with the v2 data preprocessing."""
+"""Sentinel 2 preprocessing functions for training with the v2 data preprocessing."""
 
 import logging
 from math import ceil, sqrt

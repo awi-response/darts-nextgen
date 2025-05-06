@@ -250,6 +250,7 @@ def _get_fold(
     raise ValueError(f"Fold {fold} not found")
 
 
+# TODO: band selection
 class DartsDataModule(L.LightningDataModule):
     def __init__(
         self,

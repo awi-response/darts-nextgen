@@ -9,7 +9,7 @@ def score_from_single_run(
     run_info: dict[str, float],
     scoring_metric: list[str] | str,
     multi_score_strategy: Literal["harmonic", "arithmetic", "geometric", "min"] = "harmonic",
-):
+) -> float:
     """Calculate a score from run metrics.
 
     Each metric can be provided by either ":higher" or ":lower" to indicate the direction of the metrics.
@@ -131,7 +131,7 @@ def score_from_runs(  # noqa: C901
     return score
 
 
-def check_score_is_unstable(run_info: dict, scoring_metric: list[str] | str):
+def check_score_is_unstable(run_info: dict, scoring_metric: list[str] | str) -> bool:
     """Check the stability of the scoring metric.
 
     If any metric value is not finite or equal to zero, the scoring metric is considered unstable.

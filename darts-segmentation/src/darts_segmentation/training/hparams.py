@@ -18,11 +18,11 @@ class Hyperparameters:
     # ! These should be equal to the (default) hyperparameters from train.py
     model_arch: str = "Unet"
     model_encoder: str = "dpn107"
-    model_encoder_weights: str = None
+    model_encoder_weights: str | None = None
     augment: bool = True
     learning_rate: float = 1e-3
     gamma: float = 0.9
-    focal_loss_alpha: float = None
+    focal_loss_alpha: float | None = None
     focal_loss_gamma: float = 2.0
     batch_size: int = 8
 
@@ -32,7 +32,7 @@ HP_NAMES = [field.name for field in Hyperparameters.__dataclass_fields__.values(
 
 def parse_hyperparameters(  # noqa: C901
     hpconfig_file: Path,
-) -> dict[str, list | "scipy.stats.rv_discrete" | "scipy.stats.rv_continuous"]:
+) -> dict[str, "list | scipy.stats.rv_discrete | scipy.stats.rv_continuous"]:
     """Parse hyperparameter configuration file to a valid dictionary for sklearn parameter search.
 
     Can be YAML or TOML.
@@ -237,7 +237,7 @@ def parse_hyperparameters(  # noqa: C901
 
 
 def sample_hyperparameters(
-    param_grid: dict[str, list | "scipy.stats.rv_discrete" | "scipy.stats.rv_continuous"],
+    param_grid: dict[str, "list | scipy.stats.rv_discrete | scipy.stats.rv_continuous"],
     n_trials: int | Literal["grid"] = 100,
 ) -> list[Hyperparameters]:
     """Sample hyperparameters from a parameter grid.

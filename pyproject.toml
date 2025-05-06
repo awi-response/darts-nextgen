@@ -152,6 +152,8 @@ dev = [
     "ipywidgets>=8.1.5",
     "folium>=0.17.0",
     "mapclassify>=2.8.1",
+    "nbconvert>=7.16.6",
+    "pyperclip>=1.9.0",
 ]
 
 docs = [

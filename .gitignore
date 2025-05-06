@@ -28,6 +28,7 @@ cufile.log
 
 # Tobis playgrounds
 notebooks/playground.ipynb
+notebooks/playground.py
 
 # Rye requirement.lock files since they are different anyway
 requirements.lock
