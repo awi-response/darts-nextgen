@@ -153,7 +153,7 @@ def preprocess_s2_train_data(
     init_ee(ee_project, ee_use_highvolume)
 
     configure_rio(cloud_defaults=True, aws={"aws_unsigned": True})
-    logger.info("Configured Rasterio with Dask")
+    logger.info("Configured Rasterio")
 
     # We hardcode these because they depend on the preprocessing used
     norm_factors = {

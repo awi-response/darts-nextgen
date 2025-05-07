@@ -59,12 +59,11 @@ def create_training_patches(
     if len(labels) > 0:
         labels_rasterized = 1 - make_geocube(labels, measurements=["id"], like=tile).id.isnull()
     else:
-        labels_rasterized = xr.zeros_like(tile["valid_data_mask"])
+        labels_rasterized = xr.zeros_like(tile["quality_data_mask"])
 
     # Filter out the nodata values (class 2 -> invalid data)
-    mask = erode_mask(tile["valid_data_mask"], mask_erosion_size, device)
-    mask = tile["valid_data_mask"]
-    labels_rasterized = xr.where(mask, labels_rasterized, 2)
+    quality_mask = erode_mask(tile["quality_data_mask"] == 0, mask_erosion_size, device)
+    labels_rasterized = xr.where(quality_mask, labels_rasterized, 2)
 
     # Normalize the bands and clip the values
     for band in bands:
@@ -75,7 +74,7 @@ def create_training_patches(
             tile[band] = tile[band].clip(0, 1)
 
     # Replace invalid values with nan (used for nan check later on)
-    tile = xr.where(tile["valid_data_mask"], tile, float("nan"))
+    tile = xr.where(tile["quality_data_mask"] == 0, tile, float("nan"))
 
     # Convert to dataaray and select the bands (bands are now in specified order)
     tile = tile.to_dataarray(dim="band").sel(band=bands)
@@ -104,17 +103,21 @@ def create_training_patches(
         y = tensor_labels[i]
 
         if exclude_nopositive and not (y == 1).any():
+            logger.debug(f"Skipping patch {i} with no positive labels")
             continue
 
         if exclude_nan and torch.isnan(x).any():
+            logger.debug(f"Skipping patch {i} with nan values")
             continue
 
         # Skip where there are less than 10% visible pixel
         if ((y != 2).sum() / y.numel()) < 0.1:
+            logger.debug(f"Skipping patch {i} with less than 10% visible pixels")
             continue
 
         # Skip patches where everything is nan
         if torch.isnan(x).all():
+            logger.debug(f"Skipping patch {i} where everything is nan")
             continue
 
         # Convert all nan values to 0
