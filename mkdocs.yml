@@ -24,6 +24,7 @@ nav:
       - Architecture: dev/arch.md
       - Datacubes: dev/auxiliary.md
       - Docs: dev/docs.md
+      - Problems with CUDA: dev/cuda_fixes.md
   - API Reference:
       - reference/index.md
       - <code class='doc-symbol doc-symbol-nav doc-symbol-module'></code>darts:
@@ -138,7 +139,7 @@ theme:
     view: material/eye
   palette:
     # Palette toggle for automatic mode
-    - media: "(prefers-color-scheme)"
+    - media: '(prefers-color-scheme)'
       primary: light blue # 00ABE8
       accent: teal
       toggle:
@@ -147,7 +148,7 @@ theme:
 
     # Palette toggle for light mode
     - scheme: default
-      media: "(prefers-color-scheme: light)"
+      media: '(prefers-color-scheme: light)'
       primary: light blue
       accent: teal
       toggle:
@@ -156,7 +157,7 @@ theme:
 
     # Palette toggle for dark mode
     - scheme: slate
-      media: "(prefers-color-scheme: dark)"
+      media: '(prefers-color-scheme: dark)'
       primary: light blue
       accent: teal
       toggle:
@@ -195,15 +196,15 @@ plugins:
             # - https://lightning.ai/docs/pytorch/stable/object.inv
             - https://scikit-learn.org/stable/objects.inv
           paths:
-            - "darts-acquisition/src"
-            - "darts-ensemble/src"
-            - "darts-export/src"
-            - "darts/src"
-            - "darts-preprocessing/src"
-            - "darts-postprocessing/src"
-            - "darts-segmentation/src"
-            - "darts-superresolution/src"
-            - "darts-utils/src"
+            - 'darts-acquisition/src'
+            - 'darts-ensemble/src'
+            - 'darts-export/src'
+            - 'darts/src'
+            - 'darts-preprocessing/src'
+            - 'darts-postprocessing/src'
+            - 'darts-segmentation/src'
+            - 'darts-superresolution/src'
+            - 'darts-utils/src'
           options:
             members: true
             inherited_members: true

@@ -1,5 +1,6 @@
 """Hyperparameters for training."""
 
+import logging
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal
@@ -9,6 +10,8 @@ import yaml
 
 if TYPE_CHECKING:
     import scipy.stats
+
+logger = logging.getLogger(__name__.replace("darts_", "darts."))
 
 
 @dataclass
@@ -147,6 +150,9 @@ def parse_hyperparameters(  # noqa: C901
 
     hpdistributions = {}
     for hparam, config in hpconfig.items():
+        if "-" in hparam:
+            logger.debug(f"Hyphen in hyperparameter name {hparam} is not supported. Replacing with underscore.")
+            hparam = hparam.replace("-", "_")
         # Assume implicit case
         if isinstance(config, list):
             # Choice
@@ -166,6 +172,11 @@ def parse_hyperparameters(  # noqa: C901
                     # Randfloat
                     hpdistributions[hparam] = scipy.stats.uniform(config["low"], config["high"] - config["low"])
                     continue
+                else:
+                    raise ValueError(
+                        f"Invalid hyperparameter configuration for {hparam}: low and high must be of the same type."
+                        f" Got {type(config['low'])=} and {type(config['high'])=}."
+                    )
 
         # Now Explicit
         assert isinstance(config, dict), f"Invalid hyperparameter configuration for {hparam}"

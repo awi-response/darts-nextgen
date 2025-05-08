@@ -8,7 +8,7 @@ dependencies = [
     "cyclopts>=3.1.0",
     "lovely-numpy>=0.2.13",
     "setuptools>=75.5.0",
-    "stopuhr>=0.0.4",
+    "stopuhr>=0.0.6",
     "names-generator>=0.2.0",
     # IO
     "boto3>=1.37.7",

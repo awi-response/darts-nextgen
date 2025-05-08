@@ -153,10 +153,7 @@ def load_planet_masks(fpath: str | Path) -> xr.Dataset:
     invalids = da_udm.sel(band=8).fillna(0) != 0
     low_quality = da_udm.sel(band=[2, 3, 4, 5, 6]).max(axis=0) == 1
     high_quality = ~low_quality & ~invalids
-    qa_ds = xr.Dataset(coords={c: da_udm.coords[c] for c in da_udm.coords})
-    qa_ds["quality_data_mask"] = (
-        xr.zeros_like(da_udm.sel(band=8)).where(invalids, 0).where(low_quality, 1).where(high_quality, 2)
-    )
+    qa_ds = xr.where(high_quality, 2, 0).where(~low_quality, 1).where(~invalids, 0).to_dataset(name="quality_data_mask")
     qa_ds["quality_data_mask"].attrs = {
         "data_source": "planet",
         "long_name": "Quality data mask",

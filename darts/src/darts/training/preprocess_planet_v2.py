@@ -1,6 +1,7 @@
 """PLANET preprocessing functions for training with the v2 data preprocessing."""
 
 import logging
+import time
 from math import ceil, sqrt
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal
@@ -140,6 +141,27 @@ def preprocess_planet_train_data(
             Defaults to 10.
 
     """
+    current_time = time.strftime("%Y-%m-%d_%H-%M-%S")
+    logger.info(f"Starting preprocessing at {current_time}.")
+
+    # Storing the configuration as JSON file
+    train_data_dir.mkdir(parents=True, exist_ok=True)
+    from darts_utils.functools import write_function_args_to_config_file
+
+    write_function_args_to_config_file(
+        fpath=train_data_dir / f"{current_time}.config.json",
+        function=preprocess_planet_train_data,
+        locals_=locals(),
+    )
+
+    from stopuhr import Chronometer
+
+    timer = Chronometer(printer=logger.debug)
+
+    from darts.utils.cuda import debug_info
+
+    debug_info()
+
     # Import here to avoid long loading times when running other commands
     import geopandas as gpd
     import pandas as pd
@@ -150,18 +172,18 @@ def preprocess_planet_train_data(
     from darts_acquisition.admin import download_admin_files
     from darts_preprocessing import preprocess_legacy_fast
     from darts_segmentation.training.prepare_training import create_training_patches
+    from darts_utils.rich import RichManager
+    from darts_utils.tilecache import XarrayCacheManager
     from lovely_tensors import monkey_patch
     from odc.stac import configure_rio
     from rich.progress import track
     from zarr.codecs import BloscCodec
     from zarr.storage import LocalStore
 
-    from darts.utils.cuda import debug_info, decide_device
+    from darts.utils.cuda import decide_device
     from darts.utils.earthengine import init_ee
-    from darts.utils.logging import console
 
     monkey_patch()
-    debug_info()
     device = decide_device(device)
     init_ee(ee_project, ee_use_highvolume)
     configure_rio(cloud_defaults=True, aws={"aws_unsigned": True})
@@ -219,83 +241,87 @@ def preprocess_planet_train_data(
         compressors=BloscCodec(cname="lz4", clevel=9),
     )
 
+    cache_manager = XarrayCacheManager(preprocess_cache)
+
     metadata = []
     for i, footprint in track(
-        footprints.iterrows(), description="Processing samples", total=len(footprints), console=console
+        footprints.iterrows(), description="Processing samples", total=len(footprints), console=RichManager.console
     ):
         planet_id = footprint.image_id
         try:
             logger.debug(f"Processing sample {planet_id} ({i + 1} of {len(footprints)})")
 
-            # Check for a cached preprocessed file
-            if preprocess_cache and (preprocess_cache / f"{planet_id}.nc").exists():
-                cache_file = preprocess_cache / f"{planet_id}.nc"
-                logger.info(f"Loading preprocessed data from {cache_file.resolve()}")
-                tile = xr.open_dataset(preprocess_cache / f"{planet_id}.nc", engine="h5netcdf").set_coords(
-                    "spatial_ref"
-                )
-            else:
-                if not footprint.fpath or not footprint.fpath.exists():
-                    logger.warning(f"Footprint image {planet_id} at {footprint.fpath} does not exist. Skipping...")
-                    continue
-                optical = load_planet_scene(footprint.fpath)
-                logger.info(f"Found optical tile with size {optical.sizes}")
+            if not footprint.fpath or (not footprint.fpath.exists() and not cache_manager.exists(planet_id)):
+                logger.warning(f"Footprint image {planet_id} at {footprint.fpath} does not exist. Skipping...")
+                continue
+
+            def _get_tile():
+                tile = load_planet_scene(footprint.fpath)
                 arctidem_res = 2
                 arcticdem_buffer = ceil(tpi_outer_radius / arctidem_res * sqrt(2))
                 arcticdem = load_arcticdem(
-                    optical.odc.geobox, arcticdem_dir, resolution=arctidem_res, buffer=arcticdem_buffer
+                    tile.odc.geobox, arcticdem_dir, resolution=arctidem_res, buffer=arcticdem_buffer
                 )
-                tcvis = load_tcvis(optical.odc.geobox, tcvis_dir)
+                tcvis = load_tcvis(tile.odc.geobox, tcvis_dir)
                 data_masks = load_planet_masks(footprint.fpath)
+                tile = xr.merge([tile, data_masks])
 
                 tile: xr.Dataset = preprocess_legacy_fast(
-                    optical,
+                    tile,
                     arcticdem,
                     tcvis,
-                    data_masks,
                     tpi_outer_radius,
                     tpi_inner_radius,
                     device,
                 )
-                # Only cache if we have a cache directory
-                if preprocess_cache:
-                    preprocess_cache.mkdir(exist_ok=True, parents=True)
-                    cache_file = preprocess_cache / f"{planet_id}.nc"
-                    logger.info(f"Caching preprocessed data to {cache_file.resolve()}")
-                    tile.to_netcdf(cache_file, engine="h5netcdf")
+                return tile
+
+            with timer("Loading tile"):
+                tile = cache_manager.get_or_create(
+                    identifier=planet_id,
+                    creation_func=_get_tile,
+                )
+
+            logger.debug(f"Found tile with size {tile.sizes}")
 
             footprint_labels = labels[labels.image_id == planet_id]
+            region = _get_region_name(footprint, admin2)
 
-            region = _get_region_name(footprint_labels, admin2)
-
-            # Save the patches
-            gen = create_training_patches(
-                tile=tile,
-                labels=footprint_labels,
-                bands=bands,
-                norm_factors=norm_factors,
-                patch_size=patch_size,
-                overlap=overlap,
-                exclude_nopositive=exclude_nopositive,
-                exclude_nan=exclude_nan,
-                device=device,
-                mask_erosion_size=mask_erosion_size,
-            )
-
-            zx = zroot["x"]
-            zy = zroot["y"]
-            for patch_id, (x, y) in enumerate(gen):
-                zx.append(x.unsqueeze(0).numpy().astype("float32"))
-                zy.append(y.unsqueeze(0).numpy().astype("uint8"))
-                metadata.append(
-                    {
-                        "patch_id": patch_id,
-                        "planet_id": planet_id,
-                        "region": region,
-                        "sample_id": planet_id,
-                        "empty": not (y == 1).any(),
-                    }
+            with timer("Save as patches"):
+                # Save the patches
+                gen = create_training_patches(
+                    tile=tile,
+                    labels=footprint_labels,
+                    bands=bands,
+                    norm_factors=norm_factors,
+                    patch_size=patch_size,
+                    overlap=overlap,
+                    exclude_nopositive=exclude_nopositive,
+                    exclude_nan=exclude_nan,
+                    device=device,
+                    mask_erosion_size=mask_erosion_size,
                 )
+
+                zx = zroot["x"]
+                zy = zroot["y"]
+                for patch_id, (x, y, coords) in enumerate(gen):
+                    zx.append(x.unsqueeze(0).numpy().astype("float32"))
+                    zy.append(y.unsqueeze(0).numpy().astype("uint8"))
+                    geometry = tile.isel(x=coords.x, y=coords.y).odc.geobox.geographic_extent.geom
+                    metadata.append(
+                        {
+                            "patch_id": patch_id,
+                            "planet_id": planet_id,
+                            "region": region,
+                            "sample_id": planet_id,
+                            "empty": not (y == 1).any(),
+                            "x": coords.x.start,
+                            "y": coords.y.start,
+                            "patch_idx_x": coords.patch_idx_x,
+                            "patch_idx_y": coords.patch_idx_y,
+                            "geometry": geometry,
+                        }
+                    )
 
             logger.info(f"Processed sample {planet_id} ({i + 1} of {len(footprints)})")
 
@@ -308,7 +334,7 @@ def preprocess_planet_train_data(
             logger.exception(e)
 
     # Save the metadata
-    metadata = pd.DataFrame(metadata)
+    metadata = gpd.GeoDataFrame(metadata, crs="EPSG:4326")
     metadata.to_parquet(train_data_dir / "metadata.parquet")
 
     # Save a config file as toml
@@ -337,3 +363,4 @@ def preprocess_planet_train_data(
         toml.dump(config, f)
 
     logger.info(f"Saved {len(metadata)} patches to {train_data_dir}")
+    timer.summary()

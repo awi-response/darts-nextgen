@@ -21,6 +21,7 @@ from sklearn.model_selection import (
     StratifiedShuffleSplit,
 )
 from torch.utils.data import DataLoader, Dataset
+from zarr.storage import LocalStore
 
 logger = logging.getLogger(__name__.replace("darts_", "darts."))
 
@@ -225,15 +226,15 @@ def _get_fold(
         case "none":
             foldgen = [(metadata.index.tolist(), metadata.index.tolist())]
         case "kfold":
-            foldgen = KFold(n_folds, random_state=42).split(metadata)
+            foldgen = KFold(n_folds).split(metadata)
         case "shuffle":
             foldgen = StratifiedShuffleSplit(n_splits=n_folds, random_state=42).split(metadata, ~metadata["empty"])
         case "stratified":
-            foldgen = StratifiedKFold(n_folds, random_state=42).split(metadata, ~metadata["empty"])
+            foldgen = StratifiedKFold(n_folds, random_state=42, shuffle=True).split(metadata, ~metadata["empty"])
         case "region":
-            foldgen = GroupShuffleSplit(n_folds, random_state=42).split(metadata, groups=metadata["region"])
+            foldgen = GroupShuffleSplit(n_folds).split(metadata, groups=metadata["region"])
         case "region-stratified":
-            foldgen = StratifiedGroupKFold(n_folds, random_state=42).split(
+            foldgen = StratifiedGroupKFold(n_folds, random_state=42, shuffle=True).split(
                 metadata, ~metadata["empty"], groups=metadata["region"]
             )
         case _:
@@ -243,8 +244,8 @@ def _get_fold(
         if i != fold:
             continue
         # Turn index into metadata index
-        train_index = metadata.index.iloc[train_index].tolist()
-        val_index = metadata.index.iloc[val_index].tolist()
+        train_index = metadata.index[train_index].tolist()
+        val_index = metadata.index[val_index].tolist()
         return train_index, val_index
 
     raise ValueError(f"Fold {fold} not found")
@@ -357,26 +358,25 @@ class DartsDataModule(L.LightningDataModule):
 
         data_dir = Path(data_dir)
 
-        store = zarr.storage.DirectoryStore(data_dir / "data.zarr")
-        zroot = zarr.group(store=store)
-        self.nsamples = len(zroot["x"])
+        zroot = zarr.group(store=LocalStore(data_dir / "data.zarr"))
+        self.nsamples = zroot["x"].shape[0]
 
     def setup(self, stage: Literal["fit", "validate", "test", "predict"] | None = None):
         if stage == "predict" or stage is None:
             return
 
-        metadata = gpd.read_file(self.data_dir / "metadata.parquet")
+        metadata = gpd.read_parquet(self.data_dir / "metadata.parquet")
         train_metadata, test_metadata = _split_metadata(metadata, self.data_split_method, self.data_split_by)
 
         if stage in ["fit", "validate"]:
             train_index, val_index = _get_fold(train_metadata, self.fold_method, self.total_folds, self.fold)
             dsclass = DartsDatasetInMemory if self.in_memory else DartsDatasetZarr
-            self.train = dsclass(self.data_dir, self.augment, train_index)
-            self.val = dsclass(self.data_dir, False, val_index)
+            self.train = dsclass(self.data_dir / "data.zarr", self.augment, train_index)
+            self.val = dsclass(self.data_dir / "data.zarr", False, val_index)
         if stage == "test":
             test_index = test_metadata.index.tolist()
             dsclass = DartsDatasetInMemory if self.in_memory else DartsDatasetZarr
-            self.test = dsclass(self.data_dir, False, test_index)
+            self.test = dsclass(self.data_dir / "data.zarr", False, test_index)
 
     def train_dataloader(self):
         return DataLoader(self.train, batch_size=self.batch_size, num_workers=self.num_workers, shuffle=True)
