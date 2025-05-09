@@ -299,12 +299,17 @@ class BinarySegmentationMetrics(Callback):
             if self._val_pos_visualizations >= 20 and self._val_neg_visualizations >= 10:
                 break
 
+            # Don't plot in sanity check
+            if trainer.state.stage != "sanity_check":
+                break
+
             # Plot positive sample
-            if y[i].sum() > 0 and self._val_pos_visualizations < 20:
+            is_postive = (y[i] == 1).sum() > 0
+            if is_postive and self._val_pos_visualizations < 20:
                 fig, _ = plot_sample(x[i], y[i], y_hat[i], self.input_combination)
                 self._val_pos_visualizations += 1
             # Plot negative sample
-            elif y[i].sum() == 0 and self._val_neg_visualizations < 10:
+            elif not is_postive and self._val_neg_visualizations < 10:
                 fig, _ = plot_sample(x[i], y[i], y_hat[i], self.input_combination)
                 self._val_neg_visualizations += 1
             # Either the number of positive or negative samples is already full
@@ -328,7 +333,7 @@ class BinarySegmentationMetrics(Callback):
     def on_validation_epoch_end(self, trainer: Trainer, pl_module: LightningModule):  # noqa: D102
         # Only do this every self.plot_every_n_val_epochs epochs
         is_val_plot_epoch = self.is_val_plot_epoch(pl_module.current_epoch, trainer.check_val_every_n_epoch)
-        if is_val_plot_epoch:
+        if is_val_plot_epoch and trainer.state.stage != "sanity_check":
             pl_module.val_cmx.compute()
             pl_module.val_roc.compute()
             pl_module.val_prc.compute()

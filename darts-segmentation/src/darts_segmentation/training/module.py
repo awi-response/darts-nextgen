@@ -1,5 +1,6 @@
 """Training script for DARTS segmentation."""
 
+import logging
 from typing import Any
 
 import lightning as L  # noqa: N812
@@ -7,6 +8,8 @@ import segmentation_models_pytorch as smp
 import torch.optim as optim
 
 from darts_segmentation.segment import SMPSegmenterConfig
+
+logger = logging.getLogger(__name__.replace("darts_", "darts."))
 
 
 class SMPSegmenter(L.LightningModule):

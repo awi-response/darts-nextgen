@@ -27,7 +27,7 @@ def tune_smp(
     # Data
     train_data_dir: Path,
     data_split_method: Literal["random", "region", "sample"] | None = None,
-    data_split_by: list[str] | str | float | None = None,
+    data_split_by: list[str] | None = None,
     fold_method: Literal["kfold", "shuffle", "stratified", "region", "region-stratified"] = "kfold",
     total_folds: int = 5,
     # Tune config
@@ -38,7 +38,7 @@ def tune_smp(
     tune_name: str | None = None,
     artifact_dir: Path = Path("artifacts"),
     # Scoring
-    scoring_metric: list[str] | str = ["val/JaccardIndex", "val/Recall"],
+    scoring_metric: list[str] = ["val/JaccardIndex", "val/Recall"],
     multi_score_strategy: Literal["harmonic", "arithmetic", "geometric", "min"] = "harmonic",
     # Epoch and Logging config
     max_epochs: int = 100,
@@ -158,7 +158,7 @@ def tune_smp(
             Defaults to None.
         artifact_dir (Path, optional): Top-level path to the training output directory.
             Will contain checkpoints and metrics. Defaults to Path("lightning_logs").
-        scoring_metric (list[str] | str): Metric(s) to use for scoring.
+        scoring_metric (list[str]): Metric(s) to use for scoring.
         multi_score_strategy (Literal["harmonic", "arithmetic", "geometric", "min"], optional):
             Strategy for combining multiple metrics. Defaults to "harmonic".
         max_epochs (int, optional): Maximum number of epochs to train. Defaults to 100.

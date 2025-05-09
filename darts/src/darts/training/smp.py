@@ -23,7 +23,7 @@ def train_smp(
     # Data config
     train_data_dir: Path,
     data_split_method: Literal["random", "region", "sample"] | None = None,
-    data_split_by: list[str] | str | float | None = None,
+    data_split_by: list[str] | None = None,
     fold_method: Literal["kfold", "shuffle", "stratified", "region", "region-stratified"] = "kfold",
     total_folds: int = 5,
     fold: int = 0,
@@ -116,16 +116,14 @@ def train_smp(
         batch_size (int): Batch size for training and validation.
         data_split_method (Literal["random", "region", "sample"] | None, optional):
             The method to use for splitting the data into a train and a test set.
-            "random" will split the data randomly, the seed is always 42 and the size of the test set can be
-            specified by providing a float between 0 and 1 to data_split_by.
+            "random" will split the data randomly, the seed is always 42 and the test size is 20%.
             "region" will split the data by one or multiple regions,
             which can be specified by providing a str or list of str to data_split_by.
             "sample" will split the data by sample ids, which can also be specified similar to "region".
             If None, no split is done and the complete dataset is used for both training and testing.
             The train split will further be split in the cross validation process.
             Defaults to None.
-        data_split_by (list[str] | str | float | None, optional): Select by which seed/regions/samples split.
-            Defaults to None.
+        data_split_by (list[str] | None, optional): Select by which regions/samples split. Defaults to None.
         fold_method (Literal["kfold", "shuffle", "stratified", "region", "region-stratified"], optional):
             Method for cross-validation split. Defaults to "kfold".
         total_folds (int, optional): Total number of folds in cross-validation. Defaults to 5.
@@ -322,7 +320,7 @@ def tune_smp(
     hpconfig: Path,
     train_data_dir: Path,
     data_split_method: Literal["random", "region", "sample"] | None = None,
-    data_split_by: list[str] | str | float | None = None,
+    data_split_by: list[str] | None = None,
     fold_method: Literal["kfold", "shuffle", "stratified", "region", "region-stratified"] = "kfold",
     total_folds: int = 5,
     # Tune config
@@ -333,7 +331,7 @@ def tune_smp(
     tune_name: str | None = None,
     artifact_dir: Path = Path("artifacts"),
     # Scoring
-    scoring_metric: list[str] | str = ["val/JaccardIndex", "val/Recall"],
+    scoring_metric: list[str] = ["val/JaccardIndex", "val/Recall"],
     multi_score_strategy: Literal["harmonic", "arithmetic", "geometric", "min"] = "harmonic",
     # Epoch and Logging config
     max_epochs: int = 100,
@@ -423,16 +421,14 @@ def tune_smp(
             This directory should be created by a preprocessing script.
         data_split_method (Literal["random", "region", "sample"] | None, optional):
             The method to use for splitting the data into a train and a test set.
-            "random" will split the data randomly, the seed is always 42 and the size of the test set can be
-            specified by providing a float between 0 and 1 to data_split_by.
+            "random" will split the data randomly, the seed is always 42 and the test size is 20%.
             "region" will split the data by one or multiple regions,
             which can be specified by providing a str or list of str to data_split_by.
             "sample" will split the data by sample ids, which can also be specified similar to "region".
             If None, no split is done and the complete dataset is used for both training and testing.
             The train split will further be split in the cross validation process.
             Defaults to None.
-        data_split_by (list[str] | str | float | None, optional): Select by which seed/regions/samples split.
-            Defaults to None.
+        data_split_by (list[str] | None, optional): Select by which regions/samples split. Defaults to None.
         fold_method (Literal["kfold", "shuffle", "stratified", "region", "region-stratified"], optional):
             Method for cross-validation split. Defaults to "kfold".
         total_folds (int, optional): Total number of folds in cross-validation. Defaults to 5.
@@ -453,7 +449,7 @@ def tune_smp(
             Defaults to None.
         artifact_dir (Path, optional): Top-level path to the training output directory.
             Will contain checkpoints and metrics. Defaults to Path("lightning_logs").
-        scoring_metric (list[str] | str): Metric(s) to use for scoring.
+        scoring_metric (list[str]): Metric(s) to use for scoring.
         multi_score_strategy (Literal["harmonic", "arithmetic", "geometric", "min"], optional):
             Strategy for combining multiple metrics. Defaults to "harmonic".
         max_epochs (int, optional): Maximum number of epochs to train. Defaults to 100.
@@ -502,7 +498,7 @@ def cross_validation_smp(
     # Data
     train_data_dir: Path,
     data_split_method: Literal["random", "region", "sample"] | None = None,
-    data_split_by: list[str] | str | float | None = None,
+    data_split_by: list[str] | None = None,
     fold_method: Literal["kfold", "shuffle", "stratified", "region", "region-stratified"] = "kfold",
     total_folds: int = 5,
     # CV config
@@ -522,7 +518,7 @@ def cross_validation_smp(
     focal_loss_gamma: float = 2.0,
     batch_size: int = 8,
     # Scoring
-    scoring_metric: list[str] | str = ["val/JaccardIndex", "val/Recall"],
+    scoring_metric: list[str] = ["val/JaccardIndex", "val/Recall"],
     multi_score_strategy: Literal["harmonic", "arithmetic", "geometric", "min"] = "harmonic",
     # Epoch and Logging config
     max_epochs: int = 100,
@@ -612,16 +608,14 @@ def cross_validation_smp(
         batch_size (int): Batch size for training and validation.
         data_split_method (Literal["random", "region", "sample"] | None, optional):
             The method to use for splitting the data into a train and a test set.
-            "random" will split the data randomly, the seed is always 42 and the size of the test set can be
-            specified by providing a float between 0 and 1 to data_split_by.
+            "random" will split the data randomly, the seed is always 42 and the test size is 20%.
             "region" will split the data by one or multiple regions,
             which can be specified by providing a str or list of str to data_split_by.
             "sample" will split the data by sample ids, which can also be specified similar to "region".
             If None, no split is done and the complete dataset is used for both training and testing.
             The train split will further be split in the cross validation process.
             Defaults to None.
-        data_split_by (list[str] | str | float | None, optional): Select by which seed/regions/samples split.
-            Defaults to None.
+        data_split_by (list[str] | None, optional): Select by which regions/samples split. Defaults to None.
         fold_method (Literal["kfold", "shuffle", "stratified", "region", "region-stratified"], optional):
             Method for cross-validation split. Defaults to "kfold".
         total_folds (int, optional): Total number of folds in cross-validation. Defaults to 5.
@@ -650,7 +644,7 @@ def cross_validation_smp(
             None will not weight samples. Defaults to None.
         focal_loss_gamma (float, optional): Focal loss power factor. Defaults to 2.0.
         batch_size (int, optional): Batch Size. Defaults to 8.
-        scoring_metric (list[str] | str): Metric(s) to use for scoring.
+        scoring_metric (list[str]): Metric(s) to use for scoring.
         multi_score_strategy (Literal["harmonic", "arithmetic", "geometric", "min"], optional):
             Strategy for combining multiple metrics. Defaults to "harmonic".
         max_epochs (int, optional): Maximum number of epochs to train. Defaults to 100.

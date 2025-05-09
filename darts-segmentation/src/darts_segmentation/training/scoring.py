@@ -90,6 +90,10 @@ def score_from_runs(  # noqa: C901
         ValueError: If an unknown multi-score strategy is provided.
 
     """
+    # Single score in list
+    if isinstance(scoring_metric, list) and len(scoring_metric) == 1:
+        scoring_metric = scoring_metric[0]
+
     # Case single score
     if isinstance(scoring_metric, str):
         # In case the use set a specific direction
@@ -125,8 +129,10 @@ def score_from_runs(  # noqa: C901
             scores.append(run_score)
         if len(scores) == 0:
             score = 0.0
-
-        score = mean(scores)
+        elif len(scores) == 1:
+            score = scores[0]
+        else:
+            score = mean(scores)
 
     return score
 
@@ -147,6 +153,10 @@ def check_score_is_unstable(run_info: dict, scoring_metric: list[str] | str) -> 
         ValueError: If an unknown scoring metric type is provided.
 
     """
+    # Single score in list
+    if isinstance(scoring_metric, list) and len(scoring_metric) == 1:
+        scoring_metric = scoring_metric[0]
+
     if isinstance(scoring_metric, str):
         metric_value = run_info[scoring_metric]
         is_unstable = not isfinite(metric_value) or metric_value == 0

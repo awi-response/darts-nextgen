@@ -149,7 +149,7 @@ def preprocess_planet_train_data(
     from darts_utils.functools import write_function_args_to_config_file
 
     write_function_args_to_config_file(
-        fpath=train_data_dir / f"{current_time}.config.json",
+        fpath=train_data_dir / f"{current_time}.cli.json",
         function=preprocess_planet_train_data,
         locals_=locals(),
     )
@@ -319,6 +319,7 @@ def preprocess_planet_train_data(
                             "y": coords.y.start,
                             "patch_idx_x": coords.patch_idx_x,
                             "patch_idx_y": coords.patch_idx_y,
+                            "fpath": footprint.fpath,
                             "geometry": geometry,
                         }
                     )

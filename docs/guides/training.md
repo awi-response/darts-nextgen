@@ -84,27 +84,18 @@ To train a simple SMP (Segmentation Model Pytorch) model you can use the command
 [uv run] darts train-smp --your-args-here ...
 ```
 
-Configurations for the architecture and encoder can be found in the [SMP documentation](https://smp.readthedocs.io/en/latest/index.html) for model configurations.
+!!! tip "Model Architecture"
+    Configurations for the architecture and encoder can be found in the [SMP documentation](https://smp.readthedocs.io/en/latest/index.html) for model configurations.
 
 !!! warning "Change defaults"
-Even though the defaults from the CLI are somewhat useful, it is recommended to create a config file and change the behavior of the training there.
+    Even though the defaults from the CLI are somewhat useful, it is recommended to create a config file and change the behavior of the training there.
 
-This will train a model with the `cross-val` data and save the model to disk.
-You don't need to specify the concrete path to the `cross-val` split, the training script expects that the `--train-data-dir` points to the root directory of the splits, hence, the same path used in the preprocessing should be specified.
+This command will train a simple SMP model on the data in the `train-data-dir` directory.
 The training relies on PyTorch Lightning, which is a high-level interface for PyTorch.
 It is recommended to use Weights and Biases (wandb) for the logging, because the training script is heavily influenced by how the organization of wandb works.
 
-Each training run is assigned a unique name and id pair and optionally a trial name.
-The name, which the user _can_ provide, should be used as a grouping mechanism of equal hyperparameter and code.
-Hence, different versions of the same name should only differ by random state or run settings parameter, like logs.
-Each version is assigned a unique id.
-Artifacts (metrics & checkpoints) are then stored under `{artifact_dir}/{run_name}/{run_id}` in no-crossval runs.
-If `trial_name` is specified, the artifacts are stored under `{artifact_dir}/{trial_name}/{run_name}-{run_id}`.
-Wandb logs are always stored under `{wandb_entity}/{wandb_project}/{run_name}`, regardless of `trial_name`.
-However, they are further grouped by the `trial_name` (via job_type), if specified.
-Both `run_name` and `run_id` are also stored in the hparams of each checkpoint.
-
-You can now test the model on the other two splits (`val-test` and `test`) with the following command:
+The training follows the data splitting, decribed in the [Understanding internal workings](#understanding-internal-workings) section below.
+To test the model on the test split, you can use the following command:
 
 ```sh
 [uv run] darts test-smp --your-args-here ...
@@ -256,7 +247,13 @@ Artifacts are stored in the following hierarchy:
 - Created by runs of cross-validations: `{artifact_dir}/_cross_validations/{cv_name}/{run_name}-{run_id}`
 - Created by single runs: `{artifact_dir}/_runs/{run_name}-{run_id}`
 
-This way, the top-level `artifact_dir` is kept clean and organized,
+This way, the top-level `artifact_dir` is kept clean and organized.
+
+!!! tip "Local vs. WandB"
+
+    The training uses a local directory for storing the artifacts, such as metrics or the model.
+    The final directory where these artifacts is always called `{run_name}-{run_id}`.
+    This way, it should be easy to relate which artifacts belong to which run in wandb, where the url of a run is always `https://wandb.ai/{wandb_entity}/{wandb_project}/runs/{run_id}`.
 
 The cross-validation will not only contain the artifacts from the training runs but also a `run_infos.parquet` file with information about each run / experiment.
 This dataframe contains a `fold`, `seed`, `duration`, `checkpoint`, `is_unstable`, `is_unstable` and metrics columns, where the metrics are taken from the `trainer.callback_metrics`.
@@ -386,8 +383,28 @@ This allows to correctly combine multiple metrics by doing 1/metric before calcu
 If no direction is provided, it is assumed to be ":higher".
 Has no real effect on the single score calculation, since only the mean is calculated there.
 
-!!! abstract "Available metrics" - `"val/JaccardIndex"` - `"val/Recall"`
-TODO add more from trainer class
+!!! abstract "Available metrics"
+    - `'train/loss'`
+    - `'train/Accuracy'`
+    - `'train/CohenKappa'`
+    - `'train/F1Score'`
+    - `'train/HammingDistance'`
+    - `'train/JaccardIndex'`
+    - `'train/Precision'`
+    - `'train/Recall'`
+    - `'train/Specificity'`
+    - `'val/loss'`
+    - `'val/Accuracy'`
+    - `'val/CohenKappa'`
+    - `'val/F1Score'`
+    - `'val/HammingDistance'`
+    - `'val/JaccardIndex'`
+    - `'val/Precision'`
+    - `'val/Recall'`
+    - `'val/Specificity'`
+    - `'val/AUROC'`
+    - `'val/AveragePrecision'`
+
 TODO: Implement https://lightning.ai/docs/pytorch/stable/api/lightning.pytorch.callbacks.ThroughputMonitor.html
 
 ## Recommendations & best practices

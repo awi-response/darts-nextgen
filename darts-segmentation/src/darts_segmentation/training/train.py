@@ -19,7 +19,7 @@ def train_smp(
     # Data config
     train_data_dir: Path,
     data_split_method: Literal["random", "region", "sample"] | None = None,
-    data_split_by: list[str] | str | float | None = None,
+    data_split_by: list[str] | None = None,
     fold_method: Literal["kfold", "shuffle", "stratified", "region", "region-stratified"] = "kfold",
     total_folds: int = 5,
     fold: int = 0,
@@ -112,16 +112,14 @@ def train_smp(
         batch_size (int): Batch size for training and validation.
         data_split_method (Literal["random", "region", "sample"] | None, optional):
             The method to use for splitting the data into a train and a test set.
-            "random" will split the data randomly, the seed is always 42 and the size of the test set can be
-            specified by providing a float between 0 and 1 to data_split_by.
+            "random" will split the data randomly, the seed is always 42 and the test size is 20%.
             "region" will split the data by one or multiple regions,
             which can be specified by providing a str or list of str to data_split_by.
             "sample" will split the data by sample ids, which can also be specified similar to "region".
             If None, no split is done and the complete dataset is used for both training and testing.
             The train split will further be split in the cross validation process.
             Defaults to None.
-        data_split_by (list[str] | str | float | None, optional): Select by which seed/regions/samples split.
-            Defaults to None.
+        data_split_by (list[str] | None, optional): Select by which regions/samples split. Defaults to None.
         fold_method (Literal["kfold", "shuffle", "stratified", "region", "region-stratified"], optional):
             Method for cross-validation split. Defaults to "kfold".
         total_folds (int, optional): Total number of folds in cross-validation. Defaults to 5.
@@ -178,7 +176,7 @@ def train_smp(
     from darts_segmentation.training.data import DartsDataModule
     from darts_segmentation.training.module import SMPSegmenter
 
-    LoggingManager.apply_logging_handlers("lightning.pytorch")
+    LoggingManager.apply_logging_handlers("lightning.pytorch", level=logging.INFO)
 
     tick_fstart = time.perf_counter()
 
@@ -194,7 +192,7 @@ def train_smp(
 
     logger.info(
         f"Starting training '{run_name}' ('{run_id}') with data from {train_data_dir.resolve()}."
-        f" Artifacts will be saved to {artifact_dir.resolve()}."
+        f" Artifacts will be saved to {(artifact_dir / f'{run_name}-{run_id}').resolve()}."
     )
     logger.debug(
         f"Using config:\n\t"
@@ -258,12 +256,17 @@ def train_smp(
 
     # Loggers
     trainer_loggers = [
-        CSVLogger(save_dir=artifact_dir, version=f"{run_name}-{run_id}"),
+        CSVLogger(save_dir=artifact_dir, name=None, version=f"{run_name}-{run_id}"),
     ]
     logger.debug(f"Logging CSV to {Path(trainer_loggers[0].log_dir).resolve()}")
     if wandb_entity and wandb_project:
+        tags = [train_data_dir.stem]
+        if cv_name:
+            tags.append(cv_name)
+        if tune_name:
+            tags.append(tune_name)
         wandb_logger = WandbLogger(
-            save_dir=artifact_dir.parent.parent if tune_name else artifact_dir.parent,
+            save_dir=artifact_dir.parent.parent if tune_name or cv_name else artifact_dir.parent,
             name=run_name,
             version=run_id,
             project=wandb_project,
@@ -272,6 +275,8 @@ def train_smp(
             # Using the group and job_type is a workaround for wandb's lack of support for manually sweeps
             group=tune_name or "none",
             job_type=cv_name or "none",
+            # Using tags to quickly identify the run
+            tags=tags,
         )
         trainer_loggers.append(wandb_logger)
         logger.debug(
@@ -302,7 +307,7 @@ def train_smp(
         logger=trainer_loggers,
         check_val_every_n_epoch=check_val_every_n_epoch,
         accelerator="gpu" if isinstance(device, int) else device,
-        devices=[device] if isinstance(device, int) else device,
+        devices=[device] if isinstance(device, int) else "auto",
         deterministic=False,  # True does not work for some reason
     )
     trainer.fit(model, datamodule, ckpt_path=continue_from_checkpoint)
@@ -406,7 +411,7 @@ def test_smp(
 
     logger.info(
         f"Starting testing '{run_name}' ('{run_id}') with data from {train_data_dir.resolve()}."
-        f" Artifacts will be saved to {artifact_dir.resolve()}."
+        f" Artifacts will be saved to {(artifact_dir / f'{run_name}-{run_id}').resolve()}."
     )
     logger.debug(f"Using config:\n\t{batch_size=}\n\t{device=}")
 

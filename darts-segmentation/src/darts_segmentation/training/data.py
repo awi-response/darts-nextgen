@@ -183,7 +183,7 @@ class DartsDatasetInMemory(Dataset):
 def _split_metadata(
     metadata: gpd.GeoDataFrame,
     data_split_method: Literal["random", "region", "sample"] | None,
-    data_split_by: list[str] | str | float | None,
+    data_split_by: list[str] | None,
 ):
     # Match statement doesn't like None
     data_split_method = data_split_method or "none"
@@ -193,14 +193,12 @@ def _split_metadata(
         case "none":
             return metadata, metadata
         case "random":
-            data_split_by = data_split_by or 0.8
+            data_split_by = 0.8
             assert isinstance(data_split_by, float)
             train_metadata = metadata.sample(frac=data_split_by, random_state=42)
             test_metadata = metadata.drop(train_metadata.index)
             return train_metadata, test_metadata
         case "region":
-            if isinstance(data_split_by, str):
-                data_split_by = [data_split_by]
             assert isinstance(data_split_by, list) and len(data_split_by) > 0
             train_metadata = metadata[~metadata["region"].isin(data_split_by)]
             test_metadata = metadata[metadata["region"].isin(data_split_by)]
@@ -251,6 +249,15 @@ def _get_fold(
     raise ValueError(f"Fold {fold} not found")
 
 
+def _log_stats(metadata: gpd.GeoDataFrame, mode: str):
+    n_pos = (~metadata["empty"]).sum()
+    n_neg = metadata["empty"].sum()
+    logger.debug(
+        f"{mode} dataset: {n_pos} positive, {n_neg} negative ({len(metadata)} total)"
+        f" with {metadata['region'].nunique()} unique regions and {metadata['sample_id'].nunique()} unique sample ids"
+    )
+
+
 # TODO: band selection
 class DartsDataModule(L.LightningDataModule):
     def __init__(
@@ -259,7 +266,7 @@ class DartsDataModule(L.LightningDataModule):
         batch_size: int,
         # data_split is for the test split
         data_split_method: Literal["random", "region", "sample"] | None = None,
-        data_split_by: list[str] | str | float | None = None,
+        data_split_by: list[str] | None = None,
         # fold is for cross-validation split (train/val)
         fold_method: Literal["kfold", "shuffle", "stratified", "region", "region-stratified"] | None = "kfold",
         total_folds: int = 5,
@@ -321,16 +328,14 @@ class DartsDataModule(L.LightningDataModule):
             batch_size (int): Batch size for training and validation.
             data_split_method (Literal["random", "region", "sample"] | None, optional):
                 The method to use for splitting the data into a train and a test set.
-                "random" will split the data randomly, the seed is always 42 and the size of the test set can be
-                specified by providing a float between 0 and 1 to data_split_by.
+                "random" will split the data randomly, the seed is always 42 and the test size is 20%.
                 "region" will split the data by one or multiple regions,
                 which can be specified by providing a str or list of str to data_split_by.
                 "sample" will split the data by sample ids, which can also be specified similar to "region".
                 If None, no split is done and the complete dataset is used for both training and testing.
                 The train split will further be split in the cross validation process.
                 Defaults to None.
-            data_split_by (list[str] | str | float | None, optional): Select by which seed/regions/samples split.
-                Defaults to None.
+            data_split_by (list[str] | None, optional): Select by which regions/samples split. Defaults to None.
             fold_method (Literal["kfold", "shuffle", "stratified", "region", "region-stratified"] | None, optional):
                 Method for cross-validation split. Defaults to "kfold".
             total_folds (int, optional): Total number of folds in cross-validation. Defaults to 5.
@@ -365,11 +370,19 @@ class DartsDataModule(L.LightningDataModule):
         if stage == "predict" or stage is None:
             return
 
-        metadata = gpd.read_parquet(self.data_dir / "metadata.parquet")
+        metadata = gpd.read_parquet(self.data_dir / "metadata.parquet").sample(40, random_state=42)
         train_metadata, test_metadata = _split_metadata(metadata, self.data_split_method, self.data_split_by)
+
+        _log_stats(train_metadata, "train-split")
+        _log_stats(test_metadata, "test-split")
+
+        # Log stats about the data
 
         if stage in ["fit", "validate"]:
             train_index, val_index = _get_fold(train_metadata, self.fold_method, self.total_folds, self.fold)
+            _log_stats(metadata.loc[train_index], "train-fold")
+            _log_stats(metadata.loc[val_index], "val-fold")
+
             dsclass = DartsDatasetInMemory if self.in_memory else DartsDatasetZarr
             self.train = dsclass(self.data_dir / "data.zarr", self.augment, train_index)
             self.val = dsclass(self.data_dir / "data.zarr", False, val_index)
@@ -379,7 +392,9 @@ class DartsDataModule(L.LightningDataModule):
             self.test = dsclass(self.data_dir / "data.zarr", False, test_index)
 
     def train_dataloader(self):
-        return DataLoader(self.train, batch_size=self.batch_size, num_workers=self.num_workers, shuffle=True)
+        return DataLoader(
+            self.train, batch_size=self.batch_size, num_workers=self.num_workers, shuffle=True, drop_last=True
+        )
 
     def val_dataloader(self):
         return DataLoader(self.val, batch_size=self.batch_size, num_workers=self.num_workers)
