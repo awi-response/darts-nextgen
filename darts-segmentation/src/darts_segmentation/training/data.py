@@ -11,7 +11,7 @@ from typing import Literal
 import albumentations as A  # noqa: N812
 import geopandas as gpd
 import lightning as L  # noqa: N812
-import torch
+import toml
 import zarr
 from sklearn.model_selection import (
     GroupShuffleSplit,
@@ -26,60 +26,15 @@ from zarr.storage import LocalStore
 logger = logging.getLogger(__name__.replace("darts_", "darts."))
 
 
-class DartsDataset(Dataset):
-    def __init__(self, data_dir: Path | str, augment: bool, indices: list[int] | None = None):
-        if isinstance(data_dir, str):
-            data_dir = Path(data_dir)
-
-        self.x_files = sorted((data_dir / "x").glob("*.pt"))
-        self.y_files = sorted((data_dir / "y").glob("*.pt"))
-        assert len(self.x_files) == len(self.y_files), (
-            f"Dataset corrupted! Got {len(self.x_files)=} and {len(self.y_files)=}!"
-        )
-        if indices is not None:
-            self.x_files = [self.x_files[i] for i in indices]
-            self.y_files = [self.y_files[i] for i in indices]
-
-        self.transform = (
-            A.Compose(
-                [
-                    A.HorizontalFlip(),
-                    A.VerticalFlip(),
-                    A.RandomRotate90(),
-                    # A.Blur(),
-                    A.RandomBrightnessContrast(),
-                    A.MultiplicativeNoise(per_channel=True, elementwise=True),
-                    # ToTensorV2(),
-                ]
-            )
-            if augment
-            else None
-        )
-
-    def __len__(self):
-        return len(self.x_files)
-
-    def __getitem__(self, idx):
-        xfile = self.x_files[idx]
-        yfile = self.y_files[idx]
-        assert xfile.stem == yfile.stem, f"Dataset corrupted! Files must have the same name, but got {xfile=} {yfile=}!"
-
-        x = torch.load(xfile).numpy()
-        y = torch.load(yfile).int().numpy()
-
-        # Apply augmentations
-        if self.transform is not None:
-            augmented = self.transform(image=x.transpose(1, 2, 0), mask=y)
-            x = augmented["image"].transpose(2, 0, 1)
-            y = augmented["mask"]
-
-        return x, y
-
-
 class DartsDatasetZarr(Dataset):
-    def __init__(self, data_dir: Path | str, augment: bool, indices: list[int] | None = None):
-        if isinstance(data_dir, str):
-            data_dir = Path(data_dir)
+    def __init__(
+        self,
+        data_dir: Path | str,
+        augment: bool,
+        indices: list[int] | None = None,
+        bands: list[int] | None = None,
+    ):
+        data_dir = Path(data_dir) if isinstance(data_dir, str) else data_dir
 
         store = zarr.storage.LocalStore(data_dir)
         self.zroot = zarr.group(store=store)
@@ -89,6 +44,7 @@ class DartsDatasetZarr(Dataset):
         )
 
         self.indices = indices if indices is not None else list(range(self.zroot["x"].shape[0]))
+        self.bands = bands
 
         self.transform = (
             A.Compose(
@@ -112,7 +68,7 @@ class DartsDatasetZarr(Dataset):
     def __getitem__(self, idx):
         i = self.indices[idx]
 
-        x = self.zroot["x"][i]
+        x = self.zroot["x"][i, self.bands] if self.bands else self.zroot["x"][i]
         y = self.zroot["y"][i]
 
         # Apply augmentations
@@ -125,29 +81,31 @@ class DartsDatasetZarr(Dataset):
 
 
 class DartsDatasetInMemory(Dataset):
-    def __init__(self, data_dir: Path | str, augment: bool, indices: list[int] | None = None):
-        if isinstance(data_dir, str):
-            data_dir = Path(data_dir)
+    def __init__(
+        self,
+        data_dir: Path | str,
+        augment: bool,
+        indices: list[int] | None = None,
+        bands: list[int] | None = None,
+    ):
+        data_dir = Path(data_dir) if isinstance(data_dir, str) else data_dir
 
-        x_files = sorted((data_dir / "x").glob("*.pt"))
-        y_files = sorted((data_dir / "y").glob("*.pt"))
-        assert len(x_files) == len(y_files), f"Dataset corrupted! Got {len(x_files)=} and {len(y_files)=}!"
-        if indices is not None:
-            x_files = [x_files[i] for i in indices]
-            y_files = [y_files[i] for i in indices]
+        store = zarr.storage.LocalStore(data_dir)
+        self.zroot = zarr.group(store=store)
+
+        assert "x" in self.zroot and "y" in self.zroot, (
+            f"Dataset corrupted! {self.zroot.info=} must contain 'x' or 'y' arrays!"
+        )
 
         self.x = []
         self.y = []
-        for xfile, yfile in zip(x_files, y_files):
-            assert xfile.stem == yfile.stem, (
-                f"Dataset corrupted! Files must have the same name, but got {xfile=} {yfile=}!"
-            )
-            x = torch.load(xfile).numpy()
-            y = torch.load(yfile).int().numpy()
+        indices = indices or list(range(self.zroot["x"].shape[0]))
+        for i in indices:
+            x = self.zroot["x"][i, bands] if bands else self.zroot["x"][i]
+            y = self.zroot["y"][i]
             self.x.append(x)
             self.y.append(y)
 
-        # TODO: make this compositable
         self.transform = (
             A.Compose(
                 [
@@ -182,22 +140,27 @@ class DartsDatasetInMemory(Dataset):
 
 def _split_metadata(
     metadata: gpd.GeoDataFrame,
-    data_split_method: Literal["random", "region", "sample"] | None,
+    data_split_method: Literal["random", "region", "sample", "none"] | None,
     data_split_by: list[str] | None,
 ):
     # Match statement doesn't like None
     data_split_method = data_split_method or "none"
 
-    # TODO: Assert that for random method the test data is not empty
     match data_split_method:
         case "none":
             return metadata, metadata
         case "random":
             data_split_by = 0.8
             assert isinstance(data_split_by, float)
-            train_metadata = metadata.sample(frac=data_split_by, random_state=42)
-            test_metadata = metadata.drop(train_metadata.index)
-            return train_metadata, test_metadata
+            for seed in range(100):
+                train_metadata = metadata.sample(frac=data_split_by, random_state=seed)
+                test_metadata = metadata.drop(train_metadata.index)
+                if (~test_metadata["empty"]).sum() == 0:
+                    logger.warning("Test set is empty, retrying with another random seed...")
+                    continue
+                return train_metadata, test_metadata
+            else:
+                raise ValueError("Could not split data randomly, please check your data.")
         case "region":
             assert isinstance(data_split_by, list) and len(data_split_by) > 0
             train_metadata = metadata[~metadata["region"].isin(data_split_by)]
@@ -214,7 +177,7 @@ def _split_metadata(
 
 def _get_fold(
     metadata: gpd.GeoDataFrame,
-    fold_method: Literal["kfold", "shuffle", "stratified", "region", "region-stratified", None],
+    fold_method: Literal["kfold", "shuffle", "stratified", "region", "region-stratified", "none"] | None,
     n_folds: int,
     fold: int,
 ) -> tuple[list[int], list[int]]:
@@ -258,7 +221,6 @@ def _log_stats(metadata: gpd.GeoDataFrame, mode: str):
     )
 
 
-# TODO: band selection
 class DartsDataModule(L.LightningDataModule):
     def __init__(
         self,
@@ -271,6 +233,7 @@ class DartsDataModule(L.LightningDataModule):
         fold_method: Literal["kfold", "shuffle", "stratified", "region", "region-stratified"] | None = "kfold",
         total_folds: int = 5,
         fold: int = 0,
+        bands: list[str] | None = None,
         augment: bool = True,  # Not used for test
         num_workers: int = 0,
         in_memory: bool = False,
@@ -340,6 +303,10 @@ class DartsDataModule(L.LightningDataModule):
                 Method for cross-validation split. Defaults to "kfold".
             total_folds (int, optional): Total number of folds in cross-validation. Defaults to 5.
             fold (int, optional): Index of the current fold. Defaults to 0.
+            bands (list[str] | None, optional): List of bands to use.
+                Expects the data_dir to contain a config.toml with a "darts.bands" key,
+                with which the indices of the bands will be mapped to.
+                Defaults to None.
             augment (bool, optional): Whether to augment the data. Does nothing for testing. Defaults to True.
             num_workers (int, optional): Number of workers for data loading. See torch.utils.data.DataLoader.
                 Defaults to 0.
@@ -363,6 +330,16 @@ class DartsDataModule(L.LightningDataModule):
 
         data_dir = Path(data_dir)
 
+        metadata_file = data_dir / "metadata.parquet"
+        assert metadata_file.exists(), f"Metadata file {metadata_file} not found!"
+
+        config_file = data_dir / "config.toml"
+        assert config_file.exists(), f"Config file {config_file} not found!"
+        data_bands = toml.load(config_file)["darts"]["bands"]
+        self.bands = [data_bands.index(b) for b in bands] if bands else None
+
+        zdir = data_dir / "data.zarr"
+        assert zdir.exists(), f"Data directory {zdir} not found!"
         zroot = zarr.group(store=LocalStore(data_dir / "data.zarr"))
         self.nsamples = zroot["x"].shape[0]
 
@@ -384,20 +361,35 @@ class DartsDataModule(L.LightningDataModule):
             _log_stats(metadata.loc[val_index], "val-fold")
 
             dsclass = DartsDatasetInMemory if self.in_memory else DartsDatasetZarr
-            self.train = dsclass(self.data_dir / "data.zarr", self.augment, train_index)
-            self.val = dsclass(self.data_dir / "data.zarr", False, val_index)
+            self.train = dsclass(self.data_dir / "data.zarr", self.augment, train_index, self.bands)
+            self.val = dsclass(self.data_dir / "data.zarr", False, val_index, self.bands)
         if stage == "test":
             test_index = test_metadata.index.tolist()
             dsclass = DartsDatasetInMemory if self.in_memory else DartsDatasetZarr
-            self.test = dsclass(self.data_dir / "data.zarr", False, test_index)
+            self.test = dsclass(self.data_dir / "data.zarr", False, test_index, self.bands)
 
     def train_dataloader(self):
         return DataLoader(
-            self.train, batch_size=self.batch_size, num_workers=self.num_workers, shuffle=True, drop_last=True
+            self.train,
+            batch_size=self.batch_size,
+            num_workers=self.num_workers,
+            shuffle=True,
+            drop_last=True,
+            persistent_workers=True,
         )
 
     def val_dataloader(self):
-        return DataLoader(self.val, batch_size=self.batch_size, num_workers=self.num_workers)
+        return DataLoader(
+            self.val,
+            batch_size=self.batch_size,
+            num_workers=self.num_workers,
+            persistent_workers=True,
+        )
 
     def test_dataloader(self):
-        return DataLoader(self.test, batch_size=self.batch_size, num_workers=self.num_workers)
+        return DataLoader(
+            self.test,
+            batch_size=self.batch_size,
+            num_workers=self.num_workers,
+            persistent_workers=True,
+        )

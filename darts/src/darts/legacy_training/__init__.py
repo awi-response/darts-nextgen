@@ -1,5 +1,7 @@
 """Legacy training module for DARTS."""
 
+# TODO: Delete the legacy training module in the future.
+
 from darts.legacy_training.preprocess.planet import preprocess_planet_train_data as preprocess_planet_train_data
 from darts.legacy_training.preprocess.s2 import preprocess_s2_train_data as preprocess_s2_train_data
 

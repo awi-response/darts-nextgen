@@ -50,9 +50,9 @@ def _get_region_name(footprint: "gpd.GeoSeries", admin2: "gpd.GeoDataFrame") -> 
     return region_name
 
 
+# TODO: Think about how this can be further abstracted so that it is only necessary to implement the pipeline here
 def preprocess_planet_train_data(
     *,
-    bands: list[str],
     data_dir: Path,
     labels_dir: Path,
     train_data_dir: Path,
@@ -111,7 +111,6 @@ def preprocess_planet_train_data(
     ```
 
     Args:
-        bands (list[str]): The bands to be used for training. Must be present in the preprocessing.
         data_dir (Path): The directory containing the Planet scenes and orthotiles.
         labels_dir (Path): The directory containing the labels and footprints / extents.
         train_data_dir (Path): The "output" directory where the tensors are written to.
@@ -164,7 +163,9 @@ def preprocess_planet_train_data(
 
     # Import here to avoid long loading times when running other commands
     import geopandas as gpd
+    import lovely_tensors
     import pandas as pd
+    import rich
     import toml
     import xarray as xr
     import zarr
@@ -172,9 +173,7 @@ def preprocess_planet_train_data(
     from darts_acquisition.admin import download_admin_files
     from darts_preprocessing import preprocess_legacy_fast
     from darts_segmentation.training.prepare_training import create_training_patches
-    from darts_utils.rich import RichManager
     from darts_utils.tilecache import XarrayCacheManager
-    from lovely_tensors import monkey_patch
     from odc.stac import configure_rio
     from rich.progress import track
     from zarr.codecs import BloscCodec
@@ -183,7 +182,8 @@ def preprocess_planet_train_data(
     from darts.utils.cuda import decide_device
     from darts.utils.earthengine import init_ee
 
-    monkey_patch()
+    lovely_tensors.monkey_patch()
+    lovely_tensors.set_config(color=False)
     device = decide_device(device)
     init_ee(ee_project, ee_use_highvolume)
     configure_rio(cloud_defaults=True, aws={"aws_unsigned": True})
@@ -216,8 +216,7 @@ def preprocess_planet_train_data(
         "tc_greenness": 1 / 255,
         "tc_wetness": 1 / 255,
     }
-    # Filter out bands that are not in the specified bands
-    norm_factors = {k: v for k, v in norm_factors.items() if k in bands}
+    bands = list(norm_factors.keys())
 
     train_data_dir.mkdir(exist_ok=True, parents=True)
 
@@ -228,7 +227,7 @@ def preprocess_planet_train_data(
         name="x",
         shape=(0, len(bands), patch_size, patch_size),
         # shards=(100, len(bands), patch_size, patch_size),
-        chunks=(1, len(bands), patch_size, patch_size),
+        chunks=(1, 1, patch_size, patch_size),
         dtype="float32",
         compressors=BloscCodec(cname="lz4", clevel=9),
     )
@@ -245,7 +244,7 @@ def preprocess_planet_train_data(
 
     metadata = []
     for i, footprint in track(
-        footprints.iterrows(), description="Processing samples", total=len(footprints), console=RichManager.console
+        footprints.iterrows(), description="Processing samples", total=len(footprints), console=rich.get_console()
     ):
         planet_id = footprint.image_id
         try:

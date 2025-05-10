@@ -22,6 +22,8 @@ logger = logging.getLogger(__name__.replace("darts_", "darts."))
 
 @dataclass
 class PatchCoords:
+    """Wrapper which stores the coordinate information of a patch in the original image."""
+
     i: int
     patch_idx_y: int
     patch_idx_x: int
@@ -30,6 +32,16 @@ class PatchCoords:
 
     @classmethod
     def from_tensor(cls, coords: torch.Tensor, patch_size: int) -> "PatchCoords":
+        """Create a PatchCoords object from the returned coord tensor of `create_patches`.
+
+        Args:
+            coords (torch.Tensor): The coordinates of the patch in the original image, from `create_patches`.
+            patch_size (int): The size of the patch.
+
+        Returns:
+            PatchCoords: The coordinates of the patch in the original image.
+
+        """
         i, y, x, h, w = coords.int().numpy()
         return cls(
             i=i,
@@ -40,7 +52,11 @@ class PatchCoords:
         )
 
 
-def create_training_patches(
+# TODO: Redo the "create_patches" functionality so that it works with numpy, xarray and torch.
+# Make is more useful and generic, trying to also keep the coordinate information as long as possible.
+
+
+def create_training_patches(  # noqa: C901
     tile: xr.Dataset,
     labels: gpd.GeoDataFrame,
     bands: list[str],

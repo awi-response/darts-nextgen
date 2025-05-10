@@ -9,6 +9,7 @@ import odc.geo.xr
 import rioxarray  # noqa: F401
 import stopuhr
 import xarray as xr
+from darts_utils.tilecache import XarrayCacheManager
 from odc.geo.geobox import GeoBox
 from pystac_client import Client
 
@@ -44,9 +45,6 @@ def convert_masks(ds_s2: xr.Dataset) -> xr.Dataset:
     ds_s2["quality_data_mask"].attrs["data_source"] = "s2"
     ds_s2["quality_data_mask"].attrs["long_name"] = "Quality Data Mask"
     ds_s2["quality_data_mask"].attrs["description"] = "0 = Invalid, 1 = Low Quality, 2 = High Quality"
-
-    # TODO: Delete this?
-    # ds_s2 = ds_s2.drop_vars("scl")
 
     return ds_s2
 
@@ -165,6 +163,7 @@ def load_s2_masks(fpath: str | Path, reference_geobox: GeoBox) -> xr.Dataset:
     return da_scl
 
 
+# TODO: Move to new stopuhr functionality
 @stopuhr.funkuhr("Loading Sentinel 2 scene from GEE", printer=logger.debug, print_kwargs=["img"])
 def load_s2_from_gee(
     img: str | ee.Image,
@@ -200,13 +199,9 @@ def load_s2_from_gee(
     if "SCL" not in bands_mapping.keys():
         bands_mapping["SCL"] = "scl"
 
-    cache_file = None if cache is None else cache / f"gee-s2srh-{s2id}-{''.join(bands_mapping.keys())}.nc"
-    if cache_file is not None and cache_file.exists():
-        ds_s2 = xr.open_dataset(cache_file, engine="h5netcdf").set_coords("spatial_ref")
-        ds_s2.load()
-        logger.debug(f"Loaded {s2id=} from cache.")
-    else:
-        img = img.select(list(bands_mapping.keys()))
+    img = img.select(list(bands_mapping.keys()))
+
+    def _get_tile():
         ds_s2 = xr.open_dataset(
             img,
             engine="ee",
@@ -217,15 +212,14 @@ def load_s2_from_gee(
         ds_s2.attrs["time"] = str(ds_s2.time.values[0])
         ds_s2 = ds_s2.isel(time=0).drop_vars("time").rename({"X": "x", "Y": "y"}).transpose("y", "x")
         ds_s2 = ds_s2.odc.assign_crs(ds_s2.attrs["crs"])
-        logger.debug(
-            f"Found dataset with shape {ds_s2.sizes} for tile {s2id=}."
-            "Start downloading data from GEE. This may take a while."
-        )
-
         with stopuhr.stopuhr(f"Downloading data from GEE for {s2id=}", printer=logger.debug):
             ds_s2.load()
-            if cache_file is not None:
-                ds_s2.to_netcdf(cache_file, engine="h5netcdf")
+        return ds_s2
+
+    ds_s2 = XarrayCacheManager(cache).get_or_create(
+        identifier=f"gee-s2srh-{s2id}-{''.join(bands_mapping.keys())}.nc",
+        creation_func=_get_tile,
+    )
 
     ds_s2 = ds_s2.rename_vars(bands_mapping)
 
@@ -296,12 +290,7 @@ def load_s2_from_stac(
         ids=[s2id],
     )
 
-    cache_file = None if cache is None else cache / f"gee-s2srh-{s2id}-{''.join(bands_mapping.keys())}.nc"
-    if cache_file is not None and cache_file.exists():
-        ds_s2 = xr.open_dataset(cache_file, engine="h5netcdf").set_coords("spatial_ref")
-        ds_s2.load()
-        logger.debug(f"Loaded {s2id=} from cache.")
-    else:
+    def _get_tile():
         ds_s2 = xr.open_dataset(
             search,
             engine="stac",
@@ -309,16 +298,14 @@ def load_s2_from_stac(
         )
         ds_s2.attrs["time"] = str(ds_s2.time.values[0])
         ds_s2 = ds_s2.isel(time=0).drop_vars("time")
-        logger.debug(
-            f"Found a dataset with shape {ds_s2.sizes} for tile {s2id=}."
-            "Start downloading data from STAC. This may take a while."
-        )
-
         with stopuhr.stopuhr(f"Downloading data from STAC for {s2id=}", printer=logger.debug):
-            # Need double loading since the first load transforms lazy-stac to dask and second actually downloads
             ds_s2.load().load()
-            if cache_file is not None:
-                ds_s2.to_netcdf(cache_file, engine="h5netcdf")
+        return ds_s2
+
+    ds_s2 = XarrayCacheManager(cache).get_or_create(
+        identifier=f"stac-s2l2a-{s2id}-{''.join(bands_mapping.keys())}.nc",
+        creation_func=_get_tile,
+    )
 
     ds_s2 = ds_s2.rename_vars(bands_mapping)
     for var in ds_s2.data_vars:

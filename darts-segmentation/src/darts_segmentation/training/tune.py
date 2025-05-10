@@ -30,6 +30,7 @@ def tune_smp(
     data_split_by: list[str] | None = None,
     fold_method: Literal["kfold", "shuffle", "stratified", "region", "region-stratified"] = "kfold",
     total_folds: int = 5,
+    bands: list[str] | None = None,
     # Tune config
     n_folds: int | None = None,
     n_randoms: int = 3,
@@ -141,6 +142,7 @@ def tune_smp(
         fold_method (Literal["kfold", "shuffle", "stratified", "region", "region-stratified"], optional):
             Method for cross-validation split. Defaults to "kfold".
         total_folds (int, optional): Total number of folds in cross-validation. Defaults to 5.
+        bands (list[str] | None, optional): List of bands to use. Defaults to None.
         n_folds (int | None, optional): Number of folds to perform in cross-validation.
             If None, all folds (total_folds) will be used.
             Defaults to None.
@@ -179,7 +181,7 @@ def tune_smp(
     import pandas as pd
     from darts_utils.namegen import generate_counted_name
 
-    from darts_segmentation.training.cv import cross_validation
+    from darts_segmentation.training.cv import cross_validation_smp
     from darts_segmentation.training.hparams import parse_hyperparameters, sample_hyperparameters
     from darts_segmentation.training.scoring import score_from_single_run
     from darts_segmentation.training.train import test_smp, train_smp
@@ -191,7 +193,7 @@ def tune_smp(
     run_infos_file = artifact_dir / f"{tune_name}.parquet"
 
     # Check if the artifact directory is empty
-    assert not any(artifact_dir.iterdir()), f"{artifact_dir} is not empty"
+    assert not artifact_dir.exists(), f"{artifact_dir} already exists."
 
     param_grid = parse_hyperparameters(hpconfig)
     param_list = sample_hyperparameters(param_grid, n_trials)
@@ -209,13 +211,14 @@ def tune_smp(
     for i, hp in enumerate(param_list):
         cv_name = f"{tune_name}-cv{i}"
         logger.debug(f"Starting cv {cv_name} ({i}/{len(param_list)})")
-        score, is_unstable, cv_run_infos = cross_validation(
+        score, is_unstable, cv_run_infos = cross_validation_smp(
             # Data
             train_data_dir=train_data_dir,
             data_split_method=data_split_method,
             data_split_by=data_split_by,
             fold_method=fold_method,
             total_folds=total_folds,
+            bands=bands,
             # CV config
             n_folds=n_folds,
             n_randoms=n_randoms,
@@ -260,10 +263,10 @@ def tune_smp(
         run_infos.append(cv_run_infos)
 
         # Save already here to prevent data loss if something goes wrong
-        pd.concat(run_infos).to_parquet(run_infos_file)
+        pd.concat(run_infos).reset_index(drop=True).to_parquet(run_infos_file)
         logger.debug(f"Saved run infos to {run_infos_file}")
 
-    run_infos = pd.concat(run_infos)
+    run_infos = pd.concat(run_infos).reset_index(drop=True)
 
     tick_fend = time.perf_counter()
     logger.info(
@@ -271,6 +274,10 @@ def tune_smp(
     )
 
     if not retrain_and_test:
+        return 0, run_infos
+
+    if best_hp is None:
+        logger.error("No hyperparameters resulted in a valid score. Please check the logs for more information.")
         return 0, run_infos
 
     logger.info("Starting retraining with the best hyperparameters.")

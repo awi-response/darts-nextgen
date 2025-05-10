@@ -49,7 +49,6 @@ second_level_modules = [
 ]
 util_modules = {
     "darts_utils.cuda": ["free_cupy", "free_torch"],
-    "darts_utils.rich": ["RichManagerSingleton"],
     "darts_utils.namegen": ["generate_id", "generate_name", "generate_counted_name"],
 }
 

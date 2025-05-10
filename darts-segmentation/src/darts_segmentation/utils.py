@@ -152,7 +152,6 @@ def predict_in_patches(
     n_skipped = 0
     for i, batch in enumerate(patches):
         # If batch contains only nans, skip it
-        # TODO: This doesn't work as expected -> check if torch.isnan(batch).all() is correct
         if torch.isnan(batch).all(axis=0).any():
             patched_probabilities[i * batch_size : (i + 1) * batch_size] = 0
             n_skipped += 1

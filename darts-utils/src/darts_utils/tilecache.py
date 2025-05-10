@@ -72,10 +72,10 @@ class XarrayCacheManager:
             return None
 
         cache_path = self.cache_dir / f"{identifier}.nc"
-        if cache_path.exists():
-            dataset = xr.open_dataset(cache_path, engine="h5netcdf").set_coords("spatial_ref")
-            return dataset
-        return None
+        if not cache_path.exists():
+            return None
+        dataset = xr.open_dataset(cache_path, engine="h5netcdf").set_coords("spatial_ref")
+        return dataset
 
     def save_to_cache(self, dataset: xr.Dataset, identifier: str) -> bool:
         """Save a Dataset to cache.
@@ -91,8 +91,7 @@ class XarrayCacheManager:
         if not self.cache_dir:
             return False
 
-        if self.cache_dir:
-            self.cache_dir.mkdir(exist_ok=True, parents=True)
+        self.cache_dir.mkdir(exist_ok=True, parents=True)
         cache_path = self.cache_dir / f"{identifier}.nc"
 
         dataset.to_netcdf(cache_path, engine="h5netcdf")

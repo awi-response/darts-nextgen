@@ -240,7 +240,6 @@ def parse_hyperparameters(  # noqa: C901
             case "constant":
                 assert "value" in config, f"Missing 'value' key in hyperparameter configuration for constant {hparam}"
                 hpdistributions[hparam] = [config["value"]]
-            # TODO: support more scipy.stats distributions
             case _:
                 raise ValueError(f"Invalid hyperparameter type: {config['distribution']}")
 

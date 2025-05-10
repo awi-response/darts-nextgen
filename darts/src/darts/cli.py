@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Annotated
 
 import cyclopts
-from darts_utils.rich import RichManager
+import rich
 
 from darts import __version__
 from darts.pipelines import AOISentinel2Pipeline, PlanetPipeline, Sentinel2Pipeline
@@ -30,7 +30,7 @@ logger = logging.getLogger(__name__)
 config_parser = ConfigParser()
 app = cyclopts.App(
     version=__version__,
-    console=RichManager.console,
+    console=rich.get_console(),
     config=config_parser,
     help_format="plaintext",
     version_format="plaintext",

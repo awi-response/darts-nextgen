@@ -11,6 +11,7 @@ import torch
 
 # TODO:
 # New Plot: Threshold vs. F1-Score and IoU
+# TODO: Make this function un-failable to ensure that training runs even if the plotting fails
 
 
 def plot_sample(x: torch.Tensor, y: torch.Tensor, y_pred: torch.Tensor, input_combinations: list[str]):

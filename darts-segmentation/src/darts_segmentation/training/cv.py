@@ -30,6 +30,7 @@ def cross_validation_smp(
     data_split_by: list[str] | None = None,
     fold_method: Literal["kfold", "shuffle", "stratified", "region", "region-stratified"] = "kfold",
     total_folds: int = 5,
+    bands: list[str] | None = None,
     # CV config
     n_folds: int | None = None,
     n_randoms: int = 3,
@@ -148,6 +149,7 @@ def cross_validation_smp(
         fold_method (Literal["kfold", "shuffle", "stratified", "region", "region-stratified"], optional):
             Method for cross-validation split. Defaults to "kfold".
         total_folds (int, optional): Total number of folds in cross-validation. Defaults to 5.
+        bands (list[str] | None, optional): List of bands to use. Defaults to None.
         n_folds (int | None, optional): Number of folds to perform in cross-validation.
             If None, all folds (total_folds) will be used.
             Defaults to None.
@@ -231,9 +233,11 @@ def cross_validation_smp(
                 fold_method=fold_method,
                 total_folds=total_folds,
                 fold=fold,
+                bands=bands,
                 # Run config
                 run_name=run_name,
                 cv_name=cv_name,
+                tune_name=tune_name,
                 artifact_dir=artifact_dir,
                 continue_from_checkpoint=None,  # ?: Support later?
                 # Hyperparameters
@@ -269,7 +273,7 @@ def cross_validation_smp(
                 "fold": fold,
                 "duration": tick_rend - tick_rstart,
             }
-            for metric, value in trainer.callback_metrics.items():
+            for metric, value in trainer.logged_metrics.items():
                 run_info[metric] = value.item()
             if trainer.checkpoint_callback:
                 run_info["checkpoint"] = trainer.checkpoint_callback.best_model_path
@@ -285,6 +289,8 @@ def cross_validation_smp(
     run_infos["score"] = score
     is_unstable = run_infos["is_unstable"].any()
     run_infos["score_is_unstable"] = is_unstable
+    if is_unstable:
+        logger.warning("Score is unstable, meaning at least one of the metrics is NaN, Inf, -Inf or 0.")
     run_infos.to_parquet(artifact_dir / "run_infos.parquet")
     logger.debug(f"Saved run infos to {artifact_dir / 'run_infos.parquet'}")
 

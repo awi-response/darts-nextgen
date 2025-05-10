@@ -27,6 +27,7 @@ def train_smp(
     fold_method: Literal["kfold", "shuffle", "stratified", "region", "region-stratified"] = "kfold",
     total_folds: int = 5,
     fold: int = 0,
+    bands: list[str] | None = None,
     # Run config
     run_name: str | None = None,
     cv_name: str | None = None,
@@ -128,6 +129,7 @@ def train_smp(
             Method for cross-validation split. Defaults to "kfold".
         total_folds (int, optional): Total number of folds in cross-validation. Defaults to 5.
         fold (int, optional): Index of the current fold. Defaults to 0.
+        bands (list[str] | None, optional): List of bands to use. Defaults to None.
         run_name (str | None, optional): Name of the run. If None is generated automatically. Defaults to None.
         cv_name (str | None, optional): Name of the cross-validation.
             Should only be specified by a cross-validation script.
@@ -172,6 +174,7 @@ def train_smp(
         fold_method=fold_method,
         total_folds=total_folds,
         fold=fold,
+        bands=bands,
         run_name=run_name,
         cv_name=cv_name,
         tune_name=tune_name,
@@ -208,6 +211,7 @@ def test_smp(
     batch_size: int = 8,
     data_split_method: Literal["random", "region", "sample"] | None = None,
     data_split_by: list[str] | str | float | None = None,
+    bands: list[str] | None = None,
     artifact_dir: Path = Path("artifacts"),
     num_workers: int = 0,
     device: int | str = "auto",
@@ -256,6 +260,7 @@ def test_smp(
             Defaults to None.
         data_split_by (list[str] | str | float | None, optional): Select by which seed/regions/samples split.
             Defaults to None.
+        bands (list[str] | None, optional): List of bands to use. Defaults to None.
         artifact_dir (Path, optional): Directory to save artifacts. Defaults to Path("artifacts").
         num_workers (int, optional): Number of workers for the DataLoader. Defaults to 0.
         device (int | str, optional): Device to use. Defaults to "auto".
@@ -273,6 +278,7 @@ def test_smp(
         batch_size=batch_size,
         data_split_method=data_split_method,
         data_split_by=data_split_by,
+        bands=bands,
         artifact_dir=artifact_dir,
         num_workers=num_workers,
         device=device,
@@ -323,6 +329,7 @@ def tune_smp(
     data_split_by: list[str] | None = None,
     fold_method: Literal["kfold", "shuffle", "stratified", "region", "region-stratified"] = "kfold",
     total_folds: int = 5,
+    bands: list[str] | None = None,
     # Tune config
     n_folds: int | None = None,
     n_randoms: int = 3,
@@ -432,6 +439,7 @@ def tune_smp(
         fold_method (Literal["kfold", "shuffle", "stratified", "region", "region-stratified"], optional):
             Method for cross-validation split. Defaults to "kfold".
         total_folds (int, optional): Total number of folds in cross-validation. Defaults to 5.
+        bands (list[str] | None, optional): List of bands to use. Defaults to None.
         n_folds (int | None, optional): Number of folds to perform in cross-validation.
             If None, all folds (total_folds) will be used.
             Defaults to None.
@@ -473,6 +481,7 @@ def tune_smp(
         data_split_by=data_split_by,
         fold_method=fold_method,
         total_folds=total_folds,
+        bands=bands,
         n_folds=n_folds,
         n_randoms=n_randoms,
         n_trials=n_trials,
@@ -501,6 +510,7 @@ def cross_validation_smp(
     data_split_by: list[str] | None = None,
     fold_method: Literal["kfold", "shuffle", "stratified", "region", "region-stratified"] = "kfold",
     total_folds: int = 5,
+    bands: list[str] | None = None,
     # CV config
     n_folds: int | None = None,
     n_randoms: int = 3,
@@ -619,6 +629,7 @@ def cross_validation_smp(
         fold_method (Literal["kfold", "shuffle", "stratified", "region", "region-stratified"], optional):
             Method for cross-validation split. Defaults to "kfold".
         total_folds (int, optional): Total number of folds in cross-validation. Defaults to 5.
+        bands (list[str] | None, optional): List of bands to use. Defaults to None.
         n_folds (int | None, optional): Number of folds to perform in cross-validation.
             If None, all folds (total_folds) will be used.
             Defaults to None.
@@ -667,6 +678,7 @@ def cross_validation_smp(
         data_split_by=data_split_by,
         fold_method=fold_method,
         total_folds=total_folds,
+        bands=bands,
         n_folds=n_folds,
         n_randoms=n_randoms,
         cv_name=cv_name,

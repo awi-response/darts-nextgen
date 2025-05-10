@@ -123,9 +123,6 @@ nav:
               - <code class='doc-symbol doc-symbol-nav doc-symbol-function'></code>generate_counted_name: reference/darts_utils/namegen/generate_counted_name.md
               - <code class='doc-symbol doc-symbol-nav doc-symbol-function'></code>generate_id: reference/darts_utils/namegen/generate_id.md
               - <code class='doc-symbol doc-symbol-nav doc-symbol-function'></code>generate_name: reference/darts_utils/namegen/generate_name.md
-          - <code class='doc-symbol doc-symbol-nav doc-symbol-module'></code>rich:
-              - reference/darts_utils/rich/index.md
-              - <code class='doc-symbol doc-symbol-nav doc-symbol-class'></code>RichManagerSingleton: reference/darts_utils/rich/RichManagerSingleton.md
 
 theme:
   name: material

@@ -129,6 +129,7 @@ def preprocess_s2_train_data(
     """
     # Import here to avoid long loading times when running other commands
     import geopandas as gpd
+    import lovely_tensors
     import pandas as pd
     import toml
     import xarray as xr
@@ -137,7 +138,6 @@ def preprocess_s2_train_data(
     from darts_acquisition.s2 import parse_s2_tile_id
     from darts_preprocessing import preprocess_legacy_fast
     from darts_segmentation.training.prepare_training import create_training_patches
-    from lovely_tensors import monkey_patch
     from odc.stac import configure_rio
     from rich.progress import track
     from zarr.codecs import BloscCodec
@@ -147,7 +147,8 @@ def preprocess_s2_train_data(
     from darts.utils.earthengine import init_ee
     from darts.utils.logging import console
 
-    monkey_patch()
+    lovely_tensors.monkey_patch()
+    lovely_tensors.set_config(color=False)
     debug_info()
     device = decide_device(device)
     init_ee(ee_project, ee_use_highvolume)

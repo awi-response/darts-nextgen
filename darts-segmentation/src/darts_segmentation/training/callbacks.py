@@ -1,12 +1,15 @@
 """PyTorch Lightning Callbacks for training and validation."""
 
+import copy
 import logging
 from pathlib import Path
 from typing import Literal
 
 import matplotlib.pyplot as plt
+import torch
 import wandb
 from lightning import LightningModule, Trainer
+from lightning.fabric.utilities import measure_flops
 from lightning.pytorch.callbacks import Callback
 from lightning.pytorch.loggers import CSVLogger, WandbLogger
 from torchmetrics import (
@@ -71,6 +74,8 @@ class BinarySegmentationMetrics(Callback):
         test_set: str = "test",
         plot_every_n_val_epochs: int = 5,
         is_crossval: bool = False,
+        batch_size: int = 8,
+        patch_size: int = 512,
     ):
         """Initialize the ValidationCallback.
 
@@ -84,6 +89,8 @@ class BinarySegmentationMetrics(Callback):
                 This will change the logging behavior of scalar metrics from logging to {val_set} to just "val".
                 The logging behaviour of the samples is not affected.
                 Defaults to False.
+            batch_size (int, optional): Batch size. Needed for throughput measurements. Defaults to 8.
+            patch_size (int, optional): Patch size. Needed for throughput measurements. Defaults to 512.
 
         """
         assert "/" not in val_set, "val_set must not contain '/'"
@@ -93,10 +100,18 @@ class BinarySegmentationMetrics(Callback):
         self.plot_every_n_val_epochs = plot_every_n_val_epochs
         self.input_combination = input_combination
         self.is_crossval = is_crossval
+        self.batch_size = batch_size
+        self.patch_size = patch_size
 
     @property
     def _val_prefix(self):
-        return "val" if self.is_crossval else self.val_set
+        # This is used to prefix the validation metrics with the fold number (val-set) instead of just "val"
+        # Intended to be used outside of cross-validations to avaid confusion which metrics belong to which fold
+        # However, is is probably better to just use "val" for all folds to avoid confusion and
+        # increase the usability of wandb
+        # Disable this functionality for now
+        # return "val" if self.is_crossval else self.val_set
+        return "val"
 
     def is_val_plot_epoch(self, current_epoch: int, check_val_every_n_epoch: int | None) -> bool:
         """Check if the current epoch is an epoch where validation samples should be plotted.
@@ -147,6 +162,29 @@ class BinarySegmentationMetrics(Callback):
         # We don't want to use memory in the predict stage
         if stage == "predict":
             return
+
+        # Add throughput metric, meant to be consumed by the ThroughputMonitor callback
+        # ! This will assume that the batch size does not change during training!
+        with torch.device("meta"):
+            model: torch.Module = copy.deepcopy(self.pl_module.model).to(device="meta")
+
+            def sample_forward():
+                batch = torch.randn(
+                    self.batch_size,
+                    len(self.input_combination),
+                    self.patch_size,
+                    self.patch_size,
+                    device="meta",
+                )
+                return model(batch)
+
+            if stage == "fit":
+                # We use sum as a dummy loss function because we don't have a second input available
+                self.pl_module.flops_per_batch = measure_flops(model, sample_forward, loss_fn=torch.Tensor.sum)
+            else:
+                # Don't compute backward pass for validation and test
+                self.pl_module.flops_per_batch = measure_flops(model, sample_forward)
+            logger.debug(f"FLOPS per batch: {self.pl_module.flops_per_batch}")
 
         metric_kwargs = {"task": "binary", "validate_args": False, "ignore_index": 2}
         metrics = MetricCollection(

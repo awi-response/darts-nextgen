@@ -36,6 +36,7 @@ requirements-dev.lock
 
 # Editor files
 .vscode/
+.zed/
 
 # Config files
 config.toml

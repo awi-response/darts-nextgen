@@ -56,9 +56,10 @@ import numyp as np
 import torch
 import xarray as xr
 from lovely_numpy import lo
-from lovely_tensors import monkey_patch
+import lovely_tensors
 
-monkey_patch()
+lovely_tensors.monkey_patch()
+lovely_tensors.set_config(color=False)  # Disable colored output, which is better for logging
 xr.set_options(display_expand_data=False)
 
 a = np.zeros((8, 1024, 1024))

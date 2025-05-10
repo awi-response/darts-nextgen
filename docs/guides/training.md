@@ -384,6 +384,14 @@ If no direction is provided, it is assumed to be ":higher".
 Has no real effect on the single score calculation, since only the mean is calculated there.
 
 !!! abstract "Available metrics"
+
+    The following metrics are visible to the scoring function:
+   
+    - `'train/time'`
+    - `'train/device/batches_per_second'`
+    - `'train/device/samples_per_second'`
+    - `'train/device/flops_per_second'`
+    - `'train/device/mfu'`
     - `'train/loss'`
     - `'train/Accuracy'`
     - `'train/CohenKappa'`
@@ -404,6 +412,8 @@ Has no real effect on the single score calculation, since only the mean is calcu
     - `'val/Specificity'`
     - `'val/AUROC'`
     - `'val/AveragePrecision'`
+    
+    These are derived from `trainer.logged_metrics`.
 
 TODO: Implement https://lightning.ai/docs/pytorch/stable/api/lightning.pytorch.callbacks.ThroughputMonitor.html
 

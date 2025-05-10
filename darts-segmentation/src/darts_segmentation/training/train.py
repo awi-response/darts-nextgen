@@ -23,6 +23,7 @@ def train_smp(
     fold_method: Literal["kfold", "shuffle", "stratified", "region", "region-stratified"] = "kfold",
     total_folds: int = 5,
     fold: int = 0,
+    bands: list[str] | None = None,
     # Run config
     run_name: str | None = None,
     cv_name: str | None = None,
@@ -124,6 +125,7 @@ def train_smp(
             Method for cross-validation split. Defaults to "kfold".
         total_folds (int, optional): Total number of folds in cross-validation. Defaults to 5.
         fold (int, optional): Index of the current fold. Defaults to 0.
+        bands (list[str] | None, optional): List of bands to use. Defaults to None.
         run_name (str | None, optional): Name of the run. If None is generated automatically. Defaults to None.
         cv_name (str | None, optional): Name of the cross-validation.
             Should only be specified by a cross-validation script.
@@ -168,13 +170,13 @@ def train_smp(
     from darts.utils.logging import LoggingManager
     from darts_utils.namegen import generate_counted_name, generate_id
     from lightning.pytorch import seed_everything
-    from lightning.pytorch.callbacks import EarlyStopping, RichProgressBar
+    from lightning.pytorch.callbacks import EarlyStopping, RichProgressBar, ThroughputMonitor
     from lightning.pytorch.loggers import CSVLogger, WandbLogger
 
     from darts_segmentation.segment import SMPSegmenterConfig
     from darts_segmentation.training.callbacks import BinarySegmentationMetrics
     from darts_segmentation.training.data import DartsDataModule
-    from darts_segmentation.training.module import SMPSegmenter
+    from darts_segmentation.training.module import LitSMP
 
     LoggingManager.apply_logging_handlers("lightning.pytorch", level=logging.INFO)
 
@@ -211,21 +213,22 @@ def train_smp(
         logger.debug(f"Using Weights & Biases:\n\t{wandb_entity=}\n\t{wandb_project=}")
 
     lovely_tensors.monkey_patch()
+    lovely_tensors.set_config(color=False)
     torch.set_float32_matmul_precision("medium")
-    seed_everything(random_seed, workers=True)
+    seed_everything(random_seed, workers=True, verbose=False)
 
-    preprocess_config = toml.load(train_data_dir / "config.toml")["darts"]
+    data_config = toml.load(train_data_dir / "config.toml")["darts"]
 
     config = SMPSegmenterConfig(
-        input_combination=preprocess_config["bands"],
+        input_combination=list(data_config["norm_factors"].keys()) if bands is None else bands,
         model={
             "arch": model_arch,
             "encoder_name": model_encoder,
             "encoder_weights": model_encoder_weights,
-            "in_channels": len(preprocess_config["bands"]),
+            "in_channels": len(data_config["norm_factors"]) if bands is None else len(bands),
             "classes": 1,
         },
-        norm_factors=preprocess_config["norm_factors"],
+        norm_factors=data_config["norm_factors"],
     )
 
     # Data and model
@@ -237,10 +240,11 @@ def train_smp(
         fold_method=fold_method,
         total_folds=total_folds,
         fold=fold,
+        bands=bands,
         augment=augment,
         num_workers=num_workers,
     )
-    model = SMPSegmenter(
+    model = LitSMP(
         config=config,
         learning_rate=learning_rate,
         gamma=gamma,
@@ -284,7 +288,7 @@ def train_smp(
             f"Artifacts are logged to {(Path(wandb_logger.save_dir) / 'wandb').resolve()}"
         )
 
-    # Callbacks
+    # Callbacks and profiler
     callbacks = [
         RichProgressBar(),
         BinarySegmentationMetrics(
@@ -292,12 +296,21 @@ def train_smp(
             val_set=f"val{fold}",
             plot_every_n_val_epochs=plot_every_n_val_epochs,
             is_crossval=bool(cv_name),
+            batch_size=batch_size,
+            patch_size=data_config["patch_size"],
         ),
+        ThroughputMonitor(batch_size_fn=lambda batch: batch[0].size(0), window_size=log_every_n_steps),
     ]
     if early_stopping_patience:
         logger.debug(f"Using EarlyStopping with patience {early_stopping_patience}")
         early_stopping = EarlyStopping(monitor="val/JaccardIndex", mode="max", patience=early_stopping_patience)
         callbacks.append(early_stopping)
+
+    # Unsupported: https://github.com/Lightning-AI/pytorch-lightning/issues/19983
+    # profiler_dir = artifact_dir / f"{run_name}-{run_id}" / "profiler"
+    # profiler_dir.mkdir(parents=True, exist_ok=True)
+    # profiler = AdvancedProfiler(dirpath=profiler_dir, filename="perf_logs", dump_stats=True)
+    # logger.debug(f"Using profiler with output to {profiler.dirpath.resolve()}")
 
     # Train
     trainer = L.Trainer(
@@ -309,6 +322,7 @@ def train_smp(
         accelerator="gpu" if isinstance(device, int) else device,
         devices=[device] if isinstance(device, int) else "auto",
         deterministic=False,  # True does not work for some reason
+        # profiler=profiler,
     )
     trainer.fit(model, datamodule, ckpt_path=continue_from_checkpoint)
 
@@ -332,6 +346,7 @@ def test_smp(
     batch_size: int = 8,
     data_split_method: Literal["random", "region", "sample"] | None = None,
     data_split_by: list[str] | str | float | None = None,
+    bands: list[str] | None = None,
     artifact_dir: Path = Path("artifacts"),
     num_workers: int = 0,
     device: int | str = "auto",
@@ -380,6 +395,7 @@ def test_smp(
             Defaults to None.
         data_split_by (list[str] | str | float | None, optional): Select by which seed/regions/samples split.
             Defaults to None.
+        bands (list[str] | None, optional): List of bands to use. Defaults to None.
         artifact_dir (Path, optional): Directory to save artifacts. Defaults to Path("lightning_logs").
         num_workers (int, optional): Number of workers for the DataLoader. Defaults to 0.
         device (int | str, optional): Device to use. Defaults to "auto".
@@ -395,12 +411,12 @@ def test_smp(
     import torch
     from darts.utils.logging import LoggingManager
     from lightning.pytorch import seed_everything
-    from lightning.pytorch.callbacks import RichProgressBar
+    from lightning.pytorch.callbacks import RichProgressBar, ThroughputMonitor
     from lightning.pytorch.loggers import CSVLogger, WandbLogger
 
     from darts_segmentation.training.callbacks import BinarySegmentationMetrics
     from darts_segmentation.training.data import DartsDataModule
-    from darts_segmentation.training.module import SMPSegmenter
+    from darts_segmentation.training.module import LitSMP
 
     LoggingManager.apply_logging_handlers("lightning.pytorch")
 
@@ -415,12 +431,12 @@ def test_smp(
     )
     logger.debug(f"Using config:\n\t{batch_size=}\n\t{device=}")
 
+    lovely_tensors.set_config(color=False)
     lovely_tensors.monkey_patch()
-
     torch.set_float32_matmul_precision("medium")
     seed_everything(42, workers=True)
 
-    preprocess_config = toml.load(train_data_dir / "config.toml")["darts"]
+    data_config = toml.load(train_data_dir / "config.toml")["darts"]
 
     # Data and model
     datamodule = DartsDataModule(
@@ -428,6 +444,7 @@ def test_smp(
         batch_size=batch_size,
         data_split_method=data_split_method,
         data_split_by=data_split_by,
+        bands=bands,
         num_workers=num_workers,
     )
     # Try to infer model checkpoint if not given
@@ -436,7 +453,7 @@ def test_smp(
         logger.debug(f"No checkpoint provided. Looking for model checkpoint in {checkpoint_dir.resolve()}")
         model_ckp = max(checkpoint_dir.glob("*.ckpt"), key=lambda x: x.stat().st_mtime)
     logger.debug(f"Using model checkpoint at {model_ckp.resolve()}")
-    model = SMPSegmenter.load_from_checkpoint(model_ckp)
+    model = LitSMP.load_from_checkpoint(model_ckp)
 
     # Loggers
     trainer_loggers = [
@@ -462,12 +479,14 @@ def test_smp(
         )
 
     # Callbacks
-    metrics_cb = BinarySegmentationMetrics(
-        input_combination=preprocess_config["bands"],
-    )
     callbacks = [
         RichProgressBar(),
-        metrics_cb,
+        BinarySegmentationMetrics(
+            input_combination=bands,
+            batch_size=batch_size,
+            patch_size=data_config["patch_size"],
+        ),
+        ThroughputMonitor(batch_size_fn=lambda batch: batch[0].size(0)),
     ]
 
     # Test

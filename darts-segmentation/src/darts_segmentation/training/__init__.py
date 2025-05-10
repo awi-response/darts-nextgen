@@ -2,13 +2,12 @@
 
 from darts_segmentation.training.cv import cross_validation_smp as cross_validation_smp
 from darts_segmentation.training.data import DartsDataModule as DartsDataModule
-from darts_segmentation.training.data import DartsDataset as DartsDataset
 from darts_segmentation.training.data import DartsDatasetInMemory as DartsDatasetInMemory
 from darts_segmentation.training.data import DartsDatasetZarr as DartsDatasetZarr
 from darts_segmentation.training.hparams import Hyperparameters as Hyperparameters
 from darts_segmentation.training.hparams import parse_hyperparameters as parse_hyperparameters
 from darts_segmentation.training.hparams import sample_hyperparameters as sample_hyperparameters
-from darts_segmentation.training.module import SMPSegmenter as SMPSegmenter
+from darts_segmentation.training.module import LitSMP as LitSMP
 from darts_segmentation.training.prepare_training import create_training_patches as create_training_patches
 from darts_segmentation.training.scoring import check_score_is_unstable as check_score_is_unstable
 from darts_segmentation.training.scoring import score_from_runs as score_from_runs
