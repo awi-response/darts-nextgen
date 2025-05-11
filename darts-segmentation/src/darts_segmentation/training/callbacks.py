@@ -41,6 +41,7 @@ from darts_segmentation.metrics import (
     BinaryInstanceRecall,
 )
 from darts_segmentation.training.viz import plot_sample
+from darts_segmentation.utils import Bands
 
 logger = logging.getLogger(__name__.replace("darts_", "darts."))
 
@@ -69,7 +70,7 @@ class BinarySegmentationMetrics(Callback):
     def __init__(
         self,
         *,
-        input_combination: list[str],
+        bands: Bands,
         val_set: str = "val",
         test_set: str = "test",
         plot_every_n_val_epochs: int = 5,
@@ -80,7 +81,7 @@ class BinarySegmentationMetrics(Callback):
         """Initialize the ValidationCallback.
 
         Args:
-            input_combination (list[str]): List of input names to combine for the visualization.
+            bands (Bands): List of bands to combine for the visualization.
             val_set (str, optional): Name of the validation set. Only used for naming the validation metrics.
                 Defaults to "val".
             test_set (str, optional): Name of the test set. Only used for naming the test metrics. Defaults to "test".
@@ -98,7 +99,7 @@ class BinarySegmentationMetrics(Callback):
         self.val_set = val_set
         self.test_set = test_set
         self.plot_every_n_val_epochs = plot_every_n_val_epochs
-        self.input_combination = input_combination
+        self.band_names = bands.names
         self.is_crossval = is_crossval
         self.batch_size = batch_size
         self.patch_size = patch_size
@@ -171,7 +172,7 @@ class BinarySegmentationMetrics(Callback):
             def sample_forward():
                 batch = torch.randn(
                     self.batch_size,
-                    len(self.input_combination),
+                    len(self.band_names),
                     self.patch_size,
                     self.patch_size,
                     device="meta",
@@ -344,11 +345,11 @@ class BinarySegmentationMetrics(Callback):
             # Plot positive sample
             is_postive = (y[i] == 1).sum() > 0
             if is_postive and self._val_pos_visualizations < 20:
-                fig, _ = plot_sample(x[i], y[i], y_hat[i], self.input_combination)
+                fig, _ = plot_sample(x[i], y[i], y_hat[i], self.band_names)
                 self._val_pos_visualizations += 1
             # Plot negative sample
             elif not is_postive and self._val_neg_visualizations < 10:
-                fig, _ = plot_sample(x[i], y[i], y_hat[i], self.input_combination)
+                fig, _ = plot_sample(x[i], y[i], y_hat[i], self.band_names)
                 self._val_neg_visualizations += 1
             # Either the number of positive or negative samples is already full
             else:
@@ -440,11 +441,11 @@ class BinarySegmentationMetrics(Callback):
 
             # Plot positive sample
             if y[i].sum() > 0 and self._test_pos_visualizations < 20:
-                fig, _ = plot_sample(x[i], y[i], y_hat[i], self.input_combination)
+                fig, _ = plot_sample(x[i], y[i], y_hat[i], self.band_names)
                 self._test_pos_visualizations += 1
             # Plot negative sample
             elif y[i].sum() == 0 and self._test_neg_visualizations < 10:
-                fig, _ = plot_sample(x[i], y[i], y_hat[i], self.input_combination)
+                fig, _ = plot_sample(x[i], y[i], y_hat[i], self.band_names)
                 self._test_neg_visualizations += 1
             # Either the number of positive or negative samples is already full
             else:

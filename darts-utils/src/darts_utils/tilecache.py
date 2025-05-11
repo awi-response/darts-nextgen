@@ -97,12 +97,20 @@ class XarrayCacheManager:
         dataset.to_netcdf(cache_path, engine="h5netcdf")
         return True
 
-    def get_or_create(self, identifier: str, creation_func: callable, *args, **kwargs) -> xr.Dataset:
+    def get_or_create(
+        self,
+        identifier: str,
+        creation_func: callable,
+        force: bool,
+        *args,
+        **kwargs,
+    ) -> xr.Dataset:
         """Get cached Dataset or create and cache it if it doesn't exist.
 
         Args:
             identifier (str): Unique identifier for the cached file
             creation_func (callable): Function to create the Dataset if not cached
+            force (bool): If True, forces reprocessing even if cached
             *args: Arguments to pass to creation_func
             **kwargs: Keyword arguments to pass to creation_func
 
@@ -111,9 +119,10 @@ class XarrayCacheManager:
 
         """
         cached_dataset = self.load_from_cache(identifier)
-        if cached_dataset is not None:
+        if cached_dataset is not None and not force:
             return cached_dataset
 
         dataset = creation_func(*args, **kwargs)
-        self.save_to_cache(dataset, identifier)
+        if cached_dataset is not None:
+            self.save_to_cache(dataset, identifier)
         return dataset

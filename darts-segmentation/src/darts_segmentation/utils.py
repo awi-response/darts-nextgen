@@ -2,7 +2,10 @@
 
 import logging
 import math
+from collections import UserList
 from collections.abc import Generator
+from dataclasses import dataclass
+from typing import Literal
 
 import torch
 import torch.nn as nn
@@ -191,3 +194,134 @@ def predict_in_patches(
         return prediction, weights
     else:
         return prediction
+
+
+@dataclass
+class Band:
+    """Wrapper for the band information."""
+
+    name: str
+    # Follows CF conventions for scaling and offsetting
+    # decode_values = encoded_values * scale_factor + add_offset
+    factor: float = 1.0
+    offset: float = 0.0
+
+
+class Bands(UserList[Band]):
+    """Wrapper for the list of bands."""
+
+    def __repr__(self) -> str:  # noqa: D105
+        band_info = ", ".join([f"{band.name}(*{band.factor:.5f}+{band.offset:.5f})" for band in self])
+        return f"Bands({band_info})"
+
+    # TODO: this is maybe weird behavior, maybe change it in the future
+    def __reduce__(self):  # noqa: D105
+        # This is needed to pickle (and unpickle) the Bands object as a dict
+        # This is needed, because this way we don't need to have this class present when unpickling
+        # a pytorch checkpoint
+        return (dict, (self.to_config(),))
+
+    @property
+    def names(self) -> list[str]:
+        """Get the names of the bands.
+
+        Returns:
+            list[str]: The names of the bands.
+
+        """
+        return [band.name for band in self]
+
+    @property
+    def factors(self) -> list[float]:
+        """Get the factors of the bands.
+
+        Returns:
+            list[float]: The factors of the bands.
+
+        """
+        return [band.factor for band in self]
+
+    @property
+    def offsets(self) -> list[float]:
+        """Get the offsets of the bands.
+
+        Returns:
+            list[float]: The offsets of the bands.
+
+        """
+        return [band.offset for band in self]
+
+    def filter(self, band_names: list[str]) -> "Bands":
+        """Filter the bands by name.
+
+        Args:
+            band_names (list[str]): The names of the bands to keep.
+
+        Returns:
+            Bands: The filtered Bands object.
+
+        """
+        return Bands([band for band in self if band.name in band_names])
+
+    def to_dict(self) -> dict[str, tuple[float, float]]:
+        """Convert the Bands object to a dictionary.
+
+        Returns:
+            dict[str, tuple[float, float]]: The dictionary containing the band information.
+
+        """
+        return {band.name: (band.factor, band.offset) for band in self}
+
+    @classmethod
+    def from_dict(cls, config: dict[str, tuple[float, float]]) -> "Bands":
+        """Create a Bands object from a dictionary.
+
+        Args:
+            config (dict[str, tuple[float, float]]): The dictionary containing the band information.
+                Expects the keys to be the band names and the values to be tuples of (factor, offset).
+                Example: {"band1": (1.0, 0.0), "band2": (2.0, 1.0)}
+
+        Returns:
+            Bands: The Bands object.
+
+        """
+        return cls([Band(name=name, factor=factor, offset=offset) for name, (factor, offset) in config.items()])
+
+    def to_config(self) -> dict[Literal["bands", "band_factors", "band_offsets"], list]:
+        """Convert the Bands object to a config dictionary.
+
+        Returns:
+            dict: The config dictionary containing the band information.
+
+        """
+        return {
+            "bands": [band.name for band in self],
+            "band_factors": [band.factor for band in self],
+            "band_offsets": [band.offset for band in self],
+        }
+
+    @classmethod
+    def from_config(
+        cls,
+        config: dict[Literal["bands", "band_factors", "band_offsets"], list] | dict[str, tuple[float, float]],
+    ) -> "Bands":
+        """Create a Bands object from a config dictionary.
+
+        Args:
+            config (dict): The config dictionary containing the band information.
+                Expects config to be a dictionary with keys "bands", "band_factors" and "band_offsets",
+                with the values to be lists of the same length.
+
+        Returns:
+            Bands: The Bands object.
+
+        """
+        assert "bands" in config and "band_factors" in config and "band_offsets" in config, (
+            f"Config must contain keys 'bands', 'band_factors' and 'band_offsets'.Got {config} instead."
+        )
+        return cls(
+            [
+                Band(name=name, factor=factor, offset=offset)
+                for name, factor, offset in zip(config["bands"], config["band_factors"], config["band_offsets"])
+            ]
+        )

@@ -60,6 +60,7 @@ def preprocess_planet_train_data(
     tcvis_dir: Path,
     admin_dir: Path,
     preprocess_cache: Path | None = None,
+    force_preprocess: bool = False,
     device: Literal["cuda", "cpu", "auto"] | int | None = None,
     ee_project: str | None = None,
     ee_use_highvolume: bool = True,
@@ -119,6 +120,7 @@ def preprocess_planet_train_data(
         tcvis_dir (Path): The directory containing the TCVis data.
         admin_dir (Path): The directory containing the admin files.
         preprocess_cache (Path, optional): The directory to store the preprocessed data. Defaults to None.
+        force_preprocess (bool, optional): Whether to force the preprocessing of the data. Defaults to False.
         device (Literal["cuda", "cpu"] | int, optional): The device to run the model on.
             If "cuda" take the first device (0), if int take the specified device.
             If "auto" try to automatically select a free GPU (<50% memory usage).
@@ -163,16 +165,15 @@ def preprocess_planet_train_data(
 
     # Import here to avoid long loading times when running other commands
     import geopandas as gpd
-    import lovely_tensors
     import pandas as pd
     import rich
-    import toml
     import xarray as xr
     import zarr
     from darts_acquisition import load_arcticdem, load_planet_masks, load_planet_scene, load_tcvis
     from darts_acquisition.admin import download_admin_files
-    from darts_preprocessing import preprocess_legacy_fast
-    from darts_segmentation.training.prepare_training import create_training_patches
+    from darts_preprocessing import preprocess_v2
+    from darts_segmentation.training.prepare_training import TrainDatasetBuilder
+    from darts_segmentation.utils import Bands
     from darts_utils.tilecache import XarrayCacheManager
     from odc.stac import configure_rio
     from rich.progress import track
@@ -182,8 +183,6 @@ def preprocess_planet_train_data(
     from darts.utils.cuda import decide_device
     from darts.utils.earthengine import init_ee
 
-    lovely_tensors.monkey_patch()
-    lovely_tensors.set_config(color=False)
     device = decide_device(device)
     init_ee(ee_project, ee_use_highvolume)
     configure_rio(cloud_defaults=True, aws={"aws_unsigned": True})
@@ -193,7 +192,7 @@ def preprocess_planet_train_data(
     labels = gpd.GeoDataFrame(pd.concat(labels, ignore_index=True))
 
     footprints = (gpd.read_file(footprints_file) for footprints_file in labels_dir.glob("*/ImageFootprints*.gpkg"))
-    footprints = gpd.GeoDataFrame(pd.concat(footprints, ignore_index=True))
+    footprints = gpd.GeoDataFrame(pd.concat(footprints, ignore_index=True)).sample(5, random_state=42)
     fpaths = {fpath.stem: fpath for fpath in _legacy_path_gen(data_dir)}
     footprints["fpath"] = footprints.image_id.map(fpaths)
 
@@ -204,19 +203,23 @@ def preprocess_planet_train_data(
     admin2 = gpd.read_file(admin2_fpath)
 
     # We hardcode these because they depend on the preprocessing used
-    norm_factors = {
-        "red": 1 / 3000,
-        "green": 1 / 3000,
-        "blue": 1 / 3000,
-        "nir": 1 / 3000,
-        "ndvi": 1 / 20000,
-        "relative_elevation": 1 / 30000,
-        "slope": 1 / 90,
-        "tc_brightness": 1 / 255,
-        "tc_greenness": 1 / 255,
-        "tc_wetness": 1 / 255,
-    }
-    bands = list(norm_factors.keys())
+    bands = Bands.from_dict(
+        {
+            "red": (1 / 3000, 0.0),
+            "green": (1 / 3000, 0.0),
+            "blue": (1 / 3000, 0.0),
+            "nir": (1 / 3000, 0.0),
+            "ndvi": (1 / 20000, 0.0),
+            "relative_elevation": (1 / 30000, 0.0),
+            "slope": (1 / 90, 0.0),
+            "aspect": (1 / 360, 0.0),
+            "hillshade": (1.0, 0.0),
+            "curvature": (1 / 10, 0.5),  # TODO: Do we even want shift?
+            "tc_brightness": (1 / 255, 0.0),
+            "tc_greenness": (1 / 255, 0.0),
+            "tc_wetness": (1 / 255, 0.0),
+        }
+    )
 
     train_data_dir.mkdir(exist_ok=True, parents=True)
 
@@ -240,7 +243,17 @@ def preprocess_planet_train_data(
         compressors=BloscCodec(cname="lz4", clevel=9),
     )
 
-    cache_manager = XarrayCacheManager(preprocess_cache)
+    builder = TrainDatasetBuilder(
+        train_data_dir=train_data_dir,
+        patch_size=patch_size,
+        overlap=overlap,
+        bands=bands,
+        exclude_nopositive=exclude_nopositive,
+        exclude_nan=exclude_nan,
+        mask_erosion_size=mask_erosion_size,
+        device=device,
+    )
+    cache_manager = XarrayCacheManager(preprocess_cache / "planet_v2")
 
     metadata = []
     for i, footprint in track(
@@ -265,7 +278,7 @@ def preprocess_planet_train_data(
                 data_masks = load_planet_masks(footprint.fpath)
                 tile = xr.merge([tile, data_masks])
 
-                tile: xr.Dataset = preprocess_legacy_fast(
+                tile: xr.Dataset = preprocess_v2(
                     tile,
                     arcticdem,
                     tcvis,
@@ -279,6 +292,7 @@ def preprocess_planet_train_data(
                 tile = cache_manager.get_or_create(
                     identifier=planet_id,
                     creation_func=_get_tile,
+                    force=force_preprocess,
                 )
 
             logger.debug(f"Found tile with size {tile.sizes}")
@@ -287,41 +301,16 @@ def preprocess_planet_train_data(
             region = _get_region_name(footprint, admin2)
 
             with timer("Save as patches"):
-                # Save the patches
-                gen = create_training_patches(
+                builder.add_tile(
                     tile=tile,
                     labels=footprint_labels,
-                    bands=bands,
-                    norm_factors=norm_factors,
-                    patch_size=patch_size,
-                    overlap=overlap,
-                    exclude_nopositive=exclude_nopositive,
-                    exclude_nan=exclude_nan,
-                    device=device,
-                    mask_erosion_size=mask_erosion_size,
+                    region=region,
+                    sample_id=planet_id,
+                    metadata={
+                        "planet_id": planet_id,
+                        "fpath": footprint.fpath,
+                    },
                 )
-
-                zx = zroot["x"]
-                zy = zroot["y"]
-                for patch_id, (x, y, coords) in enumerate(gen):
-                    zx.append(x.unsqueeze(0).numpy().astype("float32"))
-                    zy.append(y.unsqueeze(0).numpy().astype("uint8"))
-                    geometry = tile.isel(x=coords.x, y=coords.y).odc.geobox.geographic_extent.geom
-                    metadata.append(
-                        {
-                            "patch_id": patch_id,
-                            "planet_id": planet_id,
-                            "region": region,
-                            "sample_id": planet_id,
-                            "empty": not (y == 1).any(),
-                            "x": coords.x.start,
-                            "y": coords.y.start,
-                            "patch_idx_x": coords.patch_idx_x,
-                            "patch_idx_y": coords.patch_idx_y,
-                            "fpath": footprint.fpath,
-                            "geometry": geometry,
-                        }
-                    )
 
             logger.info(f"Processed sample {planet_id} ({i + 1} of {len(footprints)})")
 
@@ -333,34 +322,16 @@ def preprocess_planet_train_data(
             logger.warning(f"Could not process sample {planet_id} ({i + 1} of {len(footprints)}). \nSkipping...")
             logger.exception(e)
 
-    # Save the metadata
-    metadata = gpd.GeoDataFrame(metadata, crs="EPSG:4326")
-    metadata.to_parquet(train_data_dir / "metadata.parquet")
-
-    # Save a config file as toml
-    config = {
-        "darts": {
+    builder.finalize(
+        {
             "data_dir": data_dir,
             "labels_dir": labels_dir,
-            "train_data_dir": train_data_dir,
             "arcticdem_dir": arcticdem_dir,
             "tcvis_dir": tcvis_dir,
-            "bands": bands,
-            "norm_factors": norm_factors,
-            "device": device,
             "ee_project": ee_project,
             "ee_use_highvolume": ee_use_highvolume,
             "tpi_outer_radius": tpi_outer_radius,
             "tpi_inner_radius": tpi_inner_radius,
-            "patch_size": patch_size,
-            "overlap": overlap,
-            "exclude_nopositive": exclude_nopositive,
-            "exclude_nan": exclude_nan,
-            "n_patches": len(metadata),
         }
-    }
-    with open(train_data_dir / "config.toml", "w") as f:
-        toml.dump(config, f)
-
-    logger.info(f"Saved {len(metadata)} patches to {train_data_dir}")
+    )
     timer.summary()

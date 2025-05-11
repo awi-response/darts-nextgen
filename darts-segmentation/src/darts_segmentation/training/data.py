@@ -23,6 +23,8 @@ from sklearn.model_selection import (
 from torch.utils.data import DataLoader, Dataset
 from zarr.storage import LocalStore
 
+from darts_segmentation.utils import Bands
+
 logger = logging.getLogger(__name__.replace("darts_", "darts."))
 
 
@@ -233,7 +235,7 @@ class DartsDataModule(L.LightningDataModule):
         fold_method: Literal["kfold", "shuffle", "stratified", "region", "region-stratified"] | None = "kfold",
         total_folds: int = 5,
         fold: int = 0,
-        bands: list[str] | None = None,
+        bands: Bands | list[str] | None = None,
         augment: bool = True,  # Not used for test
         num_workers: int = 0,
         in_memory: bool = False,
@@ -303,7 +305,7 @@ class DartsDataModule(L.LightningDataModule):
                 Method for cross-validation split. Defaults to "kfold".
             total_folds (int, optional): Total number of folds in cross-validation. Defaults to 5.
             fold (int, optional): Index of the current fold. Defaults to 0.
-            bands (list[str] | None, optional): List of bands to use.
+            bands (Bands | list[str] | None, optional): List of bands to use.
                 Expects the data_dir to contain a config.toml with a "darts.bands" key,
                 with which the indices of the bands will be mapped to.
                 Defaults to None.
@@ -336,6 +338,7 @@ class DartsDataModule(L.LightningDataModule):
         config_file = data_dir / "config.toml"
         assert config_file.exists(), f"Config file {config_file} not found!"
         data_bands = toml.load(config_file)["darts"]["bands"]
+        bands = bands.names if isinstance(bands, Bands) else bands
         self.bands = [data_bands.index(b) for b in bands] if bands else None
 
         zdir = data_dir / "data.zarr"

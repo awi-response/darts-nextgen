@@ -1,8 +1,8 @@
 """Training scripts for DARTS."""
 
-import datetime
 import logging
 import time
+from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal
 
@@ -177,6 +177,7 @@ def train_smp(
     from darts_segmentation.training.callbacks import BinarySegmentationMetrics
     from darts_segmentation.training.data import DartsDataModule
     from darts_segmentation.training.module import LitSMP
+    from darts_segmentation.utils import Bands
 
     LoggingManager.apply_logging_handlers("lightning.pytorch", level=logging.INFO)
 
@@ -201,7 +202,7 @@ def train_smp(
         # Hyperparameters
         f"{model_arch=}\n\t{model_encoder=}\n\t{model_encoder_weights=}\n\t{augment=}\n\t{learning_rate=}\n\t{gamma=}\n\t{batch_size=}\n\t"
         # Data
-        f"{data_split_method=}\n\t{data_split_by=}\n\t{fold_method=}\n\t{total_folds=}\n\t{fold=}\n\t"
+        f"{data_split_method=}\n\t{data_split_by=}\n\t{fold_method=}\n\t{total_folds=}\n\t{fold=}\n\t{bands=}\n\t"
         # Logging config
         f"{max_epochs=}\n\t{log_every_n_steps=}\n\t{check_val_every_n_epoch=}\n\t{early_stopping_patience=}\n\t{plot_every_n_val_epochs=}\n\t"
         # Run config
@@ -218,17 +219,17 @@ def train_smp(
     seed_everything(random_seed, workers=True, verbose=False)
 
     data_config = toml.load(train_data_dir / "config.toml")["darts"]
-
+    all_bands = Bands.from_config(data_config)
+    bands = all_bands.filter(bands) if bands else all_bands
     config = SMPSegmenterConfig(
-        input_combination=list(data_config["norm_factors"].keys()) if bands is None else bands,
+        bands=bands,
         model={
             "arch": model_arch,
             "encoder_name": model_encoder,
             "encoder_weights": model_encoder_weights,
-            "in_channels": len(data_config["norm_factors"]) if bands is None else len(bands),
+            "in_channels": len(all_bands) if bands is None else len(bands),
             "classes": 1,
         },
-        norm_factors=data_config["norm_factors"],
     )
 
     # Data and model
@@ -292,7 +293,7 @@ def train_smp(
     callbacks = [
         RichProgressBar(),
         BinarySegmentationMetrics(
-            input_combination=config["input_combination"],
+            bands=bands,
             val_set=f"val{fold}",
             plot_every_n_val_epochs=plot_every_n_val_epochs,
             is_crossval=bool(cv_name),
@@ -417,6 +418,7 @@ def test_smp(
     from darts_segmentation.training.callbacks import BinarySegmentationMetrics
     from darts_segmentation.training.data import DartsDataModule
     from darts_segmentation.training.module import LitSMP
+    from darts_segmentation.utils import Bands
 
     LoggingManager.apply_logging_handlers("lightning.pytorch")
 
@@ -437,6 +439,10 @@ def test_smp(
     seed_everything(42, workers=True)
 
     data_config = toml.load(train_data_dir / "config.toml")["darts"]
+
+    data_config = toml.load(train_data_dir / "config.toml")["darts"]
+    all_bands = Bands.from_config(data_config)
+    bands = all_bands.filter(bands) if bands else all_bands
 
     # Data and model
     datamodule = DartsDataModule(
@@ -482,7 +488,7 @@ def test_smp(
     callbacks = [
         RichProgressBar(),
         BinarySegmentationMetrics(
-            input_combination=bands,
+            bands=bands,
             batch_size=batch_size,
             patch_size=data_config["patch_size"],
         ),

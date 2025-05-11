@@ -4,18 +4,23 @@ import logging
 from collections import defaultdict
 from collections.abc import Generator
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Literal
 
 import geopandas as gpd
 import lovely_tensors
+import toml
 import torch
 import xarray as xr
+import zarr
 
 # TODO: move erode_mask to darts_utils, since uasge is not limited to prepare_export
 from darts_postprocessing.postprocess import erode_mask
 from geocube.api.core import make_geocube
+from zarr.codecs import BloscCodec
+from zarr.storage import LocalStore
 
-from darts_segmentation.utils import create_patches
+from darts_segmentation.utils import Bands, create_patches
 
 logger = logging.getLogger(__name__.replace("darts_", "darts."))
 
@@ -59,8 +64,7 @@ class PatchCoords:
 def create_training_patches(  # noqa: C901
     tile: xr.Dataset,
     labels: gpd.GeoDataFrame,
-    bands: list[str],
-    norm_factors: dict[str, float],
+    bands: Bands,
     patch_size: int,
     overlap: int,
     exclude_nopositive: bool,
@@ -73,8 +77,7 @@ def create_training_patches(  # noqa: C901
     Args:
         tile (xr.Dataset): The input tile, containing preprocessed, harmonized data.
         labels (gpd.GeoDataFrame): The labels to be used for training.
-        bands (list[str]): The bands to be used for training. Must be present in the tile.
-        norm_factors (dict[str, float]): The normalization factors for the bands.
+        bands (Bands): The bands to be used for training.
         patch_size (int): The size of the patches.
         overlap (int): The size of the overlap.
         exclude_nopositive (bool): Whether to exclude patches where the labels do not contain positives.
@@ -107,16 +110,17 @@ def create_training_patches(  # noqa: C901
     # Transpose to (H, W)
     tile = tile.transpose("y", "x")
 
+    n_bands = len(bands)
     tensor_labels = torch.tensor(labels_rasterized.values).float()
-    tensor_tile = torch.zeros((len(bands), tile.dims["y"], tile.dims["x"]), device=device)
+    tensor_tile = torch.zeros((n_bands, tile.dims["y"], tile.dims["x"]), device=device)
     invalid_mask = (tile["quality_data_mask"] == 0).values
     # This will also order the data into the correct order of bands
     for i, band in enumerate(bands):
-        if band not in tile:
-            raise ValueError(f"Band '{band}' not found in the preprocessed data.")
-        band_data = torch.tensor(tile[band].values, device=device).float()
+        if band.name not in tile:
+            raise ValueError(f"Band '{band.name}' not found in the preprocessed data.")
+        band_data = torch.tensor(tile[band.name].values, device=device).float()
         # Normalize the bands and clip the values
-        band_data = band_data * norm_factors[band]
+        band_data = band_data * band.factor + band.offset
         band_data = band_data.clip(0, 1)
         # Apply the quality mask
         band_data[invalid_mask] = float("nan")
@@ -128,7 +132,7 @@ def create_training_patches(  # noqa: C901
 
     # Create patches
     tensor_patches = create_patches(tensor_tile.unsqueeze(0), patch_size, overlap)
-    tensor_patches = tensor_patches.reshape(-1, len(bands), patch_size, patch_size)
+    tensor_patches = tensor_patches.reshape(-1, n_bands, patch_size, patch_size)
     tensor_labels, tensor_coords = create_patches(
         tensor_labels.unsqueeze(0).unsqueeze(0), patch_size, overlap, return_coords=True
     )
@@ -177,3 +181,143 @@ def create_training_patches(  # noqa: C901
     logger.debug(f"Skipped {n_skipped['allnan']} patches where everything is nan")
     logger.debug(f"Yielded {n_patches - sum(n_skipped.values())} patches")
     logger.debug(f"Total patches: {n_patches}")
+
+
+@dataclass
+class TrainDatasetBuilder:
+    """Helper class to create all necessary files for a DARTS training dataset."""
+
+    train_data_dir: Path
+    patch_size: int
+    overlap: int
+    bands: Bands
+    exclude_nopositive: bool
+    exclude_nan: bool
+    mask_erosion_size: int
+    device: Literal["cuda", "cpu"] | int
+
+    def __post_init__(self):
+        """Initialize the TrainDatasetBuilder class based on provided dataclass params.
+
+        This will setup everything needed to add patches to the dataset:
+
+        - Create the train_data_dir if it does not exist
+        - Create an emtpy zarr store
+        - Initialize the metadata list
+        """
+        lovely_tensors.monkey_patch()
+        lovely_tensors.set_config(color=False)
+        self._metadata = []
+
+        self.train_data_dir.mkdir(exist_ok=True, parents=True)
+
+        self._zroot = zarr.group(store=LocalStore(self.train_data_dir / "data.zarr"), overwrite=True)
+        # We need do declare the number of patches to 0, because we can't know the final number of patches
+
+        self._zroot.create(
+            name="x",
+            shape=(0, len(self.bands), self.patch_size, self.patch_size),
+            # shards=(100, len(bands), patch_size, patch_size),
+            chunks=(1, 1, self.patch_size, self.patch_size),
+            dtype="float32",
+            compressors=BloscCodec(cname="lz4", clevel=9),
+        )
+        self._zroot.create(
+            name="y",
+            shape=(0, self.patch_size, self.patch_size),
+            # shards=(100, patch_size, patch_size),
+            chunks=(1, self.patch_size, self.patch_size),
+            dtype="uint8",
+            compressors=BloscCodec(cname="lz4", clevel=9),
+        )
+
+    def add_tile(
+        self,
+        tile: xr.Dataset,
+        labels: gpd.GeoDataFrame,
+        region: str,
+        sample_id: str,
+        metadata: dict[str, str],
+    ):
+        """Add a tile to the dataset.
+
+        Args:
+            tile (xr.Dataset): The input tile, containing preprocessed, harmonized data.
+            labels (gpd.GeoDataFrame): The labels to be used for training.
+            region (str): The region of the tile.
+            sample_id (str): The sample id of the tile.
+            metadata (dict[str, str]): Any metadata to be added to the metadata file.
+                Will not be used for the training, but can be used for better debugging or reproducibility.
+
+        """
+        gen = create_training_patches(
+            tile=tile,
+            labels=labels,
+            bands=self.bands,
+            patch_size=self.patch_size,
+            overlap=self.overlap,
+            exclude_nopositive=self.exclude_nopositive,
+            exclude_nan=self.exclude_nan,
+            device=self.device,
+            mask_erosion_size=self.mask_erosion_size,
+        )
+
+        zx = self._zroot["x"]
+        zy = self._zroot["y"]
+        for patch_id, (x, y, coords) in enumerate(gen):
+            zx.append(x.unsqueeze(0).numpy().astype("float32"))
+            zy.append(y.unsqueeze(0).numpy().astype("uint8"))
+            geometry = tile.isel(x=coords.x, y=coords.y).odc.geobox.geographic_extent.geom
+            # Convert all paths of metadata to strings
+            metadata = {k: str(v) if isinstance(v, Path) else v for k, v in metadata.items()}
+            self._metadata.append(
+                {
+                    "patch_id": patch_id,
+                    "region": region,
+                    "sample_id": sample_id,
+                    "empty": not (y == 1).any(),
+                    "x": coords.x.start,
+                    "y": coords.y.start,
+                    "patch_idx_x": coords.patch_idx_x,
+                    "patch_idx_y": coords.patch_idx_y,
+                    "geometry": geometry,
+                    **metadata,
+                }
+            )
+
+    def finalize(self, data_config: dict[str, str]):
+        """Finalize the dataset by saving the metadata and the config file.
+
+        Args:
+            data_config (dict[str, str]): The data config to be saved in the config file.
+                This should contain all the information needed to recreate the dataset.
+                It will be saved as a toml file, along with the configuration provided in this dataclass.
+
+        """
+        # Save the metadata
+        metadata = gpd.GeoDataFrame(self._metadata, crs="EPSG:4326")
+        metadata.to_parquet(self.train_data_dir / "metadata.parquet")
+
+        # Convert the data_config paths to strings
+        data_config = {k: str(v) if isinstance(v, Path) else v for k, v in data_config.items()}
+
+        # Save a config file as toml
+        config = {
+            "darts": {
+                "train_data_dir": str(self.train_data_dir),
+                "patch_size": self.patch_size,
+                "overlap": self.overlap,
+                "n_bands": len(self.bands),
+                "exclude_nopositive": self.exclude_nopositive,
+                "exclude_nan": self.exclude_nan,
+                "mask_erosion_size": self.mask_erosion_size,
+                "n_patches": len(metadata),
+                "device": self.device,
+                **self.bands.to_config(),  # keys: bands, band_factors, band_offsets
+                **data_config,
+            }
+        }
+        with open(self.train_data_dir / "config.toml", "w") as f:
+            toml.dump(config, f)
+
+        logger.info(f"Saved {len(metadata)} patches to {self.train_data_dir}")

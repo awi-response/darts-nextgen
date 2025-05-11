@@ -12,7 +12,7 @@ import torch
 # TODO: New Plot: Threshold vs. F1-Score and IoU
 
 
-def plot_sample(x: torch.Tensor, y: torch.Tensor, y_pred: torch.Tensor, input_combinations: list[str]):
+def plot_sample(x: torch.Tensor, y: torch.Tensor, y_pred: torch.Tensor, band_names: list[str]):
     """Plot a single sample with the input, the ground truth and the prediction.
 
     This function does a few expections on the input:
@@ -27,7 +27,7 @@ def plot_sample(x: torch.Tensor, y: torch.Tensor, y_pred: torch.Tensor, input_co
         x (torch.Tensor): The input tensor [C, H, W] (float).
         y (torch.Tensor): The ground truth tensor [H, W] (int).
         y_pred (torch.Tensor): The prediction tensor [H, W] (float).
-        input_combinations (list[str]): The combinations of the input bands.
+        band_names (list[str]): The combinations of the input bands.
 
     Returns:
         tuple[Figure, dict[str, Axes]]: The figure and the axes of the plot.
@@ -73,11 +73,11 @@ def plot_sample(x: torch.Tensor, y: torch.Tensor, y_pred: torch.Tensor, input_co
     ax_rgb = axs["rgb"]
     # disable axis
     ax_rgb.axis("off")
-    is_rgb = "red" in input_combinations and "green" in input_combinations and "blue" in input_combinations
+    is_rgb = "red" in band_names and "green" in band_names and "blue" in band_names
     if is_rgb:
-        red_band = input_combinations.index("red")
-        green_band = input_combinations.index("green")
-        blue_band = input_combinations.index("blue")
+        red_band = band_names.index("red")
+        green_band = band_names.index("green")
+        blue_band = band_names.index("blue")
         rgb = x[[red_band, green_band, blue_band]].transpose(0, 2).transpose(0, 1)
         ax_rgb.imshow(rgb ** (1 / 1.4))
         ax_rgb.set_title(f"Acc: {acc:.1%} F1: {f1:.1%} IoU: {iou:.1%}")
@@ -96,9 +96,9 @@ def plot_sample(x: torch.Tensor, y: torch.Tensor, y_pred: torch.Tensor, input_co
     # NDVI Plot
     ax_ndvi = axs["ndvi"]
     ax_ndvi.axis("off")
-    is_ndvi = "ndvi" in input_combinations
+    is_ndvi = "ndvi" in band_names
     if is_ndvi:
-        ndvi_band = input_combinations.index("ndvi")
+        ndvi_band = band_names.index("ndvi")
         ndvi = x[ndvi_band]
         ax_ndvi.imshow(ndvi, vmin=0, vmax=1, cmap="RdYlGn")
         ax_ndvi.set_title("NDVI")
@@ -109,15 +109,11 @@ def plot_sample(x: torch.Tensor, y: torch.Tensor, y_pred: torch.Tensor, input_co
     # TCVIS Plot
     ax_tcv = axs["tcvis"]
     ax_tcv.axis("off")
-    is_tcvis = (
-        "tc_brightness" in input_combinations
-        and "tc_greenness" in input_combinations
-        and "tc_wetness" in input_combinations
-    )
+    is_tcvis = "tc_brightness" in band_names and "tc_greenness" in band_names and "tc_wetness" in band_names
     if is_tcvis:
-        tcb_band = input_combinations.index("tc_brightness")
-        tcg_band = input_combinations.index("tc_greenness")
-        tcw_band = input_combinations.index("tc_wetness")
+        tcb_band = band_names.index("tc_brightness")
+        tcg_band = band_names.index("tc_greenness")
+        tcw_band = band_names.index("tc_wetness")
         tcvis = x[[tcb_band, tcg_band, tcw_band]].transpose(0, 2).transpose(0, 1)
         ax_tcv.imshow(tcvis)
         ax_tcv.set_title("TCVIS")
@@ -131,7 +127,7 @@ def plot_sample(x: torch.Tensor, y: torch.Tensor, y_pred: torch.Tensor, input_co
         n_pixel = x.shape[1] * x.shape[2]
         x_flat = x.flatten().cpu()
         y_flat = y.flatten().repeat(n_bands).cpu()
-        bands = list(itertools.chain.from_iterable([input_combinations[i]] * n_pixel for i in range(n_bands)))
+        bands = list(itertools.chain.from_iterable([band_names[i]] * n_pixel for i in range(n_bands)))
         plot_data = pd.DataFrame({"x": x_flat, "y": y_flat, "band": bands})
         if len(plot_data) > 50000:
             plot_data = plot_data.sample(50000)
@@ -162,15 +158,15 @@ def plot_sample(x: torch.Tensor, y: torch.Tensor, y_pred: torch.Tensor, input_co
     # Slope Plot
     ax_slope = axs["slope"]
     ax_slope.axis("off")
-    is_slope = "slope" in input_combinations
+    is_slope = "slope" in band_names
     if is_slope:
-        slope_band = input_combinations.index("slope")
+        slope_band = band_names.index("slope")
         slope = x[slope_band]
         ax_slope.imshow(slope, cmap="cividis")
         # Add TPI as contour lines
-        is_rel_elev = "relative_elevation" in input_combinations
+        is_rel_elev = "relative_elevation" in band_names
         if is_rel_elev:
-            rel_elev_band = input_combinations.index("relative_elevation")
+            rel_elev_band = band_names.index("relative_elevation")
             rel_elev = x[rel_elev_band]
             cs = ax_slope.contour(rel_elev, [0], colors="red", linewidths=0.3, alpha=0.6)
             ax_slope.clabel(cs, inline=True, fontsize=5, fmt="%.1f")
@@ -181,7 +177,7 @@ def plot_sample(x: torch.Tensor, y: torch.Tensor, y_pred: torch.Tensor, input_co
         ax_slope.set_title("No Slope values are provided!")
 
     # Relative Elevation Plot
-    # rel_elev_band = input_combinations.index("relative_elevation")
+    # rel_elev_band = band_names.index("relative_elevation")
     # rel_elev = x[rel_elev_band]
     # ax_rel_elev = axs["elev"]
     # ax_rel_elev.imshow(rel_elev, cmap="cividis")
