@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Literal
 
 if TYPE_CHECKING:
-    import pandas as pd
+    pass
 
 logger = logging.getLogger(__name__.replace("darts_", "darts."))
 
@@ -62,7 +62,7 @@ def cross_validation_smp(
     # Wandb config
     wandb_entity: str | None = None,
     wandb_project: str | None = None,
-) -> tuple[float, bool, "pd.DataFrame"]:
+):
     """Perform cross-validation for a model with given hyperparameters.
 
     Please see https://smp.readthedocs.io/en/latest/index.html for model configurations of architecture and encoder.

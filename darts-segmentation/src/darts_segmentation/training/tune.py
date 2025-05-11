@@ -16,7 +16,7 @@ from typing import TYPE_CHECKING, Literal
 from darts_segmentation.training.scoring import check_score_is_unstable
 
 if TYPE_CHECKING:
-    import pandas as pd
+    pass
 
 
 logger = logging.getLogger(__name__.replace("darts_", "darts."))
@@ -53,7 +53,7 @@ def tune_smp(
     # Wandb config
     wandb_entity: str | None = None,
     wandb_project: str | None = None,
-) -> tuple[float, "pd.DataFrame"]:
+):
     """Tune the hyper-parameters of the model using cross-validation and random states.
 
     Please see https://smp.readthedocs.io/en/latest/index.html for model configurations of architecture and encoder.

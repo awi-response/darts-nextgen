@@ -53,7 +53,7 @@ def train_smp(
     # Wandb config
     wandb_entity: str | None = None,
     wandb_project: str | None = None,
-) -> "pl.Trainer":
+):
     """Run the training of the SMP model, specifically binary segmentation.
 
     Please see https://smp.readthedocs.io/en/latest/index.html for model configurations of architecture and encoder.

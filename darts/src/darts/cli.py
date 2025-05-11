@@ -7,19 +7,19 @@ from typing import Annotated
 
 import cyclopts
 import rich
+from darts_segmentation.training import (
+    convert_lightning_checkpoint,
+    cross_validation_smp,
+    test_smp,
+    train_smp,
+    tune_smp,
+)
 
 from darts import __version__
 from darts.pipelines import AOISentinel2Pipeline, PlanetPipeline, Sentinel2Pipeline
 from darts.training import (
     preprocess_planet_train_data,
     preprocess_s2_train_data,
-)
-from darts.training.smp import (
-    convert_lightning_checkpoint,
-    cross_validation_smp,
-    test_smp,
-    train_smp,
-    tune_smp,
 )
 from darts.utils.config import ConfigParser
 from darts.utils.logging import LoggingManager

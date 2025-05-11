@@ -5,7 +5,7 @@ from math import ceil
 
 import stopuhr
 import xarray as xr
-from xrspatial import convolution, slope
+from xrspatial import aspect, convolution, curvature, hillshade, slope
 from xrspatial.utils import has_cuda_and_cupy
 
 logger = logging.getLogger(__name__.replace("darts_", "darts."))
@@ -91,4 +91,73 @@ def calculate_slope(arcticdem_ds: xr.Dataset) -> xr.Dataset:
         "_FillValue": float("nan"),
     }
     arcticdem_ds["slope"] = slope_deg.compute()
+    return arcticdem_ds
+
+
+@stopuhr.funkuhr("Calculating hillshade", printer=logger.debug)
+def calculate_hillshade(arcticdem_ds: xr.Dataset) -> xr.Dataset:
+    """Calculate the hillshade of the terrain surface from an ArcticDEM Dataset.
+
+    Args:
+        arcticdem_ds (xr.Dataset): The ArcticDEM Dataset containing the 'dem' variable.
+
+    Returns:
+        xr.Dataset: The input Dataset with the calculated slhillshadeope added as a new variable 'hillshade'.
+
+    """
+    hillshade_da = hillshade(arcticdem_ds.dem)
+    hillshade_da.attrs = {
+        "long_name": "Hillshade",
+        "units": "",
+        "description": "The hillshade based on azimuth 255 and angle_altitude 25.",
+        "source": "ArcticDEM",
+        "_FillValue": float("nan"),
+    }
+    arcticdem_ds["hillshade"] = hillshade_da.compute()
+    return arcticdem_ds
+
+
+@stopuhr.funkuhr("Calculating aspect", printer=logger.debug)
+def calculate_aspect(arcticdem_ds: xr.Dataset) -> xr.Dataset:
+    """Calculate the aspect of the terrain surface from an ArcticDEM Dataset.
+
+    Args:
+        arcticdem_ds (xr.Dataset): The ArcticDEM Dataset containing the 'dem' variable.
+
+    Returns:
+        xr.Dataset: The input Dataset with the calculated aspect added as a new variable 'aspect'.
+
+    """
+    aspect_deg = aspect(arcticdem_ds.dem)
+    aspect_deg.attrs = {
+        "long_name": "Aspect",
+        "units": "degrees",
+        "description": "The compass direction that the slope faces, in degrees clockwise from north.",
+        "source": "ArcticDEM",
+        "_FillValue": float("nan"),
+    }
+    arcticdem_ds["aspect"] = aspect_deg.compute()
+    return arcticdem_ds
+
+
+@stopuhr.funkuhr("Calculating curvature", printer=logger.debug)
+def calculate_curvature(arcticdem_ds: xr.Dataset) -> xr.Dataset:
+    """Calculate the curvature of the terrain surface from an ArcticDEM Dataset.
+
+    Args:
+        arcticdem_ds (xr.Dataset): The ArcticDEM Dataset containing the 'dem' variable.
+
+    Returns:
+        xr.Dataset: The input Dataset with the calculated curvature added as a new variable 'curvature'.
+
+    """
+    curvature_da = curvature(arcticdem_ds.dem)
+    curvature_da.attrs = {
+        "long_name": "Curvature",
+        "units": "",
+        "description": "The curvature of the terrain surface.",
+        "source": "ArcticDEM",
+        "_FillValue": float("nan"),
+    }
+    arcticdem_ds["curvature"] = curvature_da.compute()
     return arcticdem_ds

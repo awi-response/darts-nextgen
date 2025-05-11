@@ -9,7 +9,13 @@ import xarray as xr
 from darts_utils.cuda import free_cupy
 from xrspatial.utils import has_cuda_and_cupy
 
-from darts_preprocessing.engineering.arcticdem import calculate_slope, calculate_topographic_position_index
+from darts_preprocessing.engineering.arcticdem import (
+    calculate_aspect,
+    calculate_curvature,
+    calculate_hillshade,
+    calculate_slope,
+    calculate_topographic_position_index,
+)
 from darts_preprocessing.engineering.indices import calculate_ndvi
 
 logger = logging.getLogger(__name__.replace("darts_", "darts."))
@@ -20,17 +26,15 @@ if has_cuda_and_cupy():
     import cupy_xarray  # noqa: F401 # type: ignore
 
     DEFAULT_DEVICE = "cuda"
-    logger.debug("GPU-accelerated xrspatial functions are available.")
 else:
     DEFAULT_DEVICE = "cpu"
-    logger.debug("GPU-accelerated xrspatial functions are not available.")
 
 
 @stopuhr.funkuhr("Preprocessing arcticdem", printer=logger.debug, print_kwargs=["tpi_outer_radius", "tpi_inner_radius"])
-def preprocess_legacy_arcticdem_fast(
+def preprocess_arcticdem(
     ds_arcticdem: xr.Dataset, tpi_outer_radius: int, tpi_inner_radius: int, device: Literal["cuda", "cpu"] | int
 ):
-    """Preprocess the ArcticDEM data with legacy (DARTS v1) preprocessing steps.
+    """Preprocess the ArcticDEM data with mdoern (DARTS v2) preprocessing steps.
 
     Args:
         ds_arcticdem (xr.Dataset): The ArcticDEM dataset.
@@ -64,6 +68,9 @@ def preprocess_legacy_arcticdem_fast(
             ds_arcticdem = ds_arcticdem.cupy.as_cupy()
             ds_arcticdem = calculate_topographic_position_index(ds_arcticdem, tpi_outer_radius, tpi_inner_radius)
             ds_arcticdem = calculate_slope(ds_arcticdem)
+            ds_arcticdem = calculate_hillshade(ds_arcticdem)
+            ds_arcticdem = calculate_aspect(ds_arcticdem)
+            ds_arcticdem = calculate_curvature(ds_arcticdem)
             ds_arcticdem = ds_arcticdem.cupy.as_numpy()
             free_cupy()
 
@@ -71,6 +78,9 @@ def preprocess_legacy_arcticdem_fast(
     else:
         ds_arcticdem = calculate_topographic_position_index(ds_arcticdem, tpi_outer_radius, tpi_inner_radius)
         ds_arcticdem = calculate_slope(ds_arcticdem)
+        ds_arcticdem = calculate_hillshade(ds_arcticdem)
+        ds_arcticdem = calculate_aspect(ds_arcticdem)
+        ds_arcticdem = calculate_curvature(ds_arcticdem)
 
     # Apply legacy scaling to tpi
     with xr.set_options(keep_attrs=True):
@@ -79,7 +89,7 @@ def preprocess_legacy_arcticdem_fast(
 
 
 @stopuhr.funkuhr("Preprocessing", printer=logger.debug)
-def preprocess_legacy_fast(
+def preprocess_v2(
     ds_merged: xr.Dataset,
     ds_arcticdem: xr.Dataset,
     ds_tcvis: xr.Dataset,
@@ -87,16 +97,12 @@ def preprocess_legacy_fast(
     tpi_inner_radius: int = 0,
     device: Literal["cuda", "cpu"] | int = DEFAULT_DEVICE,
 ) -> xr.Dataset:
-    """Preprocess optical data with legacy (DARTS v1) preprocessing steps, but with new data concepts.
+    """Preprocess optical data with modern (DARTS v2) preprocessing steps.
 
     The processing steps are:
     - Calculate NDVI
-    - Calculate slope and relative elevation from ArcticDEM
+    - Calculate slope, hillshade, aspect, curvature and relative elevation from ArcticDEM
     - Merge everything into a single ds.
-
-    The main difference to preprocess_legacy is the new data concept of the arcticdem.
-    Instead of using already preprocessed arcticdem data which are loaded from a VRT, this step expects the raw
-    arcticdem data and calculates slope and relative elevation on the fly.
 
     Args:
         ds_merged (xr.Dataset): The Planet scene optical data or Sentinel 2 scene optical dataset including data_masks.
@@ -129,7 +135,7 @@ def preprocess_legacy_fast(
     with stopuhr.stopuhr("Reprojecting ArcticDEM", printer=logger.debug):
         ds_arcticdem = ds_arcticdem.odc.reproject(ds_merged.odc.geobox.buffered(tpi_outer_radius), resampling="cubic")
 
-    ds_arcticdem = preprocess_legacy_arcticdem_fast(ds_arcticdem, tpi_outer_radius, tpi_inner_radius, device)
+    ds_arcticdem = preprocess_arcticdem(ds_arcticdem, tpi_outer_radius, tpi_inner_radius, device)
     ds_arcticdem = ds_arcticdem.odc.crop(ds_merged.odc.geobox.extent)
     # For some reason, we need to reindex, because the reproject + crop of the arcticdem sometimes results
     # in floating point errors. These error are at the order of 1e-10, hence, way below millimeter precision.
@@ -138,6 +144,9 @@ def preprocess_legacy_fast(
     ds_merged["dem"] = ds_arcticdem.dem
     ds_merged["relative_elevation"] = ds_arcticdem.tpi
     ds_merged["slope"] = ds_arcticdem.slope
+    ds_merged["hillshade"] = ds_arcticdem.hillshade
+    ds_merged["aspect"] = ds_arcticdem.aspect
+    ds_merged["curvature"] = ds_arcticdem.curvature
     ds_merged["arcticdem_data_mask"] = ds_arcticdem.datamask
 
     # Update datamask with arcticdem mask
