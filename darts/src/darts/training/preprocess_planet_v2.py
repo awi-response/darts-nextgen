@@ -192,7 +192,7 @@ def preprocess_planet_train_data(
     labels = gpd.GeoDataFrame(pd.concat(labels, ignore_index=True))
 
     footprints = (gpd.read_file(footprints_file) for footprints_file in labels_dir.glob("*/ImageFootprints*.gpkg"))
-    footprints = gpd.GeoDataFrame(pd.concat(footprints, ignore_index=True)).sample(5, random_state=42)
+    footprints = gpd.GeoDataFrame(pd.concat(footprints, ignore_index=True))
     fpaths = {fpath.stem: fpath for fpath in _legacy_path_gen(data_dir)}
     footprints["fpath"] = footprints.image_id.map(fpaths)
 
