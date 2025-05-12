@@ -195,6 +195,7 @@ def cross_validation_smp(
 
     """
     import pandas as pd
+    import torch
     from darts_utils.namegen import generate_counted_name
 
     from darts_segmentation.training.scoring import check_score_is_unstable, score_from_runs
@@ -274,7 +275,7 @@ def cross_validation_smp(
                 "duration": tick_rend - tick_rstart,
             }
             for metric, value in trainer.logged_metrics.items():
-                run_info[metric] = value.item()
+                run_info[metric] = value.item() if isinstance(value, torch.Tensor) else value
             if trainer.checkpoint_callback:
                 run_info["checkpoint"] = trainer.checkpoint_callback.best_model_path
             run_info["is_unstable"] = check_score_is_unstable(run_info, scoring_metric)

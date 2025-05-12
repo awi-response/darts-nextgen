@@ -14,6 +14,7 @@ from darts_segmentation.training import (
     train_smp,
     tune_smp,
 )
+from darts_segmentation.training.tune import tune_mp_smp
 
 from darts import __version__
 from darts.pipelines import AOISentinel2Pipeline, PlanetPipeline, Sentinel2Pipeline
@@ -91,6 +92,7 @@ app.command(group=train_group)(test_smp)
 app.command(group=train_group)(convert_lightning_checkpoint)
 app.command(group=train_group)(cross_validation_smp)
 app.command(group=train_group)(tune_smp)
+app.command(group=train_group)(tune_mp_smp)
 
 
 # Intercept the logging behavior to add a file handler

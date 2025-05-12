@@ -9,17 +9,245 @@
 
 import logging
 import time
-from dataclasses import asdict
+from concurrent.futures import ProcessPoolExecutor, as_completed
+from dataclasses import asdict, dataclass, field
+from multiprocessing import Queue
 from pathlib import Path
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING, Literal, TypedDict
 
 from darts_segmentation.training.scoring import check_score_is_unstable
 
 if TYPE_CHECKING:
-    pass
+    import pandas as pd
+
+    from darts_segmentation.training.hparams import Hyperparameter
 
 
 logger = logging.getLogger(__name__.replace("darts_", "darts."))
+
+available_devices = Queue()
+
+
+class _CVInputs(TypedDict):
+    # Data
+    train_data_dir: Path
+    data_split_method: Literal["random", "region", "sample"] | None = None
+    data_split_by: list[str] | None = None
+    fold_method: Literal["kfold", "shuffle", "stratified", "region", "region-stratified"] = "kfold"
+    total_folds: int = 5
+    bands: list[str] | None = None
+    # CV config
+    n_folds: int | None = None
+    n_randoms: int = 3
+    tune_name: str | None = None
+    artifact_dir: Path = Path("artifacts")
+    # Hyperparameters
+    model_arch: str = "Unet"
+    model_encoder: str = "dpn107"
+    model_encoder_weights: str | None = None
+    augment: bool = True
+    learning_rate: float = 1e-3
+    gamma: float = 0.9
+    focal_loss_alpha: float | None = None
+    focal_loss_gamma: float = 2.0
+    batch_size: int = 8
+    # Scoring
+    scoring_metric: list[str] = field(default_factory=lambda: ["val/JaccardIndex", "val/Recall"])
+    multi_score_strategy: Literal["harmonic", "arithmetic", "geometric", "min"] = "harmonic"
+    # Epoch and Logging config
+    max_epochs: int = 100
+    log_every_n_steps: int = 10
+    check_val_every_n_epoch: int = 3
+    early_stopping_patience: int = 5
+    plot_every_n_val_epochs: int = 5
+    # Device and Manager config
+    num_workers: int = 0
+    # Wandb config
+    wandb_entity: str | None = None
+    wandb_project: str | None = None
+
+
+@dataclass
+class _ProcessInputs:
+    i: int
+    total: int
+    tune_name: str
+    cv_inputs: _CVInputs
+    hp: "Hyperparameter"
+
+
+@dataclass
+class _ProcessOutputs:
+    run_infos: "pd.DataFrame"
+    score: float
+    is_unstable: bool
+
+
+def _run_cv_in_process(inp: _ProcessInputs):
+    from darts_segmentation.training.cv import cross_validation_smp
+
+    device = available_devices.get()
+    logger.debug(f"Got device {device} for cv {inp.tune_name}-cv{inp.i}")
+    try:
+        cv_name = f"{inp.tune_name}-cv{inp.i}"
+        logger.debug(f"Starting cv {cv_name} ({inp.i}/{inp.total})")
+        score, is_unstable, cv_run_infos = cross_validation_smp(**inp.cv_inputs, cv_name=cv_name, device=device)
+
+        hpd = asdict(inp.hp)
+        for key, value in hpd.items():
+            cv_run_infos[key] = value
+        cv_run_infos["cv_name"] = cv_name
+        output = _ProcessOutputs(
+            run_infos=cv_run_infos,
+            score=score,
+            is_unstable=is_unstable,
+        )
+    finally:
+        logger.debug(f"Free device {device} for cv {inp.tune_name}-cv{inp.i}")
+        available_devices.put(device)
+    return output
+
+
+def tune_mp_smp(
+    hpconfig: Path,
+    # Data
+    train_data_dir: Path,
+    data_split_method: Literal["random", "region", "sample"] | None = None,
+    data_split_by: list[str] | None = None,
+    fold_method: Literal["kfold", "shuffle", "stratified", "region", "region-stratified"] = "kfold",
+    total_folds: int = 5,
+    bands: list[str] | None = None,
+    # Tune config
+    n_folds: int | None = None,
+    n_randoms: int = 3,
+    n_trials: int | Literal["grid"] = 100,
+    retrain_and_test: bool = True,
+    tune_name: str | None = None,
+    artifact_dir: Path = Path("artifacts"),
+    # Scoring
+    scoring_metric: list[str] = ["val/JaccardIndex", "val/Recall"],
+    multi_score_strategy: Literal["harmonic", "arithmetic", "geometric", "min"] = "harmonic",
+    # Epoch and Logging config
+    max_epochs: int = 100,
+    log_every_n_steps: int = 10,
+    check_val_every_n_epoch: int = 3,
+    early_stopping_patience: int = 5,
+    plot_every_n_val_epochs: int = 5,
+    # Device and Manager config
+    num_workers: int = 0,
+    devices: list[int] | None = None,
+    # Wandb config
+    wandb_entity: str | None = None,
+    wandb_project: str | None = None,
+):
+    import pandas as pd
+    from darts_utils.namegen import generate_counted_name
+
+    from darts_segmentation.training.hparams import parse_hyperparameters, sample_hyperparameters
+
+    tick_fstart = time.perf_counter()
+
+    tune_name = tune_name or generate_counted_name(artifact_dir)
+    artifact_dir = artifact_dir / tune_name
+    run_infos_file = artifact_dir / f"{tune_name}.parquet"
+
+    # Check if the artifact directory is empty
+    assert not artifact_dir.exists(), f"{artifact_dir} already exists."
+
+    param_grid = parse_hyperparameters(hpconfig)
+    param_list = sample_hyperparameters(param_grid, n_trials)
+
+    logger.info(
+        f"Starting tune '{tune_name}' with data from {train_data_dir.resolve()}."
+        f" Artifacts will be saved to {artifact_dir.resolve()}."
+        f" Will run n_trials*n_randoms*n_folds ="
+        f" {len(param_list)}*{n_randoms}*{n_folds} = {len(param_list) * n_randoms * n_folds} experiments."
+    )
+
+    run_infos: list[pd.DataFrame] = []
+    best_score = 0
+    best_hp = None
+
+    devices = devices or ["auto"]
+    for device in devices:
+        available_devices.put(device)
+    with ProcessPoolExecutor(max_workers=len(devices)) as executor:
+        process_inputs = [
+            _ProcessInputs(
+                i=i,
+                total=len(param_list),
+                tune_name=tune_name,
+                cv_inputs=_CVInputs(
+                    # Data
+                    train_data_dir=train_data_dir,
+                    data_split_method=data_split_method,
+                    data_split_by=data_split_by,
+                    fold_method=fold_method,
+                    total_folds=total_folds,
+                    bands=bands,
+                    # CV config
+                    n_folds=n_folds,
+                    n_randoms=n_randoms,
+                    tune_name=tune_name,
+                    artifact_dir=artifact_dir,
+                    # Hyperparameters
+                    model_arch=hp.model_arch,
+                    model_encoder=hp.model_encoder,
+                    model_encoder_weights=hp.model_encoder_weights,
+                    augment=hp.augment,
+                    learning_rate=hp.learning_rate,
+                    gamma=hp.gamma,
+                    focal_loss_alpha=hp.focal_loss_alpha,
+                    focal_loss_gamma=hp.focal_loss_gamma,
+                    batch_size=hp.batch_size,
+                    # Scoring
+                    scoring_metric=scoring_metric,
+                    multi_score_strategy=multi_score_strategy,
+                    # Epoch and Logging config
+                    max_epochs=max_epochs,
+                    log_every_n_steps=log_every_n_steps,
+                    check_val_every_n_epoch=check_val_every_n_epoch,
+                    early_stopping_patience=early_stopping_patience,
+                    plot_every_n_val_epochs=plot_every_n_val_epochs,
+                    # Device and Manager config
+                    num_workers=num_workers,
+                    # Wandb config
+                    wandb_entity=wandb_entity,
+                    wandb_project=wandb_project,
+                ),
+                hp=hp,
+            )
+            for i, hp in enumerate(param_list)
+        ]
+        futures = {executor.submit(_run_cv_in_process, inp): inp for inp in process_inputs}
+
+        for future in as_completed(futures):
+            inp = futures[future]
+            try:
+                output = future.result()
+            except Exception as e:
+                logger.error(f"Error in cv {inp.tune_name}-cv{inp.i}: {e}", exc_info=True)
+                continue
+
+            run_infos.append(output.run_infos)
+            if not output.is_unstable and output.score > best_score:
+                best_score = output.score
+                best_hp = inp.hp
+
+            # Save already here to prevent data loss if something goes wrong
+            pd.concat(run_infos).reset_index(drop=True).to_parquet(run_infos_file)
+            logger.debug(f"Saved run infos to {run_infos_file}")
+
+    if len(run_infos) == 0:
+        logger.error("No hyperparameters resulted in a valid score. Please check the logs for more information.")
+        return 0, run_infos
+
+    run_infos = pd.concat(run_infos).reset_index(drop=True)
+
+    tick_fend = time.perf_counter()
+    logger.info(
+        f"Tuning completed in {tick_fend - tick_fstart:.2f}s. The best score was {best_score:.4f} with {best_hp}."
+    )
 
 
 def tune_smp(
