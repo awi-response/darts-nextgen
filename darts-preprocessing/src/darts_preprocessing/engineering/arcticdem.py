@@ -3,8 +3,8 @@
 import logging
 from math import ceil
 
-import stopuhr
 import xarray as xr
+from stopuhr import stopwatch
 from xrspatial import aspect, convolution, curvature, hillshade, slope
 from xrspatial.utils import has_cuda_and_cupy
 
@@ -15,7 +15,7 @@ if has_cuda_and_cupy():
     import cupy_xarray  # noqa: F401 # type: ignore
 
 
-@stopuhr.funkuhr("Calculating TPI", printer=logger.debug, print_kwargs=["outer_radius", "inner_radius"])
+@stopwatch.f("Calculating TPI", printer=logger.debug, print_kwargs=["outer_radius", "inner_radius"])
 def calculate_topographic_position_index(arcticdem_ds: xr.Dataset, outer_radius: int, inner_radius: int) -> xr.Dataset:
     """Calculate the Topographic Position Index (TPI) from an ArcticDEM Dataset.
 
@@ -71,7 +71,7 @@ def calculate_topographic_position_index(arcticdem_ds: xr.Dataset, outer_radius:
     return arcticdem_ds
 
 
-@stopuhr.funkuhr("Calculating slope", printer=logger.debug)
+@stopwatch.f("Calculating slope", printer=logger.debug)
 def calculate_slope(arcticdem_ds: xr.Dataset) -> xr.Dataset:
     """Calculate the slope of the terrain surface from an ArcticDEM Dataset.
 
@@ -94,7 +94,7 @@ def calculate_slope(arcticdem_ds: xr.Dataset) -> xr.Dataset:
     return arcticdem_ds
 
 
-@stopuhr.funkuhr("Calculating hillshade", printer=logger.debug)
+@stopwatch.f("Calculating hillshade", printer=logger.debug)
 def calculate_hillshade(arcticdem_ds: xr.Dataset) -> xr.Dataset:
     """Calculate the hillshade of the terrain surface from an ArcticDEM Dataset.
 
@@ -117,7 +117,7 @@ def calculate_hillshade(arcticdem_ds: xr.Dataset) -> xr.Dataset:
     return arcticdem_ds
 
 
-@stopuhr.funkuhr("Calculating aspect", printer=logger.debug)
+@stopwatch.f("Calculating aspect", printer=logger.debug)
 def calculate_aspect(arcticdem_ds: xr.Dataset) -> xr.Dataset:
     """Calculate the aspect of the terrain surface from an ArcticDEM Dataset.
 
@@ -140,7 +140,7 @@ def calculate_aspect(arcticdem_ds: xr.Dataset) -> xr.Dataset:
     return arcticdem_ds
 
 
-@stopuhr.funkuhr("Calculating curvature", printer=logger.debug)
+@stopwatch.f("Calculating curvature", printer=logger.debug)
 def calculate_curvature(arcticdem_ds: xr.Dataset) -> xr.Dataset:
     """Calculate the curvature of the terrain surface from an ArcticDEM Dataset.
 

@@ -95,9 +95,9 @@ class _BasePipeline(ABC):
                     config[key] = [str(v.resolve()) if isinstance(v, Path) else v for v in value]
             json.dump(config, f)
 
-        from stopuhr import StopUhr
+        from stopuhr import Chronometer
 
-        stopuhr = StopUhr(printer=logger.debug)
+        timer = Chronometer(printer=logger.debug)
 
         from darts.utils.cuda import debug_info
 
@@ -161,18 +161,18 @@ class _BasePipeline(ABC):
                         )
                         continue
 
-                with stopuhr("Loading optical data", log=False):
+                with timer("Loading optical data", log=False):
                     tile = self._load_tile(tilekey)
-                with stopuhr("Loading ArcticDEM", log=False):
+                with timer("Loading ArcticDEM", log=False):
                     arcticdem = load_arcticdem(
                         tile.odc.geobox,
                         self.arcticdem_dir,
                         resolution=arcticdem_resolution,
                         buffer=ceil(self.tpi_outer_radius / 2 * sqrt(2)),
                     )
-                with stopuhr("Loading TCVis", log=False):
+                with timer("Loading TCVis", log=False):
                     tcvis = load_tcvis(tile.odc.geobox, self.tcvis_dir)
-                with stopuhr("Preprocessing tile", log=False):
+                with timer("Preprocessing tile", log=False):
                     tile = preprocess_legacy_fast(
                         tile,
                         arcticdem,
@@ -181,7 +181,7 @@ class _BasePipeline(ABC):
                         self.tpi_inner_radius,
                         self.device,
                     )
-                with stopuhr("Segmenting", log=False):
+                with timer("Segmenting", log=False):
                     tile = ensemble.segment_tile(
                         tile,
                         patch_size=self.patch_size,
@@ -190,7 +190,7 @@ class _BasePipeline(ABC):
                         reflection=self.reflection,
                         keep_inputs=self.write_model_outputs,
                     )
-                with stopuhr("Postprosessing", log=False):
+                with timer("Postprosessing", log=False):
                     tile = prepare_export(
                         tile,
                         bin_threshold=self.binarization_threshold,
@@ -201,7 +201,7 @@ class _BasePipeline(ABC):
                         device=self.device,
                     )
 
-                with stopuhr("Exporting", log=False):
+                with timer("Exporting", log=False):
                     export_tile(
                         tile,
                         outpath,
@@ -236,10 +236,11 @@ class _BasePipeline(ABC):
             finally:
                 if len(results) > 0:
                     pd.DataFrame(results).to_parquet(self.output_data_dir / f"{current_time}.results.parquet")
-                stopuhr.export().to_parquet(self.output_data_dir / f"{current_time}.stopuhr.parquet")
+                if len(timer.durations) > 0:
+                    timer.export().to_parquet(self.output_data_dir / f"{current_time}.stopuhr.parquet")
         else:
             logger.info(f"Processed {n_tiles} tiles to {self.output_data_dir.resolve()}.")
-            stopuhr.summary()
+            timer.summary()
 
 
 # =============================================================================

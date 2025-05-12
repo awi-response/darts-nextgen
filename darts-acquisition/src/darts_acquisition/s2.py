@@ -7,16 +7,16 @@ import ee
 import geopandas as gpd
 import odc.geo.xr
 import rioxarray  # noqa: F401
-import stopuhr
 import xarray as xr
 from darts_utils.tilecache import XarrayCacheManager
 from odc.geo.geobox import GeoBox
 from pystac_client import Client
+from stopuhr import stopwatch
 
 logger = logging.getLogger(__name__.replace("darts_", "darts."))
 
 
-@stopuhr.funkuhr("Converting Sentinel 2 masks", printer=logger.debug)
+@stopwatch.f("Converting Sentinel 2 masks", printer=logger.debug)
 def convert_masks(ds_s2: xr.Dataset) -> xr.Dataset:
     """Convert the Sentinel 2 scl mask into our own mask format inplace.
 
@@ -73,7 +73,7 @@ def parse_s2_tile_id(fpath: str | Path) -> tuple[str, str, str]:
     return planet_crop_id, s2_tile_id, tile_id
 
 
-@stopuhr.funkuhr("Loading Sentinel 2 scene from file", printer=logger.debug, print_kwargs=True)
+@stopwatch.f("Loading Sentinel 2 scene from file", printer=logger.debug, print_kwargs=True)
 def load_s2_scene(fpath: str | Path) -> xr.Dataset:
     """Load a Sentinel 2 satellite GeoTIFF file and return it as an xarray datset.
 
@@ -117,7 +117,7 @@ def load_s2_scene(fpath: str | Path) -> xr.Dataset:
     return ds_s2
 
 
-@stopuhr.funkuhr("Loading Sentinel 2 masks", printer=logger.debug, print_kwargs=["fpath"])
+@stopwatch.f("Loading Sentinel 2 masks", printer=logger.debug, print_kwargs=["fpath"])
 def load_s2_masks(fpath: str | Path, reference_geobox: GeoBox) -> xr.Dataset:
     """Load the valid and quality data masks from a Sentinel 2 scene.
 
@@ -163,8 +163,7 @@ def load_s2_masks(fpath: str | Path, reference_geobox: GeoBox) -> xr.Dataset:
     return da_scl
 
 
-# TODO: Move to new stopuhr functionality
-@stopuhr.funkuhr("Loading Sentinel 2 scene from GEE", printer=logger.debug, print_kwargs=["img"])
+@stopwatch.f("Loading Sentinel 2 scene from GEE", printer=logger.debug, print_kwargs=["img"])
 def load_s2_from_gee(
     img: str | ee.Image,
     bands_mapping: dict = {"B2": "blue", "B3": "green", "B4": "red", "B8": "nir"},
@@ -212,7 +211,7 @@ def load_s2_from_gee(
         ds_s2.attrs["time"] = str(ds_s2.time.values[0])
         ds_s2 = ds_s2.isel(time=0).drop_vars("time").rename({"X": "x", "Y": "y"}).transpose("y", "x")
         ds_s2 = ds_s2.odc.assign_crs(ds_s2.attrs["crs"])
-        with stopuhr.stopuhr(f"Downloading data from GEE for {s2id=}", printer=logger.debug):
+        with stopwatch(f"Downloading data from GEE for {s2id=}", printer=logger.debug):
             ds_s2.load()
         return ds_s2
 
@@ -234,7 +233,7 @@ def load_s2_from_gee(
     # To workaround this, set all nan values to 0 and add this information to the quality_data_mask
     # This workaround is quite computational expensive, but it works for now
     # TODO: Find other solutions for this problem!
-    with stopuhr.stopuhr(f"Fixing nan values in {s2id=}", printer=logger.debug):
+    with stopwatch(f"Fixing nan values in {s2id=}", printer=logger.debug):
         for band in set(bands_mapping.values()) - {"scl"}:
             ds_s2["quality_data_mask"] = xr.where(ds_s2[band].isnull(), 0, ds_s2["quality_data_mask"])
             ds_s2[band] = ds_s2[band].fillna(0)
@@ -256,7 +255,7 @@ def load_s2_from_gee(
     return ds_s2
 
 
-@stopuhr.funkuhr("Loading Sentinel 2 scene from STAC", printer=logger.debug, print_kwargs=["s2id"])
+@stopwatch.f("Loading Sentinel 2 scene from STAC", printer=logger.debug, print_kwargs=["s2id"])
 def load_s2_from_stac(
     s2id: str,
     bands_mapping: dict = {"B02_10m": "blue", "B03_10m": "green", "B04_10m": "red", "B08_10m": "nir"},
@@ -298,7 +297,7 @@ def load_s2_from_stac(
         )
         ds_s2.attrs["time"] = str(ds_s2.time.values[0])
         ds_s2 = ds_s2.isel(time=0).drop_vars("time")
-        with stopuhr.stopuhr(f"Downloading data from STAC for {s2id=}", printer=logger.debug):
+        with stopwatch(f"Downloading data from STAC for {s2id=}", printer=logger.debug):
             ds_s2.load().load()
         return ds_s2
 
@@ -330,7 +329,7 @@ def load_s2_from_stac(
     return ds_s2
 
 
-@stopuhr.funkuhr("Searching for Sentinel 2 tiles via Earth Engine", printer=logger.debug, print_kwargs=True)
+@stopwatch.f("Searching for Sentinel 2 tiles via Earth Engine", printer=logger.debug, print_kwargs=True)
 def get_s2ids_from_shape_ee(
     aoi_shapefile: Path,
     start_date: str,
@@ -365,7 +364,7 @@ def get_s2ids_from_shape_ee(
     return s2ids
 
 
-@stopuhr.funkuhr("Searching for Sentinel 2 tiles via STAC", printer=logger.debug, print_kwargs=True)
+@stopwatch.f("Searching for Sentinel 2 tiles via STAC", printer=logger.debug, print_kwargs=True)
 def get_s2ids_from_shape_stac(
     aoi_shapefile: Path,
     start_date: str,

@@ -6,8 +6,8 @@ from pathlib import Path
 from typing import Literal
 
 import rioxarray  # noqa: F401
-import stopuhr
 import xarray as xr
+from stopuhr import stopwatch
 
 logger = logging.getLogger(__name__.replace("darts_", "darts."))
 
@@ -70,7 +70,7 @@ def parse_planet_type(fpath: Path) -> Literal["orthotile", "scene"]:
     )
 
 
-@stopuhr.funkuhr("Loading Planet scene", printer=logger.debug, print_kwargs=True)
+@stopwatch.f("Loading Planet scene", printer=logger.debug, print_kwargs=True)
 def load_planet_scene(fpath: str | Path) -> xr.Dataset:
     """Load a PlanetScope satellite GeoTIFF file and return it as an xarray datset.
 
@@ -119,7 +119,7 @@ def load_planet_scene(fpath: str | Path) -> xr.Dataset:
     return ds_planet
 
 
-@stopuhr.funkuhr("Loading Planet masks", printer=logger.debug, print_kwargs=True)
+@stopwatch.f("Loading Planet masks", printer=logger.debug, print_kwargs=True)
 def load_planet_masks(fpath: str | Path) -> xr.Dataset:
     """Load the valid and quality data masks from a Planet scene.
 

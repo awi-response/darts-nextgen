@@ -5,11 +5,11 @@ from pathlib import Path
 from typing import Any, TypedDict
 
 import segmentation_models_pytorch as smp
-import stopuhr
 import torch
 import torch.nn as nn
 import xarray as xr
 from darts_utils.cuda import free_torch
+from stopuhr import stopwatch
 
 from darts_segmentation.utils import Band, Bands, predict_in_patches
 
@@ -124,7 +124,7 @@ class SMPSegmenter:
         # TODO: Test this
         return torch.stack(bands, dim=0).reshape(len(tiles), len(self.config["bands"]), *bands[0].shape)
 
-    @stopuhr.funkuhr(
+    @stopwatch.f(
         "Segmenting tile",
         logger.debug,
         print_kwargs=["patch_size", "overlap", "batch_size", "reflection"],
@@ -168,7 +168,7 @@ class SMPSegmenter:
 
         return tile
 
-    @stopuhr.funkuhr(
+    @stopwatch.f(
         "Segmenting tiles",
         logger.debug,
         print_kwargs=["patch_size", "overlap", "batch_size", "reflection"],

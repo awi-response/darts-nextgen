@@ -3,8 +3,8 @@
 import logging
 from pathlib import Path
 
-import stopuhr
 import xarray as xr
+from stopuhr import stopwatch
 
 from darts_export import miniviz, vectorization
 
@@ -15,7 +15,7 @@ def _export_raster(tile: xr.Dataset, name: str, out_dir: Path, fname: str | None
     if fname is None:
         fname = name
     fpath = out_dir / f"{fname}.tif"
-    with stopuhr.stopuhr(f"Exporting {name} to {fpath.resolve()}", logger.debug):
+    with stopwatch(f"Exporting {name} to {fpath.resolve()}", logger.debug):
         tile[name].rio.to_raster(fpath, driver="GTiff", compress="LZW")
 
 
@@ -24,7 +24,7 @@ def _export_vector(tile: xr.Dataset, name: str, out_dir: Path, fname: str | None
         fname = name
     fpath_gpkg = out_dir / f"{fname}.gpkg"
     fpath_parquet = out_dir / f"{fname}.parquet"
-    with stopuhr.stopuhr(f"Exporting {name} to {fpath_gpkg.resolve()} and {fpath_parquet.resolve()}", logger.debug):
+    with stopwatch(f"Exporting {name} to {fpath_gpkg.resolve()} and {fpath_parquet.resolve()}", logger.debug):
         polygon_gdf = vectorization.vectorize(tile, name)
         polygon_gdf.to_file(fpath_gpkg, layer=f"{fname}")
         polygon_gdf.to_parquet(fpath_parquet)
@@ -65,13 +65,13 @@ def _export_probabilities(tile: xr.Dataset, out_dir: Path, ensemble_subsets: lis
 
 def _export_thumbnail(tile: xr.Dataset, out_dir: Path):
     fpath = out_dir / "thumbnail.jpg"
-    with stopuhr.stopuhr(f"Exporting thumbnail to {fpath}", logger.debug):
+    with stopwatch(f"Exporting thumbnail to {fpath}", logger.debug):
         fig = miniviz.thumbnail(tile)
         fig.savefig(fpath)
         fig.clear()
 
 
-@stopuhr.funkuhr("Exporting tile", logger.debug, print_kwargs=["bands", "ensemble_subsets"])
+@stopwatch.f("Exporting tile", logger.debug, print_kwargs=["bands", "ensemble_subsets"])
 def export_tile(  # noqa: C901
     tile: xr.Dataset,
     out_dir: Path,

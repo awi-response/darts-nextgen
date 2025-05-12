@@ -6,9 +6,9 @@ from typing import Literal
 
 import odc.stac
 import smart_geocubes
-import stopuhr
 import xarray as xr
 from odc.geo.geobox import GeoBox
+from stopuhr import stopwatch
 
 logger = logging.getLogger(__name__.replace("darts_", "darts."))
 
@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__.replace("darts_", "darts."))
 RESOLUTIONS = Literal[2, 10, 32]
 
 
-@stopuhr.funkuhr("Loading ArcticDEM", printer=logger.debug, print_kwargs=True)
+@stopwatch.f("Loading ArcticDEM", printer=logger.debug, print_kwargs=True)
 def load_arcticdem(
     geobox: GeoBox, data_dir: Path | str, resolution: RESOLUTIONS, buffer: int = 0, persist: bool = True
 ) -> xr.Dataset:

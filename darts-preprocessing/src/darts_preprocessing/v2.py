@@ -4,9 +4,9 @@ import logging
 from typing import Literal
 
 import odc.geo.xr
-import stopuhr
 import xarray as xr
 from darts_utils.cuda import free_cupy
+from stopuhr import stopwatch
 from xrspatial.utils import has_cuda_and_cupy
 
 from darts_preprocessing.engineering.arcticdem import (
@@ -30,7 +30,7 @@ else:
     DEFAULT_DEVICE = "cpu"
 
 
-@stopuhr.funkuhr("Preprocessing arcticdem", printer=logger.debug, print_kwargs=["tpi_outer_radius", "tpi_inner_radius"])
+@stopwatch.f("Preprocessing arcticdem", printer=logger.debug, print_kwargs=["tpi_outer_radius", "tpi_inner_radius"])
 def preprocess_arcticdem(
     ds_arcticdem: xr.Dataset, tpi_outer_radius: int, tpi_inner_radius: int, device: Literal["cuda", "cpu"] | int
 ):
@@ -88,7 +88,7 @@ def preprocess_arcticdem(
     return ds_arcticdem
 
 
-@stopuhr.funkuhr("Preprocessing", printer=logger.debug)
+@stopwatch.f("Preprocessing", printer=logger.debug)
 def preprocess_v2(
     ds_merged: xr.Dataset,
     ds_arcticdem: xr.Dataset,
@@ -124,7 +124,7 @@ def preprocess_v2(
     ds_merged["ndvi"] = calculate_ndvi(ds_merged).ndvi
 
     # Reproject TCVIS to optical data
-    with stopuhr.stopuhr("Reprojecting TCVIS", printer=logger.debug):
+    with stopwatch("Reprojecting TCVIS", printer=logger.debug):
         ds_tcvis = ds_tcvis.odc.reproject(ds_merged.odc.geobox, resampling="cubic")
 
     ds_merged["tc_brightness"] = ds_tcvis.tc_brightness
@@ -132,7 +132,7 @@ def preprocess_v2(
     ds_merged["tc_wetness"] = ds_tcvis.tc_wetness
 
     # Calculate TPI and slope from ArcticDEM
-    with stopuhr.stopuhr("Reprojecting ArcticDEM", printer=logger.debug):
+    with stopwatch("Reprojecting ArcticDEM", printer=logger.debug):
         ds_arcticdem = ds_arcticdem.odc.reproject(ds_merged.odc.geobox.buffered(tpi_outer_radius), resampling="cubic")
 
     ds_arcticdem = preprocess_arcticdem(ds_arcticdem, tpi_outer_radius, tpi_inner_radius, device)
