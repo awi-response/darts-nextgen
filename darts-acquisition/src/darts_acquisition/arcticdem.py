@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__.replace("darts_", "darts."))
 RESOLUTIONS = Literal[2, 10, 32]
 
 
-@stopwatch.f("Loading ArcticDEM", printer=logger.debug, print_kwargs=True)
+@stopwatch.f("Loading ArcticDEM", printer=logger.debug, print_kwargs=["data_dir", "resolution", "buffer", "persist"])
 def load_arcticdem(
     geobox: GeoBox, data_dir: Path | str, resolution: RESOLUTIONS, buffer: int = 0, persist: bool = True
 ) -> xr.Dataset:

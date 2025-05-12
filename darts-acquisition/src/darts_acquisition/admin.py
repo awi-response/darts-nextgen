@@ -11,7 +11,7 @@ from stopuhr import stopwatch
 logger = logging.getLogger(__name__.replace("darts_", "darts."))
 
 
-@stopwatch.f("Downloading and extracting zip file", printer=logger.debug, print_kwargs=True)
+@stopwatch.f("Downloading and extracting zip file", printer=logger.debug)
 def _download_zip(url: str, admin_dir: Path):
     response = requests.get(url)
 
@@ -28,7 +28,7 @@ def _download_zip(url: str, admin_dir: Path):
             zip_ref.extractall(admin_dir)
 
 
-@stopwatch.f("Downloading admin files", printer=logger.debug, print_kwargs=True)
+@stopwatch.f("Downloading admin files", printer=logger.debug)
 def download_admin_files(admin_dir: Path):
     """Download the admin files for the regions.
 

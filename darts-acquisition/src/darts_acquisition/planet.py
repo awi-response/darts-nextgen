@@ -70,7 +70,7 @@ def parse_planet_type(fpath: Path) -> Literal["orthotile", "scene"]:
     )
 
 
-@stopwatch.f("Loading Planet scene", printer=logger.debug, print_kwargs=True)
+@stopwatch.f("Loading Planet scene", printer=logger.debug)
 def load_planet_scene(fpath: str | Path) -> xr.Dataset:
     """Load a PlanetScope satellite GeoTIFF file and return it as an xarray datset.
 
@@ -119,7 +119,7 @@ def load_planet_scene(fpath: str | Path) -> xr.Dataset:
     return ds_planet
 
 
-@stopwatch.f("Loading Planet masks", printer=logger.debug, print_kwargs=True)
+@stopwatch.f("Loading Planet masks", printer=logger.debug)
 def load_planet_masks(fpath: str | Path) -> xr.Dataset:
     """Load the valid and quality data masks from a Planet scene.
 

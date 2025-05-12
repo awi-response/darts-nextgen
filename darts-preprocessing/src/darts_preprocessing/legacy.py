@@ -79,7 +79,7 @@ def preprocess_legacy_arcticdem_fast(
     return ds_arcticdem
 
 
-@stopwatch.f("Preprocessing", printer=logger.debug)
+@stopwatch("Preprocessing", printer=logger.debug)
 def preprocess_legacy_fast(
     ds_merged: xr.Dataset,
     ds_arcticdem: xr.Dataset,

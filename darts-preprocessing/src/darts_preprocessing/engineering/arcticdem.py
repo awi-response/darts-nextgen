@@ -71,7 +71,7 @@ def calculate_topographic_position_index(arcticdem_ds: xr.Dataset, outer_radius:
     return arcticdem_ds
 
 
-@stopwatch.f("Calculating slope", printer=logger.debug)
+@stopwatch("Calculating slope", printer=logger.debug)
 def calculate_slope(arcticdem_ds: xr.Dataset) -> xr.Dataset:
     """Calculate the slope of the terrain surface from an ArcticDEM Dataset.
 
@@ -94,7 +94,7 @@ def calculate_slope(arcticdem_ds: xr.Dataset) -> xr.Dataset:
     return arcticdem_ds
 
 
-@stopwatch.f("Calculating hillshade", printer=logger.debug)
+@stopwatch("Calculating hillshade", printer=logger.debug)
 def calculate_hillshade(arcticdem_ds: xr.Dataset) -> xr.Dataset:
     """Calculate the hillshade of the terrain surface from an ArcticDEM Dataset.
 
@@ -117,7 +117,7 @@ def calculate_hillshade(arcticdem_ds: xr.Dataset) -> xr.Dataset:
     return arcticdem_ds
 
 
-@stopwatch.f("Calculating aspect", printer=logger.debug)
+@stopwatch("Calculating aspect", printer=logger.debug)
 def calculate_aspect(arcticdem_ds: xr.Dataset) -> xr.Dataset:
     """Calculate the aspect of the terrain surface from an ArcticDEM Dataset.
 
@@ -140,7 +140,7 @@ def calculate_aspect(arcticdem_ds: xr.Dataset) -> xr.Dataset:
     return arcticdem_ds
 
 
-@stopwatch.f("Calculating curvature", printer=logger.debug)
+@stopwatch("Calculating curvature", printer=logger.debug)
 def calculate_curvature(arcticdem_ds: xr.Dataset) -> xr.Dataset:
     """Calculate the curvature of the terrain surface from an ArcticDEM Dataset.
 

@@ -168,7 +168,6 @@ def preprocess_planet_train_data(
     import pandas as pd
     import rich
     import xarray as xr
-    import zarr
     from darts_acquisition import load_arcticdem, load_planet_masks, load_planet_scene, load_tcvis
     from darts_acquisition.admin import download_admin_files
     from darts_preprocessing import preprocess_v2
@@ -177,8 +176,6 @@ def preprocess_planet_train_data(
     from darts_utils.tilecache import XarrayCacheManager
     from odc.stac import configure_rio
     from rich.progress import track
-    from zarr.codecs import BloscCodec
-    from zarr.storage import LocalStore
 
     from darts.utils.cuda import decide_device
     from darts.utils.earthengine import init_ee
@@ -221,28 +218,6 @@ def preprocess_planet_train_data(
         }
     )
 
-    train_data_dir.mkdir(exist_ok=True, parents=True)
-
-    zroot = zarr.group(store=LocalStore(train_data_dir / "data.zarr"), overwrite=True)
-    # We need do declare the number of patches to 0, because we can't know the final number of patches
-
-    zroot.create(
-        name="x",
-        shape=(0, len(bands), patch_size, patch_size),
-        # shards=(100, len(bands), patch_size, patch_size),
-        chunks=(1, 1, patch_size, patch_size),
-        dtype="float32",
-        compressors=BloscCodec(cname="lz4", clevel=9),
-    )
-    zroot.create(
-        name="y",
-        shape=(0, patch_size, patch_size),
-        # shards=(100, patch_size, patch_size),
-        chunks=(1, patch_size, patch_size),
-        dtype="uint8",
-        compressors=BloscCodec(cname="lz4", clevel=9),
-    )
-
     builder = TrainDatasetBuilder(
         train_data_dir=train_data_dir,
         patch_size=patch_size,
@@ -255,7 +230,6 @@ def preprocess_planet_train_data(
     )
     cache_manager = XarrayCacheManager(preprocess_cache / "planet_v2")
 
-    metadata = []
     for i, footprint in track(
         footprints.iterrows(), description="Processing samples", total=len(footprints), console=rich.get_console()
     ):

@@ -16,7 +16,7 @@ from stopuhr import stopwatch
 logger = logging.getLogger(__name__.replace("darts_", "darts."))
 
 
-@stopwatch.f("Converting Sentinel 2 masks", printer=logger.debug)
+@stopwatch("Converting Sentinel 2 masks", printer=logger.debug)
 def convert_masks(ds_s2: xr.Dataset) -> xr.Dataset:
     """Convert the Sentinel 2 scl mask into our own mask format inplace.
 
@@ -73,7 +73,7 @@ def parse_s2_tile_id(fpath: str | Path) -> tuple[str, str, str]:
     return planet_crop_id, s2_tile_id, tile_id
 
 
-@stopwatch.f("Loading Sentinel 2 scene from file", printer=logger.debug, print_kwargs=True)
+@stopwatch.f("Loading Sentinel 2 scene from file", printer=logger.debug)
 def load_s2_scene(fpath: str | Path) -> xr.Dataset:
     """Load a Sentinel 2 satellite GeoTIFF file and return it as an xarray datset.
 
@@ -329,7 +329,7 @@ def load_s2_from_stac(
     return ds_s2
 
 
-@stopwatch.f("Searching for Sentinel 2 tiles via Earth Engine", printer=logger.debug, print_kwargs=True)
+@stopwatch.f("Searching for Sentinel 2 tiles via Earth Engine", printer=logger.debug)
 def get_s2ids_from_shape_ee(
     aoi_shapefile: Path,
     start_date: str,
@@ -364,7 +364,7 @@ def get_s2ids_from_shape_ee(
     return s2ids
 
 
-@stopwatch.f("Searching for Sentinel 2 tiles via STAC", printer=logger.debug, print_kwargs=True)
+@stopwatch.f("Searching for Sentinel 2 tiles via STAC", printer=logger.debug)
 def get_s2ids_from_shape_stac(
     aoi_shapefile: Path,
     start_date: str,

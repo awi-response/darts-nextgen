@@ -11,7 +11,7 @@ from stopuhr import stopwatch
 logger = logging.getLogger(__name__.replace("darts_", "darts."))
 
 
-@stopwatch.f("Loading TCVIS", printer=logger.debug, print_kwargs=True)
+@stopwatch.f("Loading TCVIS", printer=logger.debug, print_kwargs=["geobox", "data_dir", "buffer", "persist"])
 def load_tcvis(
     geobox: GeoBox,
     data_dir: Path | str,

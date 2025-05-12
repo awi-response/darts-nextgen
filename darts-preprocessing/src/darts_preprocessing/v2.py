@@ -88,7 +88,7 @@ def preprocess_arcticdem(
     return ds_arcticdem
 
 
-@stopwatch.f("Preprocessing", printer=logger.debug)
+@stopwatch("Preprocessing", printer=logger.debug)
 def preprocess_v2(
     ds_merged: xr.Dataset,
     ds_arcticdem: xr.Dataset,

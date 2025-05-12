@@ -20,7 +20,6 @@ from darts import __version__
 from darts.pipelines import AOISentinel2Pipeline, PlanetPipeline, Sentinel2Pipeline
 from darts.training import (
     preprocess_planet_train_data,
-    preprocess_s2_train_data,
 )
 from darts.utils.config import ConfigParser
 from darts.utils.logging import LoggingManager
@@ -86,7 +85,6 @@ app.command(name="run-sequential-sentinel2-pipeline", group=pipeline_group)(Sent
 app.command(name="run-sequential-planet-pipeline", group=pipeline_group)(PlanetPipeline.cli)
 
 app.command(group=train_group)(preprocess_planet_train_data)
-app.command(group=train_group)(preprocess_s2_train_data)
 app.command(group=train_group)(train_smp)
 app.command(group=train_group)(test_smp)
 app.command(group=train_group)(convert_lightning_checkpoint)
