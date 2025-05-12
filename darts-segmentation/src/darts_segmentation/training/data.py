@@ -8,7 +8,6 @@ import logging
 from pathlib import Path
 from typing import Literal
 
-import albumentations as A  # noqa: N812
 import geopandas as gpd
 import lightning as L  # noqa: N812
 import toml
@@ -23,6 +22,7 @@ from sklearn.model_selection import (
 from torch.utils.data import DataLoader, Dataset
 from zarr.storage import LocalStore
 
+from darts_segmentation.training.augmentations import Augmentation, get_augmentation
 from darts_segmentation.utils import Bands
 
 logger = logging.getLogger(__name__.replace("darts_", "darts."))
@@ -32,7 +32,7 @@ class DartsDatasetZarr(Dataset):
     def __init__(
         self,
         data_dir: Path | str,
-        augment: bool,
+        augment: list[Augmentation] | None = None,
         indices: list[int] | None = None,
         bands: list[int] | None = None,
     ):
@@ -48,21 +48,7 @@ class DartsDatasetZarr(Dataset):
         self.indices = indices if indices is not None else list(range(self.zroot["x"].shape[0]))
         self.bands = bands
 
-        self.transform = (
-            A.Compose(
-                [
-                    A.HorizontalFlip(),
-                    A.VerticalFlip(),
-                    A.RandomRotate90(),
-                    # A.Blur(),
-                    A.RandomBrightnessContrast(),
-                    A.MultiplicativeNoise(per_channel=True, elementwise=True),
-                    # ToTensorV2(),
-                ]
-            )
-            if augment
-            else None
-        )
+        self.transform = get_augmentation(augment)
 
     def __len__(self):
         return len(self.indices)
@@ -86,7 +72,7 @@ class DartsDatasetInMemory(Dataset):
     def __init__(
         self,
         data_dir: Path | str,
-        augment: bool,
+        augment: list[Augmentation] | None = None,
         indices: list[int] | None = None,
         bands: list[int] | None = None,
     ):
@@ -108,21 +94,7 @@ class DartsDatasetInMemory(Dataset):
             self.x.append(x)
             self.y.append(y)
 
-        self.transform = (
-            A.Compose(
-                [
-                    A.HorizontalFlip(),
-                    A.VerticalFlip(),
-                    A.RandomRotate90(),
-                    # A.Blur(),
-                    A.RandomBrightnessContrast(),
-                    A.MultiplicativeNoise(per_channel=True, elementwise=True),
-                    # ToTensorV2(),
-                ]
-            )
-            if augment
-            else None
-        )
+        self.transform = get_augmentation(augment)
 
     def __len__(self):
         return len(self.x)
@@ -236,7 +208,7 @@ class DartsDataModule(L.LightningDataModule):
         total_folds: int = 5,
         fold: int = 0,
         bands: Bands | list[str] | None = None,
-        augment: bool = True,  # Not used for test
+        augment: list[Augmentation] | None = None,  # Not used for val or test
         num_workers: int = 0,
         in_memory: bool = False,
     ):
@@ -365,11 +337,11 @@ class DartsDataModule(L.LightningDataModule):
 
             dsclass = DartsDatasetInMemory if self.in_memory else DartsDatasetZarr
             self.train = dsclass(self.data_dir / "data.zarr", self.augment, train_index, self.bands)
-            self.val = dsclass(self.data_dir / "data.zarr", False, val_index, self.bands)
+            self.val = dsclass(self.data_dir / "data.zarr", None, val_index, self.bands)
         if stage == "test":
             test_index = test_metadata.index.tolist()
             dsclass = DartsDatasetInMemory if self.in_memory else DartsDatasetZarr
-            self.test = dsclass(self.data_dir / "data.zarr", False, test_index, self.bands)
+            self.test = dsclass(self.data_dir / "data.zarr", None, test_index, self.bands)
 
     def train_dataloader(self):
         return DataLoader(

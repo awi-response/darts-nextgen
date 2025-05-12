@@ -50,7 +50,6 @@ def _get_region_name(footprint: "gpd.GeoSeries", admin2: "gpd.GeoDataFrame") -> 
     return region_name
 
 
-# TODO: Think about how this can be further abstracted so that it is only necessary to implement the pipeline here
 def preprocess_planet_train_data(
     *,
     data_dir: Path,
@@ -70,7 +69,7 @@ def preprocess_planet_train_data(
     overlap: int = 16,
     exclude_nopositive: bool = False,
     exclude_nan: bool = True,
-    mask_erosion_size: int = 10,
+    mask_erosion_size: int = 3,
 ):
     """Preprocess Planet data for training.
 
@@ -189,7 +188,7 @@ def preprocess_planet_train_data(
     labels = gpd.GeoDataFrame(pd.concat(labels, ignore_index=True))
 
     footprints = (gpd.read_file(footprints_file) for footprints_file in labels_dir.glob("*/ImageFootprints*.gpkg"))
-    footprints = gpd.GeoDataFrame(pd.concat(footprints, ignore_index=True))
+    footprints = gpd.GeoDataFrame(pd.concat(footprints, ignore_index=True)).sample(40, random_state=42)
     fpaths = {fpath.stem: fpath for fpath in _legacy_path_gen(data_dir)}
     footprints["fpath"] = footprints.image_id.map(fpaths)
 

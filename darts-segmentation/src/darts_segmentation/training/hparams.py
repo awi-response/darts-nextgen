@@ -8,6 +8,8 @@ from typing import TYPE_CHECKING, Literal
 import toml
 import yaml
 
+from darts_segmentation.training.augmentations import Augmentation
+
 if TYPE_CHECKING:
     import scipy.stats
 
@@ -22,7 +24,7 @@ class Hyperparameters:
     model_arch: str = "Unet"
     model_encoder: str = "dpn107"
     model_encoder_weights: str | None = None
-    augment: bool = True
+    augment: list[Augmentation] | None = (None,)
     learning_rate: float = 1e-3
     gamma: float = 0.9
     focal_loss_alpha: float | None = None

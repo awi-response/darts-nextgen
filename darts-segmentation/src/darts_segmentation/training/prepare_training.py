@@ -293,7 +293,14 @@ class TrainDatasetBuilder:
                 This should contain all the information needed to recreate the dataset.
                 It will be saved as a toml file, along with the configuration provided in this dataclass.
 
+        Raises:
+            ValueError: If no patches were found in the dataset.
+
         """
+        if len(self._metadata) == 0:
+            logger.error("No patches found in the dataset.", exc_info=True)
+            raise ValueError("No patches found in the dataset.")
+
         # Save the metadata
         metadata = gpd.GeoDataFrame(self._metadata, crs="EPSG:4326")
         metadata.to_parquet(self.train_data_dir / "metadata.parquet")
