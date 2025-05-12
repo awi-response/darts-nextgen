@@ -118,8 +118,8 @@ class XarrayCacheManager:
             xr.Dataset: The Dataset (either loaded from cache or newly created)
 
         """
-        cached_dataset = self.load_from_cache(identifier)
-        if cached_dataset is not None and not force:
+        cached_dataset = None if force else self.load_from_cache(identifier)
+        if cached_dataset is not None:
             return cached_dataset
 
         dataset = creation_func(*args, **kwargs)
