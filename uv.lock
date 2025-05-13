@@ -998,6 +998,7 @@ dev = [
 docs = [
     { name = "mike" },
     { name = "mkdocs" },
+    { name = "mkdocs-api-autonav" },
     { name = "mkdocs-git-committers-plugin-2" },
     { name = "mkdocs-git-revision-date-localized-plugin" },
     { name = "mkdocs-glightbox" },
@@ -1115,6 +1116,7 @@ dev = [
 docs = [
     { name = "mike", specifier = ">=2.1.3" },
     { name = "mkdocs", specifier = ">=1.6.1" },
+    { name = "mkdocs-api-autonav", specifier = ">=0.2.1" },
     { name = "mkdocs-git-committers-plugin-2", specifier = ">=2.3.0" },
     { name = "mkdocs-git-revision-date-localized-plugin", specifier = ">=1.2.9" },
     { name = "mkdocs-glightbox", specifier = ">=0.4.0" },
@@ -2702,6 +2704,19 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/bc/c6/bbd4f061bd16b378247f12953ffcb04786a618ce5e904b8c5a01a0309061/mkdocs-1.6.1.tar.gz", hash = "sha256:7b432f01d928c084353ab39c57282f29f92136665bdd6abf7c1ec8d822ef86f2", size = 3889159 }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/22/5b/dbc6a8cddc9cfa9c4971d59fb12bb8d42e161b7e7f8cc89e49137c5b279c/mkdocs-1.6.1-py3-none-any.whl", hash = "sha256:db91759624d1647f3f34aa0c3f327dd2601beae39a366d6e064c03468d35c20e", size = 3864451 },
+]
+
+[[package]]
+name = "mkdocs-api-autonav"
+version = "0.2.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "mkdocs" },
+    { name = "mkdocstrings-python" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/d4/f1/42fa880bda8c519ce673c116bd4e9226d0f89f3a8c2f214aef70b380336d/mkdocs_api_autonav-0.2.1.tar.gz", hash = "sha256:96a893cb5edeffb1ee25d26ce80616bcc3643059bd3c429ae72352011e0e164b", size = 55489 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/c8/7e/fe72268c80464d819fbbbdd3bc6af102acde42e084c69c885a0167de0564/mkdocs_api_autonav-0.2.1-py3-none-any.whl", hash = "sha256:86eb60f2e7a198abe9bcedffc4de67672a978a2adfb57078bd2e2753b0c24f7f", size = 11020 },
 ]
 
 [[package]]

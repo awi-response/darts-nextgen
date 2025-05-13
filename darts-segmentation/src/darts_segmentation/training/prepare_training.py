@@ -237,7 +237,7 @@ class TrainDatasetBuilder:
         labels: gpd.GeoDataFrame,
         region: str,
         sample_id: str,
-        metadata: dict[str, str],
+        metadata: dict[str, str] | None = None,
     ):
         """Add a tile to the dataset.
 
@@ -246,10 +246,13 @@ class TrainDatasetBuilder:
             labels (gpd.GeoDataFrame): The labels to be used for training.
             region (str): The region of the tile.
             sample_id (str): The sample id of the tile.
-            metadata (dict[str, str]): Any metadata to be added to the metadata file.
+            metadata (dict[str, str], optional): Any metadata to be added to the metadata file.
                 Will not be used for the training, but can be used for better debugging or reproducibility.
 
         """
+        metadata = metadata or {}
+        # Convert all paths of metadata to strings
+        metadata = {k: str(v) if isinstance(v, Path) else v for k, v in metadata.items()}
         gen = create_training_patches(
             tile=tile,
             labels=labels,
@@ -268,8 +271,6 @@ class TrainDatasetBuilder:
             zx.append(x.unsqueeze(0).numpy().astype("float32"))
             zy.append(y.unsqueeze(0).numpy().astype("uint8"))
             geometry = tile.isel(x=coords.x, y=coords.y).odc.geobox.geographic_extent.geom
-            # Convert all paths of metadata to strings
-            metadata = {k: str(v) if isinstance(v, Path) else v for k, v in metadata.items()}
             self._metadata.append(
                 {
                     "patch_id": patch_id,
@@ -285,11 +286,11 @@ class TrainDatasetBuilder:
                 }
             )
 
-    def finalize(self, data_config: dict[str, str]):
+    def finalize(self, data_config: dict[str, str] | None = None):
         """Finalize the dataset by saving the metadata and the config file.
 
         Args:
-            data_config (dict[str, str]): The data config to be saved in the config file.
+            data_config (dict[str, str], optional): The data config to be saved in the config file.
                 This should contain all the information needed to recreate the dataset.
                 It will be saved as a toml file, along with the configuration provided in this dataclass.
 
@@ -305,6 +306,7 @@ class TrainDatasetBuilder:
         metadata = gpd.GeoDataFrame(self._metadata, crs="EPSG:4326")
         metadata.to_parquet(self.train_data_dir / "metadata.parquet")
 
+        data_config = data_config or {}
         # Convert the data_config paths to strings
         data_config = {k: str(v) if isinstance(v, Path) else v for k, v in data_config.items()}
 

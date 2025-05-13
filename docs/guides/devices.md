@@ -15,7 +15,8 @@ Which type of device is expected is documented in the respective function docume
 
 As of now, the following functions can be run on the GPU:
 
-- [darts_preprocessing.preprocess_legacy_fast](../reference/darts_preprocessing/preprocess_legacy_fast.md) - `device`: `"cpu" | "cuda" | int`
-- [darts_postprocessing.prepare_export](../reference/darts_postprocessing/prepare_export.md) - `device`: `"cpu" | "cuda" | int`
-- [darts_segmentation.SMPSegmenter](../reference/darts_segmentation/SMPSegmenter.md#darts_segmentation.SMPSegmenter) - `device`: `torch.device`
-- [darts_ensemble.EnsembleV1](../reference/darts_ensemble/EnsembleV1.md#darts_ensemble.EnsembleV1) - `device`: `torch.device`
+- [darts_preprocessing.preprocess_legacy_fast][] - `device`: `"cpu" | "cuda" | int`
+- [darts_preprocessing.preprocess_v2][] - `device`: `"cpu" | "cuda" | int`
+- [darts_postprocessing.prepare_export][] - `device`: `"cpu" | "cuda" | int`
+- [darts_segmentation.segment.SMPSegmenter][] - `device`: `torch.device`
+- [darts_ensemble.EnsembleV1][] - `device`: `torch.device`

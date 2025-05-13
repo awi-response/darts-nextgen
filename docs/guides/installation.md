@@ -3,7 +3,7 @@
 Prereq:
 
 - [uv](https://docs.astral.sh/uv/): `curl -LsSf https://astral.sh/uv/install.sh | sh`
-- [postgresql](https://www.postgresql.org/download/) (optional for training-only)
+- [gcloud CLI](https://cloud.google.com/sdk/docs/install)
 - [cuda](https://developer.nvidia.com/cuda-downloads) (optional for GPU support)
 
 This project uses `uv` to manage the python environment.

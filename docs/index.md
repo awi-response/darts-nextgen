@@ -65,7 +65,7 @@ This is te successor of the thaw-slump-segmentation (pipeline), with which the f
 
     View the API reference of the components.
 
-    [:octicons-arrow-right-24: Reference](reference/index.md)
+    [:octicons-arrow-right-24: Reference](reference/darts/index.md)
 
 </div>
 

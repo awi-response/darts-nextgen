@@ -29,7 +29,7 @@ def cross_validation_smp(
     # Data
     train_data_dir: Path,
     data_split_method: Literal["random", "region", "sample"] | None = None,
-    data_split_by: list[str] | None = None,
+    data_split_by: list[str | float] | None = None,
     fold_method: Literal["kfold", "shuffle", "stratified", "region", "region-stratified"] = "kfold",
     total_folds: int = 5,
     bands: list[str] | None = None,
@@ -140,14 +140,18 @@ def cross_validation_smp(
         batch_size (int): Batch size for training and validation.
         data_split_method (Literal["random", "region", "sample"] | None, optional):
             The method to use for splitting the data into a train and a test set.
-            "random" will split the data randomly, the seed is always 42 and the test size is 20%.
+            "random" will split the data randomly, the seed is always 42 and the test size can be specified
+            by providing a list with a single a float between 0 and 1 to data_split_by
+            This will be the fraction of the data to be used for testing.
+            E.g. [0.2] will use 20% of the data for testing.
             "region" will split the data by one or multiple regions,
             which can be specified by providing a str or list of str to data_split_by.
             "sample" will split the data by sample ids, which can also be specified similar to "region".
             If None, no split is done and the complete dataset is used for both training and testing.
             The train split will further be split in the cross validation process.
             Defaults to None.
-        data_split_by (list[str] | None, optional): Select by which regions/samples split. Defaults to None.
+        data_split_by (list[str | float] | None, optional): Select by which regions/samples to split or
+            the size of test set. Defaults to None.
         fold_method (Literal["kfold", "shuffle", "stratified", "region", "region-stratified"], optional):
             Method for cross-validation split. Defaults to "kfold".
         total_folds (int, optional): Total number of folds in cross-validation. Defaults to 5.
@@ -192,7 +196,7 @@ def cross_validation_smp(
         wandb_project (str | None, optional): Weights and Biases Project. Defaults to None.
 
     Returns:
-        float, bool, pd.DataFrame: A single score, a boolean indicating if the score is unstable,
+        tuple[float, bool, pd.DataFrame]: A single score, a boolean indicating if the score is unstable,
             and a DataFrame containing run info (seed, fold, metrics, duration, checkpoint)
 
     """

@@ -8,21 +8,22 @@
 
 Currently, the implemented components are:
 
-| Component                                                                                                                                    | Statefull? and why?      | Bound                        |
-| -------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------ | ---------------------------- |
-| [darts_acquisition.load_arcticdem](../reference/darts_acquisition/load_arcticdem.md)                                                         | Stateless                | Network-IO + Disk-IO         |
-| [darts_acquisition.load_tcvis](../reference/darts_acquisition/load_tcvis.md)                                                                 | Stateless                | Network-IO + Disk-IO         |
-| [darts_acquisition.load_planet_scene](../reference/darts_acquisition/load_planet_scene.md)                                                   | Stateless                | Disk-IO                      |
-| [darts_acquisition.load_planet_masks](../reference/darts_acquisition/load_planet_masks.md)                                                   | Stateless                | Disk-IO                      |
-| [darts_acquisition.load_s2_scene](../reference/darts_acquisition/load_s2_scene.md)                                                           | Stateless                | Disk-IO                      |
-| [darts_acquisition.load_s2_from_gee](../reference/darts_acquisition/load_s2_from_gee.md)                                                     | Stateless                | Network-IO (+ Disk-IO) + CPU |
-| [darts_acquisition.load_s2_from_stac](../reference/darts_acquisition/load_s2_from_stac.md)                                                   | Stateless                | Network-IO (+ Disk-IO)       |
-| [darts_acquisition.load_s2_masks](../reference/darts_acquisition/load_s2_masks.md)                                                           | Stateless                | Disk-IO + CPU                |
-| [darts_preprocessing.preprocess_legacy_fast](../reference/darts_preprocessing/preprocess_legacy_fast.md)                                     | Stateless                | CPU + GPU                    |
-| [darts_segmentation.SMPSegmenter.segment_tile](../reference/darts_segmentation/SMPSegmenter.md#darts_segmentation.SMPSegmenter.segment_tile) | Statefull: Model-Weights | GPU                          |
-| [darts_ensemble.EnsembleV1.segment_tile](../reference/darts_ensemble/EnsembleV1.md#darts_segmentation.SMPSegmenter.segment_tile)             | Statefull: Model-Weights | GPU                          |
-| [darts_postprocessing.prepare_export](../reference/darts_postprocessing/prepare_export.md)                                                   | Stateless                | CPU + GPU                    |
-| [darts_export.export_tile](../reference/darts_export/export_tile.md)                                                                         | Stateless                | Disk-IO                      |
+| Component                                                | Statefull? and why?      | Bound                        |
+| -------------------------------------------------------- | ------------------------ | ---------------------------- |
+| [darts_acquisition.load_arcticdem][]                     | Stateless                | Network-IO + Disk-IO         |
+| [darts_acquisition.load_tcvis][]                         | Stateless                | Network-IO + Disk-IO         |
+| [darts_acquisition.load_planet_scene][]                  | Stateless                | Disk-IO                      |
+| [darts_acquisition.load_planet_masks][]                  | Stateless                | Disk-IO                      |
+| [darts_acquisition.load_s2_scene][]                      | Stateless                | Disk-IO                      |
+| [darts_acquisition.load_s2_from_gee][]                   | Stateless                | Network-IO (+ Disk-IO) + CPU |
+| [darts_acquisition.load_s2_from_stac][]                  | Stateless                | Network-IO (+ Disk-IO)       |
+| [darts_acquisition.load_s2_masks][]                      | Stateless                | Disk-IO + CPU                |
+| [darts_preprocessing.preprocess_legacy_fast][]           | Stateless                | CPU + GPU                    |
+| [darts_preprocessing.preprocess_v2][]                    | Stateless                | CPU + GPU                    |
+| [darts_segmentation.segment.SMPSegmenter.segment_tile][] | Statefull: Model-Weights | GPU                          |
+| [darts_ensemble.EnsembleV1.segment_tile][]               | Statefull: Model-Weights | GPU                          |
+| [darts_postprocessing.prepare_export][]                  | Stateless                | CPU + GPU                    |
+| [darts_export.export_tile][]                             | Stateless                | Disk-IO                      |
 
 ## Component Outputs
 

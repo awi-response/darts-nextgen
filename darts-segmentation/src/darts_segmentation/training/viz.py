@@ -12,7 +12,9 @@ import torch
 # TODO: New Plot: Threshold vs. F1-Score and IoU
 
 
-def plot_sample(x: torch.Tensor, y: torch.Tensor, y_pred: torch.Tensor, band_names: list[str]):
+def plot_sample(
+    x: torch.Tensor, y: torch.Tensor, y_pred: torch.Tensor, band_names: list[str]
+) -> tuple[plt.Figure, dict[str, plt.Axes]]:
     """Plot a single sample with the input, the ground truth and the prediction.
 
     This function does a few expections on the input:

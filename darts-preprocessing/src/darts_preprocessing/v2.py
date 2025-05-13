@@ -32,8 +32,11 @@ else:
 
 @stopwatch.f("Preprocessing arcticdem", printer=logger.debug, print_kwargs=["tpi_outer_radius", "tpi_inner_radius"])
 def preprocess_arcticdem(
-    ds_arcticdem: xr.Dataset, tpi_outer_radius: int, tpi_inner_radius: int, device: Literal["cuda", "cpu"] | int
-):
+    ds_arcticdem: xr.Dataset,
+    tpi_outer_radius: int,
+    tpi_inner_radius: int,
+    device: Literal["cuda", "cpu"] | int,
+) -> xr.Dataset:
     """Preprocess the ArcticDEM data with mdoern (DARTS v2) preprocessing steps.
 
     Args:

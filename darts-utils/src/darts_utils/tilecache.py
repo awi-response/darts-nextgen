@@ -2,6 +2,7 @@
 
 import logging
 from pathlib import Path
+from typing import Any
 
 import xarray as xr
 
@@ -102,8 +103,8 @@ class XarrayCacheManager:
         identifier: str,
         creation_func: callable,
         force: bool,
-        *args,
-        **kwargs,
+        *args: tuple[Any, ...],
+        **kwargs: dict[str, Any],
     ) -> xr.Dataset:
         """Get cached Dataset or create and cache it if it doesn't exist.
 
