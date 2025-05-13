@@ -2,13 +2,13 @@
 
 import logging
 
-import stopuhr
 import xarray as xr
+from stopuhr import stopwatch
 
 logger = logging.getLogger(__name__.replace("darts_", "darts."))
 
 
-@stopuhr.funkuhr("Calculating NDVI", printer=logger.debug, print_kwargs=["nir_band", "red_band"])
+@stopwatch.f("Calculating NDVI", printer=logger.debug, print_kwargs=["nir_band", "red_band"])
 def calculate_ndvi(planet_scene_dataset: xr.Dataset, nir_band: str = "nir", red_band: str = "red") -> xr.Dataset:
     """Calculate NDVI from an xarray Dataset containing spectral bands.
 

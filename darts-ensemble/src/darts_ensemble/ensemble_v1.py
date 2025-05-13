@@ -3,10 +3,10 @@
 import logging
 from pathlib import Path
 
-import stopuhr
 import torch
 import xarray as xr
 from darts_segmentation.segment import SMPSegmenter
+from stopuhr import stopwatch
 
 logger = logging.getLogger(__name__.replace("darts_", "darts."))
 
@@ -36,7 +36,7 @@ class EnsembleV1:
         )
         self.models = {k: SMPSegmenter(v, device=device) for k, v in model_paths.items()}
 
-    @stopuhr.funkuhr(
+    @stopwatch.f(
         "Ensemble inference",
         printer=logger.debug,
         print_kwargs=["patch_size", "overlap", "batch_size", "reflection", "keep_inputs"],

@@ -1,5 +1,6 @@
 """Training script for DARTS segmentation."""
 
+import logging
 from typing import Any
 
 import lightning as L  # noqa: N812
@@ -8,8 +9,10 @@ import torch.optim as optim
 
 from darts_segmentation.segment import SMPSegmenterConfig
 
+logger = logging.getLogger(__name__.replace("darts_", "darts."))
 
-class SMPSegmenter(L.LightningModule):
+
+class LitSMP(L.LightningModule):
     """Lightning module for training a segmentation model using the segmentation_models_pytorch library."""
 
     def __init__(
@@ -21,7 +24,7 @@ class SMPSegmenter(L.LightningModule):
         focal_loss_gamma: float = 2.0,
         **kwargs: dict[str, Any],
     ):
-        """Initialize the SMPSegmenter.
+        """Initialize the LitSMP.
 
         Args:
             config (SMPSegmenterConfig): Configuration for the segmentation model.
@@ -46,7 +49,7 @@ class SMPSegmenter(L.LightningModule):
         )
 
     def __repr__(self):  # noqa: D105
-        return f"SMPSegmenter({self.hparams['config']['model']})"
+        return f"LitSMP({self.hparams['config']['model']})"
 
     def training_step(self, batch, batch_idx):  # noqa: D102
         x, y = batch

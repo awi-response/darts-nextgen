@@ -2,11 +2,8 @@
 
 import importlib.metadata
 
-from darts_segmentation.segment import SMPSegmenter as SMPSegmenter
-from darts_segmentation.segment import SMPSegmenterConfig as SMPSegmenterConfig
-from darts_segmentation.utils import create_patches as create_patches
-from darts_segmentation.utils import patch_coords as patch_coords
-from darts_segmentation.utils import predict_in_patches as predict_in_patches
+# TODO: We don't re-export anything here to avoid heavy imports when importing train functions for the CLI.
+# Find a better solution than just don't re-export anything.
 
 try:
     __version__ = importlib.metadata.version("darts-nextgen")

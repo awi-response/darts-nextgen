@@ -6,19 +6,21 @@ from pathlib import Path
 from typing import Annotated
 
 import cyclopts
-from darts_utils.rich import RichManager
-
-from darts import __version__
-from darts.legacy_training import (
+import rich
+from darts_segmentation.training import (
     convert_lightning_checkpoint,
-    optuna_sweep_smp,
-    preprocess_planet_train_data,
-    preprocess_s2_train_data,
+    cross_validation_smp,
     test_smp,
     train_smp,
-    wandb_sweep_smp,
+    tune_smp,
 )
+from darts_segmentation.training.tune import tune_mp_smp
+
+from darts import __version__
 from darts.pipelines import AOISentinel2Pipeline, PlanetPipeline, Sentinel2Pipeline
+from darts.training import (
+    preprocess_planet_train_data,
+)
 from darts.utils.config import ConfigParser
 from darts.utils.logging import LoggingManager
 
@@ -28,7 +30,7 @@ logger = logging.getLogger(__name__)
 config_parser = ConfigParser()
 app = cyclopts.App(
     version=__version__,
-    console=RichManager.console,
+    console=rich.get_console(),
     config=config_parser,
     help_format="plaintext",
     version_format="plaintext",
@@ -83,12 +85,12 @@ app.command(name="run-sequential-sentinel2-pipeline", group=pipeline_group)(Sent
 app.command(name="run-sequential-planet-pipeline", group=pipeline_group)(PlanetPipeline.cli)
 
 app.command(group=train_group)(preprocess_planet_train_data)
-app.command(group=train_group)(preprocess_s2_train_data)
 app.command(group=train_group)(train_smp)
 app.command(group=train_group)(test_smp)
 app.command(group=train_group)(convert_lightning_checkpoint)
-app.command(group=train_group)(wandb_sweep_smp)
-app.command(group=train_group)(optuna_sweep_smp)
+app.command(group=train_group)(cross_validation_smp)
+app.command(group=train_group)(tune_smp)
+app.command(group=train_group)(tune_mp_smp)
 
 
 # Intercept the logging behavior to add a file handler

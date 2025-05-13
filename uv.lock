@@ -247,6 +247,19 @@ wheels = [
 ]
 
 [[package]]
+name = "beautifulsoup4"
+version = "4.13.4"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "soupsieve" },
+    { name = "typing-extensions" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/d8/e4/0c4c39e18fd76d6a628d4dd8da40543d136ce2d1752bd6eeeab0791f4d6b/beautifulsoup4-4.13.4.tar.gz", hash = "sha256:dbb3c4e1ceae6aefebdaf2423247260cd062430a410e38c66f2baa50a8437195", size = 621067 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/50/cd/30110dc0ffcf3b131156077b90e9f60ed75711223f306da4db08eff8403b/beautifulsoup4-4.13.4-py3-none-any.whl", hash = "sha256:9bbbb14bfde9d79f38b8cd5f8c7c85f4b8f2523190ebed90e950a8dea4cb1c4b", size = 187285 },
+]
+
+[[package]]
 name = "bleach"
 version = "6.2.0"
 source = { registry = "https://pypi.org/simple" }
@@ -256,6 +269,11 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/76/9a/0e33f5054c54d349ea62c277191c020c2d6ef1d65ab2cb1993f91ec846d1/bleach-6.2.0.tar.gz", hash = "sha256:123e894118b8a599fd80d3ec1a6d4cc7ce4e5882b1317a7e1ba69b56e95f991f", size = 203083 }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/fc/55/96142937f66150805c25c4d0f31ee4132fd33497753400734f9dfdcbdc66/bleach-6.2.0-py3-none-any.whl", hash = "sha256:117d9c6097a7c3d22fd578fcd8d35ff1e125df6736f554da4e432fdd63f31e5e", size = 163406 },
+]
+
+[package.optional-dependencies]
+css = [
+    { name = "tinycss2" },
 ]
 
 [[package]]
@@ -874,6 +892,7 @@ dependencies = [
     { name = "datashader" },
     { name = "distributed" },
     { name = "earthengine-api" },
+    { name = "filelock" },
     { name = "folium" },
     { name = "geocube" },
     { name = "geopandas" },
@@ -889,7 +908,8 @@ dependencies = [
     { name = "pystac" },
     { name = "pystac-client" },
     { name = "rasterio" },
-    { name = "ray", extra = ["data"] },
+    { name = "ray", version = "2.38.0", source = { registry = "https://pypi.org/simple" }, extra = ["data"], marker = "(platform_machine == 'x86_64' and sys_platform == 'darwin') or (platform_machine != 'x86_64' and extra == 'extra-13-darts-nextgen-cpu' and extra == 'extra-13-darts-nextgen-cuda118') or (platform_machine != 'x86_64' and extra == 'extra-13-darts-nextgen-cpu' and extra == 'extra-13-darts-nextgen-cuda121') or (platform_machine != 'x86_64' and extra == 'extra-13-darts-nextgen-cpu' and extra == 'extra-13-darts-nextgen-cuda126') or (platform_machine != 'x86_64' and extra == 'extra-13-darts-nextgen-cuda118' and extra == 'extra-13-darts-nextgen-cuda121') or (platform_machine != 'x86_64' and extra == 'extra-13-darts-nextgen-cuda118' and extra == 'extra-13-darts-nextgen-cuda126') or (platform_machine != 'x86_64' and extra == 'extra-13-darts-nextgen-cuda121' and extra == 'extra-13-darts-nextgen-cuda126') or (sys_platform != 'darwin' and extra == 'extra-13-darts-nextgen-cpu' and extra == 'extra-13-darts-nextgen-cuda118') or (sys_platform != 'darwin' and extra == 'extra-13-darts-nextgen-cpu' and extra == 'extra-13-darts-nextgen-cuda121') or (sys_platform != 'darwin' and extra == 'extra-13-darts-nextgen-cpu' and extra == 'extra-13-darts-nextgen-cuda126') or (sys_platform != 'darwin' and extra == 'extra-13-darts-nextgen-cuda118' and extra == 'extra-13-darts-nextgen-cuda121') or (sys_platform != 'darwin' and extra == 'extra-13-darts-nextgen-cuda118' and extra == 'extra-13-darts-nextgen-cuda126') or (sys_platform != 'darwin' and extra == 'extra-13-darts-nextgen-cuda121' and extra == 'extra-13-darts-nextgen-cuda126')" },
+    { name = "ray", version = "2.44.1", source = { registry = "https://pypi.org/simple" }, extra = ["data"], marker = "platform_machine != 'x86_64' or sys_platform != 'darwin' or (extra == 'extra-13-darts-nextgen-cpu' and extra == 'extra-13-darts-nextgen-cuda118') or (extra == 'extra-13-darts-nextgen-cpu' and extra == 'extra-13-darts-nextgen-cuda121') or (extra == 'extra-13-darts-nextgen-cpu' and extra == 'extra-13-darts-nextgen-cuda126') or (extra == 'extra-13-darts-nextgen-cuda118' and extra == 'extra-13-darts-nextgen-cuda121') or (extra == 'extra-13-darts-nextgen-cuda118' and extra == 'extra-13-darts-nextgen-cuda126') or (extra == 'extra-13-darts-nextgen-cuda121' and extra == 'extra-13-darts-nextgen-cuda126')" },
     { name = "rich" },
     { name = "rioxarray" },
     { name = "scikit-image" },
@@ -969,6 +989,8 @@ dev = [
     { name = "ipywidgets" },
     { name = "mapclassify" },
     { name = "matplotlib" },
+    { name = "nbconvert" },
+    { name = "pyperclip" },
     { name = "pyright" },
     { name = "pytest" },
     { name = "ruff" },
@@ -976,6 +998,7 @@ dev = [
 docs = [
     { name = "mike" },
     { name = "mkdocs" },
+    { name = "mkdocs-api-autonav" },
     { name = "mkdocs-git-committers-plugin-2" },
     { name = "mkdocs-git-revision-date-localized-plugin" },
     { name = "mkdocs-glightbox" },
@@ -1014,6 +1037,7 @@ requires-dist = [
     { name = "datashader", specifier = ">=0.16.3" },
     { name = "distributed", specifier = ">=2024.12.0" },
     { name = "earthengine-api", specifier = ">=1.1.5" },
+    { name = "filelock", specifier = ">=3.18.0" },
     { name = "folium", specifier = ">=0.18.0" },
     { name = "geocube", specifier = ">=0.7.0" },
     { name = "geopandas", specifier = ">=1.0.1" },
@@ -1051,8 +1075,8 @@ requires-dist = [
     { name = "segmentation-models-pytorch", marker = "extra == 'cuda126'", specifier = ">=0.4.0" },
     { name = "setuptools", specifier = ">=75.5.0" },
     { name = "shapely", specifier = ">=2.0.0" },
-    { name = "smart-geocubes", extras = ["gee", "stac"], specifier = ">=0.0.6" },
-    { name = "stopuhr", specifier = ">=0.0.4" },
+    { name = "smart-geocubes", extras = ["gee", "stac"], specifier = ">=0.0.8" },
+    { name = "stopuhr", specifier = ">=0.0.6" },
     { name = "timm", marker = "extra == 'cpu'", specifier = ">=1.0.13" },
     { name = "timm", marker = "extra == 'cuda118'", specifier = ">=1.0.13" },
     { name = "timm", marker = "extra == 'cuda121'", specifier = ">=1.0.13" },
@@ -1083,6 +1107,8 @@ dev = [
     { name = "ipywidgets", specifier = ">=8.1.5" },
     { name = "mapclassify", specifier = ">=2.8.1" },
     { name = "matplotlib", specifier = ">=3.9.2" },
+    { name = "nbconvert", specifier = ">=7.16.6" },
+    { name = "pyperclip", specifier = ">=1.9.0" },
     { name = "pyright", specifier = ">=1.1.384" },
     { name = "pytest", specifier = ">=8" },
     { name = "ruff", specifier = ">=0.8.3" },
@@ -1090,6 +1116,7 @@ dev = [
 docs = [
     { name = "mike", specifier = ">=2.1.3" },
     { name = "mkdocs", specifier = ">=1.6.1" },
+    { name = "mkdocs-api-autonav", specifier = ">=0.2.1" },
     { name = "mkdocs-git-committers-plugin-2", specifier = ">=2.3.0" },
     { name = "mkdocs-git-revision-date-localized-plugin", specifier = ">=1.2.9" },
     { name = "mkdocs-glightbox", specifier = ">=0.4.0" },
@@ -1346,6 +1373,15 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/0b/6f/27e593625a165bd10cd6aa1e39e5da81e180a35b3ae06ce72cb37329bffc/fastcore-1.8.0.tar.gz", hash = "sha256:d23e63aff4bcd06dde24cdf9f7ea13c48e7d274ae89e52e826df33c64869c976", size = 75111 }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/ab/d5/f6d4591b3ae2fc56b32d9f7845872f1e529fadc64c87384e36e75149ff87/fastcore-1.8.0-py3-none-any.whl", hash = "sha256:67739747f0f714d02944957271a11dcb4a9dd40012615e6f9d19add3e5d9e041", size = 78000 },
+]
+
+[[package]]
+name = "fastjsonschema"
+version = "2.21.1"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/8b/50/4b769ce1ac4071a1ef6d86b1a3fb56cdc3a37615e8c5519e1af96cdac366/fastjsonschema-2.21.1.tar.gz", hash = "sha256:794d4f0a58f848961ba16af7b9c85a3e88cd360df008c59aac6fc5ae9323b5d4", size = 373939 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/90/2b/0817a2b257fe88725c25589d89aec060581aabf668707a8d03b2e9e0cb2a/fastjsonschema-2.21.1-py3-none-any.whl", hash = "sha256:c9e5b7e908310918cf494a434eeb31384dd84a98b57a30bcb1f535015b554667", size = 23924 },
 ]
 
 [[package]]
@@ -2194,6 +2230,15 @@ wheels = [
 ]
 
 [[package]]
+name = "jupyterlab-pygments"
+version = "0.3.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/90/51/9187be60d989df97f5f0aba133fa54e7300f17616e065d1ada7d7646b6d6/jupyterlab_pygments-0.3.0.tar.gz", hash = "sha256:721aca4d9029252b11cfa9d185e5b5af4d54772bb8072f9b7036f4170054d35d", size = 512900 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/b1/dd/ead9d8ea85bf202d90cc513b533f9c363121c7792674f78e0d8a854b63b4/jupyterlab_pygments-0.3.0-py3-none-any.whl", hash = "sha256:841a89020971da1d8693f1a99997aefc5dc424bb1b251fd6322462a1b8842780", size = 15884 },
+]
+
+[[package]]
 name = "jupyterlab-widgets"
 version = "3.0.13"
 source = { registry = "https://pypi.org/simple" }
@@ -2629,6 +2674,15 @@ wheels = [
 ]
 
 [[package]]
+name = "mistune"
+version = "3.1.3"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/c4/79/bda47f7dd7c3c55770478d6d02c9960c430b0cf1773b72366ff89126ea31/mistune-3.1.3.tar.gz", hash = "sha256:a7035c21782b2becb6be62f8f25d3df81ccb4d6fa477a6525b15af06539f02a0", size = 94347 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/01/4d/23c4e4f09da849e127e9f123241946c23c1e30f45a88366879e064211815/mistune-3.1.3-py3-none-any.whl", hash = "sha256:1a32314113cff28aa6432e99e522677c8587fd83e3d51c29b82a52409c842bd9", size = 53410 },
+]
+
+[[package]]
 name = "mkdocs"
 version = "1.6.1"
 source = { registry = "https://pypi.org/simple" }
@@ -2650,6 +2704,19 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/bc/c6/bbd4f061bd16b378247f12953ffcb04786a618ce5e904b8c5a01a0309061/mkdocs-1.6.1.tar.gz", hash = "sha256:7b432f01d928c084353ab39c57282f29f92136665bdd6abf7c1ec8d822ef86f2", size = 3889159 }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/22/5b/dbc6a8cddc9cfa9c4971d59fb12bb8d42e161b7e7f8cc89e49137c5b279c/mkdocs-1.6.1-py3-none-any.whl", hash = "sha256:db91759624d1647f3f34aa0c3f327dd2601beae39a366d6e064c03468d35c20e", size = 3864451 },
+]
+
+[[package]]
+name = "mkdocs-api-autonav"
+version = "0.2.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "mkdocs" },
+    { name = "mkdocstrings-python" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/d4/f1/42fa880bda8c519ce673c116bd4e9226d0f89f3a8c2f214aef70b380336d/mkdocs_api_autonav-0.2.1.tar.gz", hash = "sha256:96a893cb5edeffb1ee25d26ce80616bcc3643059bd3c429ae72352011e0e164b", size = 55489 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/c8/7e/fe72268c80464d819fbbbdd3bc6af102acde42e084c69c885a0167de0564/mkdocs_api_autonav-0.2.1-py3-none-any.whl", hash = "sha256:86eb60f2e7a198abe9bcedffc4de67672a978a2adfb57078bd2e2753b0c24f7f", size = 11020 },
 ]
 
 [[package]]
@@ -2947,6 +3014,61 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/85/fd/484aa8bb557f97a1781f38c78b79f795a2fa320e4165c4230f679937d1e8/narwhals-1.33.0.tar.gz", hash = "sha256:6233d2457debf4b5fe4a1da54530c6fe2d84326f4a8e3bca35bbbff580a347cb", size = 262554 }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/41/c1/e9bc6b67c774e7c1f939c91ea535f18f7644fedc61b20d6baa861ad52b34/narwhals-1.33.0-py3-none-any.whl", hash = "sha256:f653319112fd121a1f1c18a40cf70dada773cdacfd53e62c2aa0afae43c17129", size = 322750 },
+]
+
+[[package]]
+name = "nbclient"
+version = "0.10.2"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "jupyter-client" },
+    { name = "jupyter-core" },
+    { name = "nbformat" },
+    { name = "traitlets" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/87/66/7ffd18d58eae90d5721f9f39212327695b749e23ad44b3881744eaf4d9e8/nbclient-0.10.2.tar.gz", hash = "sha256:90b7fc6b810630db87a6d0c2250b1f0ab4cf4d3c27a299b0cde78a4ed3fd9193", size = 62424 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/34/6d/e7fa07f03a4a7b221d94b4d586edb754a9b0dc3c9e2c93353e9fa4e0d117/nbclient-0.10.2-py3-none-any.whl", hash = "sha256:4ffee11e788b4a27fabeb7955547e4318a5298f34342a4bfd01f2e1faaeadc3d", size = 25434 },
+]
+
+[[package]]
+name = "nbconvert"
+version = "7.16.6"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "beautifulsoup4" },
+    { name = "bleach", extra = ["css"] },
+    { name = "defusedxml" },
+    { name = "jinja2" },
+    { name = "jupyter-core" },
+    { name = "jupyterlab-pygments" },
+    { name = "markupsafe" },
+    { name = "mistune" },
+    { name = "nbclient" },
+    { name = "nbformat" },
+    { name = "packaging" },
+    { name = "pandocfilters" },
+    { name = "pygments" },
+    { name = "traitlets" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/a3/59/f28e15fc47ffb73af68a8d9b47367a8630d76e97ae85ad18271b9db96fdf/nbconvert-7.16.6.tar.gz", hash = "sha256:576a7e37c6480da7b8465eefa66c17844243816ce1ccc372633c6b71c3c0f582", size = 857715 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/cc/9a/cd673b2f773a12c992f41309ef81b99da1690426bd2f96957a7ade0d3ed7/nbconvert-7.16.6-py3-none-any.whl", hash = "sha256:1375a7b67e0c2883678c48e506dc320febb57685e5ee67faa51b18a90f3a712b", size = 258525 },
+]
+
+[[package]]
+name = "nbformat"
+version = "5.10.4"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "fastjsonschema" },
+    { name = "jsonschema" },
+    { name = "jupyter-core" },
+    { name = "traitlets" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/6d/fd/91545e604bc3dad7dca9ed03284086039b294c6b3d75c0d2fa45f9e9caf3/nbformat-5.10.4.tar.gz", hash = "sha256:322168b14f937a5d11362988ecac2a4952d3d8e3a2cbeb2319584631226d5b3a", size = 142749 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/a9/82/0340caa499416c78e5d8f5f05947ae4bc3cba53c9f038ab6e9ed964e22f1/nbformat-5.10.4-py3-none-any.whl", hash = "sha256:3b48d6c8fbca4b299bf3982ea7db1af21580e4fec269ad087b9e81588891200b", size = 78454 },
 ]
 
 [[package]]
@@ -3655,6 +3777,15 @@ wheels = [
 ]
 
 [[package]]
+name = "pandocfilters"
+version = "1.5.1"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/70/6f/3dd4940bbe001c06a65f88e36bad298bc7a0de5036115639926b0c5c0458/pandocfilters-1.5.1.tar.gz", hash = "sha256:002b4a555ee4ebc03f8b66307e287fa492e4a77b4ea14d3f934328297bb4939e", size = 8454 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/ef/af/4fbc8cab944db5d21b7e2a5b8e9211a03a79852b1157e2c102fcc61ac440/pandocfilters-1.5.1-py2.py3-none-any.whl", hash = "sha256:93be382804a9cdb0a7267585f157e5d1731bbe5545a85b268d6f5fe6232de2bc", size = 8663 },
+]
+
+[[package]]
 name = "panel"
 version = "1.6.2"
 source = { registry = "https://pypi.org/simple" }
@@ -3999,27 +4130,46 @@ wheels = [
 
 [[package]]
 name = "pyarrow"
-version = "17.0.0"
+version = "20.0.0"
 source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "numpy" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/27/4e/ea6d43f324169f8aec0e57569443a38bab4b398d09769ca64f7b4d467de3/pyarrow-17.0.0.tar.gz", hash = "sha256:4beca9521ed2c0921c1023e68d097d0299b62c362639ea315572a58f3f50fd28", size = 1112479 }
+sdist = { url = "https://files.pythonhosted.org/packages/a2/ee/a7810cb9f3d6e9238e61d312076a9859bf3668fd21c69744de9532383912/pyarrow-20.0.0.tar.gz", hash = "sha256:febc4a913592573c8d5805091a6c2b5064c8bd6e002131f01061797d91c783c1", size = 1125187 }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/f9/46/ce89f87c2936f5bb9d879473b9663ce7a4b1f4359acc2f0eb39865eaa1af/pyarrow-17.0.0-cp311-cp311-macosx_10_15_x86_64.whl", hash = "sha256:1c8856e2ef09eb87ecf937104aacfa0708f22dfeb039c363ec99735190ffb977", size = 29028748 },
-    { url = "https://files.pythonhosted.org/packages/8d/8e/ce2e9b2146de422f6638333c01903140e9ada244a2a477918a368306c64c/pyarrow-17.0.0-cp311-cp311-macosx_11_0_arm64.whl", hash = "sha256:2e19f569567efcbbd42084e87f948778eb371d308e137a0f97afe19bb860ccb3", size = 27190965 },
-    { url = "https://files.pythonhosted.org/packages/3b/c8/5675719570eb1acd809481c6d64e2136ffb340bc387f4ca62dce79516cea/pyarrow-17.0.0-cp311-cp311-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:6b244dc8e08a23b3e352899a006a26ae7b4d0da7bb636872fa8f5884e70acf15", size = 39269081 },
-    { url = "https://files.pythonhosted.org/packages/5e/78/3931194f16ab681ebb87ad252e7b8d2c8b23dad49706cadc865dff4a1dd3/pyarrow-17.0.0-cp311-cp311-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:0b72e87fe3e1db343995562f7fff8aee354b55ee83d13afba65400c178ab2597", size = 39864921 },
-    { url = "https://files.pythonhosted.org/packages/d8/81/69b6606093363f55a2a574c018901c40952d4e902e670656d18213c71ad7/pyarrow-17.0.0-cp311-cp311-manylinux_2_28_aarch64.whl", hash = "sha256:dc5c31c37409dfbc5d014047817cb4ccd8c1ea25d19576acf1a001fe07f5b420", size = 38740798 },
-    { url = "https://files.pythonhosted.org/packages/4c/21/9ca93b84b92ef927814cb7ba37f0774a484c849d58f0b692b16af8eebcfb/pyarrow-17.0.0-cp311-cp311-manylinux_2_28_x86_64.whl", hash = "sha256:e3343cb1e88bc2ea605986d4b94948716edc7a8d14afd4e2c097232f729758b4", size = 39871877 },
-    { url = "https://files.pythonhosted.org/packages/30/d1/63a7c248432c71c7d3ee803e706590a0b81ce1a8d2b2ae49677774b813bb/pyarrow-17.0.0-cp311-cp311-win_amd64.whl", hash = "sha256:a27532c38f3de9eb3e90ecab63dfda948a8ca859a66e3a47f5f42d1e403c4d03", size = 25151089 },
-    { url = "https://files.pythonhosted.org/packages/d4/62/ce6ac1275a432b4a27c55fe96c58147f111d8ba1ad800a112d31859fae2f/pyarrow-17.0.0-cp312-cp312-macosx_10_15_x86_64.whl", hash = "sha256:9b8a823cea605221e61f34859dcc03207e52e409ccf6354634143e23af7c8d22", size = 29019418 },
-    { url = "https://files.pythonhosted.org/packages/8e/0a/dbd0c134e7a0c30bea439675cc120012337202e5fac7163ba839aa3691d2/pyarrow-17.0.0-cp312-cp312-macosx_11_0_arm64.whl", hash = "sha256:f1e70de6cb5790a50b01d2b686d54aaf73da01266850b05e3af2a1bc89e16053", size = 27152197 },
-    { url = "https://files.pythonhosted.org/packages/cb/05/3f4a16498349db79090767620d6dc23c1ec0c658a668d61d76b87706c65d/pyarrow-17.0.0-cp312-cp312-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:0071ce35788c6f9077ff9ecba4858108eebe2ea5a3f7cf2cf55ebc1dbc6ee24a", size = 39263026 },
-    { url = "https://files.pythonhosted.org/packages/c2/0c/ea2107236740be8fa0e0d4a293a095c9f43546a2465bb7df34eee9126b09/pyarrow-17.0.0-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:757074882f844411fcca735e39aae74248a1531367a7c80799b4266390ae51cc", size = 39880798 },
-    { url = "https://files.pythonhosted.org/packages/f6/b0/b9164a8bc495083c10c281cc65064553ec87b7537d6f742a89d5953a2a3e/pyarrow-17.0.0-cp312-cp312-manylinux_2_28_aarch64.whl", hash = "sha256:9ba11c4f16976e89146781a83833df7f82077cdab7dc6232c897789343f7891a", size = 38715172 },
-    { url = "https://files.pythonhosted.org/packages/f1/c4/9625418a1413005e486c006e56675334929fad864347c5ae7c1b2e7fe639/pyarrow-17.0.0-cp312-cp312-manylinux_2_28_x86_64.whl", hash = "sha256:b0c6ac301093b42d34410b187bba560b17c0330f64907bfa4f7f7f2444b0cf9b", size = 39874508 },
-    { url = "https://files.pythonhosted.org/packages/ae/49/baafe2a964f663413be3bd1cf5c45ed98c5e42e804e2328e18f4570027c1/pyarrow-17.0.0-cp312-cp312-win_amd64.whl", hash = "sha256:392bc9feabc647338e6c89267635e111d71edad5fcffba204425a7c8d13610d7", size = 25099235 },
+    { url = "https://files.pythonhosted.org/packages/47/a2/b7930824181ceadd0c63c1042d01fa4ef63eee233934826a7a2a9af6e463/pyarrow-20.0.0-cp311-cp311-macosx_12_0_arm64.whl", hash = "sha256:24ca380585444cb2a31324c546a9a56abbe87e26069189e14bdba19c86c049f0", size = 30856035 },
+    { url = "https://files.pythonhosted.org/packages/9b/18/c765770227d7f5bdfa8a69f64b49194352325c66a5c3bb5e332dfd5867d9/pyarrow-20.0.0-cp311-cp311-macosx_12_0_x86_64.whl", hash = "sha256:95b330059ddfdc591a3225f2d272123be26c8fa76e8c9ee1a77aad507361cfdb", size = 32309552 },
+    { url = "https://files.pythonhosted.org/packages/44/fb/dfb2dfdd3e488bb14f822d7335653092dde150cffc2da97de6e7500681f9/pyarrow-20.0.0-cp311-cp311-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:5f0fb1041267e9968c6d0d2ce3ff92e3928b243e2b6d11eeb84d9ac547308232", size = 41334704 },
+    { url = "https://files.pythonhosted.org/packages/58/0d/08a95878d38808051a953e887332d4a76bc06c6ee04351918ee1155407eb/pyarrow-20.0.0-cp311-cp311-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:b8ff87cc837601532cc8242d2f7e09b4e02404de1b797aee747dd4ba4bd6313f", size = 42399836 },
+    { url = "https://files.pythonhosted.org/packages/f3/cd/efa271234dfe38f0271561086eedcad7bc0f2ddd1efba423916ff0883684/pyarrow-20.0.0-cp311-cp311-manylinux_2_28_aarch64.whl", hash = "sha256:7a3a5dcf54286e6141d5114522cf31dd67a9e7c9133d150799f30ee302a7a1ab", size = 40711789 },
+    { url = "https://files.pythonhosted.org/packages/46/1f/7f02009bc7fc8955c391defee5348f510e589a020e4b40ca05edcb847854/pyarrow-20.0.0-cp311-cp311-manylinux_2_28_x86_64.whl", hash = "sha256:a6ad3e7758ecf559900261a4df985662df54fb7fdb55e8e3b3aa99b23d526b62", size = 42301124 },
+    { url = "https://files.pythonhosted.org/packages/4f/92/692c562be4504c262089e86757a9048739fe1acb4024f92d39615e7bab3f/pyarrow-20.0.0-cp311-cp311-musllinux_1_2_aarch64.whl", hash = "sha256:6bb830757103a6cb300a04610e08d9636f0cd223d32f388418ea893a3e655f1c", size = 42916060 },
+    { url = "https://files.pythonhosted.org/packages/a4/ec/9f5c7e7c828d8e0a3c7ef50ee62eca38a7de2fa6eb1b8fa43685c9414fef/pyarrow-20.0.0-cp311-cp311-musllinux_1_2_x86_64.whl", hash = "sha256:96e37f0766ecb4514a899d9a3554fadda770fb57ddf42b63d80f14bc20aa7db3", size = 44547640 },
+    { url = "https://files.pythonhosted.org/packages/54/96/46613131b4727f10fd2ffa6d0d6f02efcc09a0e7374eff3b5771548aa95b/pyarrow-20.0.0-cp311-cp311-win_amd64.whl", hash = "sha256:3346babb516f4b6fd790da99b98bed9708e3f02e734c84971faccb20736848dc", size = 25781491 },
+    { url = "https://files.pythonhosted.org/packages/a1/d6/0c10e0d54f6c13eb464ee9b67a68b8c71bcf2f67760ef5b6fbcddd2ab05f/pyarrow-20.0.0-cp312-cp312-macosx_12_0_arm64.whl", hash = "sha256:75a51a5b0eef32727a247707d4755322cb970be7e935172b6a3a9f9ae98404ba", size = 30815067 },
+    { url = "https://files.pythonhosted.org/packages/7e/e2/04e9874abe4094a06fd8b0cbb0f1312d8dd7d707f144c2ec1e5e8f452ffa/pyarrow-20.0.0-cp312-cp312-macosx_12_0_x86_64.whl", hash = "sha256:211d5e84cecc640c7a3ab900f930aaff5cd2702177e0d562d426fb7c4f737781", size = 32297128 },
+    { url = "https://files.pythonhosted.org/packages/31/fd/c565e5dcc906a3b471a83273039cb75cb79aad4a2d4a12f76cc5ae90a4b8/pyarrow-20.0.0-cp312-cp312-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:4ba3cf4182828be7a896cbd232aa8dd6a31bd1f9e32776cc3796c012855e1199", size = 41334890 },
+    { url = "https://files.pythonhosted.org/packages/af/a9/3bdd799e2c9b20c1ea6dc6fa8e83f29480a97711cf806e823f808c2316ac/pyarrow-20.0.0-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:2c3a01f313ffe27ac4126f4c2e5ea0f36a5fc6ab51f8726cf41fee4b256680bd", size = 42421775 },
+    { url = "https://files.pythonhosted.org/packages/10/f7/da98ccd86354c332f593218101ae56568d5dcedb460e342000bd89c49cc1/pyarrow-20.0.0-cp312-cp312-manylinux_2_28_aarch64.whl", hash = "sha256:a2791f69ad72addd33510fec7bb14ee06c2a448e06b649e264c094c5b5f7ce28", size = 40687231 },
+    { url = "https://files.pythonhosted.org/packages/bb/1b/2168d6050e52ff1e6cefc61d600723870bf569cbf41d13db939c8cf97a16/pyarrow-20.0.0-cp312-cp312-manylinux_2_28_x86_64.whl", hash = "sha256:4250e28a22302ce8692d3a0e8ec9d9dde54ec00d237cff4dfa9c1fbf79e472a8", size = 42295639 },
+    { url = "https://files.pythonhosted.org/packages/b2/66/2d976c0c7158fd25591c8ca55aee026e6d5745a021915a1835578707feb3/pyarrow-20.0.0-cp312-cp312-musllinux_1_2_aarch64.whl", hash = "sha256:89e030dc58fc760e4010148e6ff164d2f44441490280ef1e97a542375e41058e", size = 42908549 },
+    { url = "https://files.pythonhosted.org/packages/31/a9/dfb999c2fc6911201dcbf348247f9cc382a8990f9ab45c12eabfd7243a38/pyarrow-20.0.0-cp312-cp312-musllinux_1_2_x86_64.whl", hash = "sha256:6102b4864d77102dbbb72965618e204e550135a940c2534711d5ffa787df2a5a", size = 44557216 },
+    { url = "https://files.pythonhosted.org/packages/a0/8e/9adee63dfa3911be2382fb4d92e4b2e7d82610f9d9f668493bebaa2af50f/pyarrow-20.0.0-cp312-cp312-win_amd64.whl", hash = "sha256:96d6a0a37d9c98be08f5ed6a10831d88d52cac7b13f5287f1e0f625a0de8062b", size = 25660496 },
+    { url = "https://files.pythonhosted.org/packages/9b/aa/daa413b81446d20d4dad2944110dcf4cf4f4179ef7f685dd5a6d7570dc8e/pyarrow-20.0.0-cp313-cp313-macosx_12_0_arm64.whl", hash = "sha256:a15532e77b94c61efadde86d10957950392999503b3616b2ffcef7621a002893", size = 30798501 },
+    { url = "https://files.pythonhosted.org/packages/ff/75/2303d1caa410925de902d32ac215dc80a7ce7dd8dfe95358c165f2adf107/pyarrow-20.0.0-cp313-cp313-macosx_12_0_x86_64.whl", hash = "sha256:dd43f58037443af715f34f1322c782ec463a3c8a94a85fdb2d987ceb5658e061", size = 32277895 },
+    { url = "https://files.pythonhosted.org/packages/92/41/fe18c7c0b38b20811b73d1bdd54b1fccba0dab0e51d2048878042d84afa8/pyarrow-20.0.0-cp313-cp313-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:aa0d288143a8585806e3cc7c39566407aab646fb9ece164609dac1cfff45f6ae", size = 41327322 },
+    { url = "https://files.pythonhosted.org/packages/da/ab/7dbf3d11db67c72dbf36ae63dcbc9f30b866c153b3a22ef728523943eee6/pyarrow-20.0.0-cp313-cp313-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:b6953f0114f8d6f3d905d98e987d0924dabce59c3cda380bdfaa25a6201563b4", size = 42411441 },
+    { url = "https://files.pythonhosted.org/packages/90/c3/0c7da7b6dac863af75b64e2f827e4742161128c350bfe7955b426484e226/pyarrow-20.0.0-cp313-cp313-manylinux_2_28_aarch64.whl", hash = "sha256:991f85b48a8a5e839b2128590ce07611fae48a904cae6cab1f089c5955b57eb5", size = 40677027 },
+    { url = "https://files.pythonhosted.org/packages/be/27/43a47fa0ff9053ab5203bb3faeec435d43c0d8bfa40179bfd076cdbd4e1c/pyarrow-20.0.0-cp313-cp313-manylinux_2_28_x86_64.whl", hash = "sha256:97c8dc984ed09cb07d618d57d8d4b67a5100a30c3818c2fb0b04599f0da2de7b", size = 42281473 },
+    { url = "https://files.pythonhosted.org/packages/bc/0b/d56c63b078876da81bbb9ba695a596eabee9b085555ed12bf6eb3b7cab0e/pyarrow-20.0.0-cp313-cp313-musllinux_1_2_aarch64.whl", hash = "sha256:9b71daf534f4745818f96c214dbc1e6124d7daf059167330b610fc69b6f3d3e3", size = 42893897 },
+    { url = "https://files.pythonhosted.org/packages/92/ac/7d4bd020ba9145f354012838692d48300c1b8fe5634bfda886abcada67ed/pyarrow-20.0.0-cp313-cp313-musllinux_1_2_x86_64.whl", hash = "sha256:e8b88758f9303fa5a83d6c90e176714b2fd3852e776fc2d7e42a22dd6c2fb368", size = 44543847 },
+    { url = "https://files.pythonhosted.org/packages/9d/07/290f4abf9ca702c5df7b47739c1b2c83588641ddfa2cc75e34a301d42e55/pyarrow-20.0.0-cp313-cp313-win_amd64.whl", hash = "sha256:30b3051b7975801c1e1d387e17c588d8ab05ced9b1e14eec57915f79869b5031", size = 25653219 },
+    { url = "https://files.pythonhosted.org/packages/95/df/720bb17704b10bd69dde086e1400b8eefb8f58df3f8ac9cff6c425bf57f1/pyarrow-20.0.0-cp313-cp313t-macosx_12_0_arm64.whl", hash = "sha256:ca151afa4f9b7bc45bcc791eb9a89e90a9eb2772767d0b1e5389609c7d03db63", size = 30853957 },
+    { url = "https://files.pythonhosted.org/packages/d9/72/0d5f875efc31baef742ba55a00a25213a19ea64d7176e0fe001c5d8b6e9a/pyarrow-20.0.0-cp313-cp313t-macosx_12_0_x86_64.whl", hash = "sha256:4680f01ecd86e0dd63e39eb5cd59ef9ff24a9d166db328679e36c108dc993d4c", size = 32247972 },
+    { url = "https://files.pythonhosted.org/packages/d5/bc/e48b4fa544d2eea72f7844180eb77f83f2030b84c8dad860f199f94307ed/pyarrow-20.0.0-cp313-cp313t-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:7f4c8534e2ff059765647aa69b75d6543f9fef59e2cd4c6d18015192565d2b70", size = 41256434 },
+    { url = "https://files.pythonhosted.org/packages/c3/01/974043a29874aa2cf4f87fb07fd108828fc7362300265a2a64a94965e35b/pyarrow-20.0.0-cp313-cp313t-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:3e1f8a47f4b4ae4c69c4d702cfbdfe4d41e18e5c7ef6f1bb1c50918c1e81c57b", size = 42353648 },
+    { url = "https://files.pythonhosted.org/packages/68/95/cc0d3634cde9ca69b0e51cbe830d8915ea32dda2157560dda27ff3b3337b/pyarrow-20.0.0-cp313-cp313t-manylinux_2_28_aarch64.whl", hash = "sha256:a1f60dc14658efaa927f8214734f6a01a806d7690be4b3232ba526836d216122", size = 40619853 },
+    { url = "https://files.pythonhosted.org/packages/29/c2/3ad40e07e96a3e74e7ed7cc8285aadfa84eb848a798c98ec0ad009eb6bcc/pyarrow-20.0.0-cp313-cp313t-manylinux_2_28_x86_64.whl", hash = "sha256:204a846dca751428991346976b914d6d2a82ae5b8316a6ed99789ebf976551e6", size = 42241743 },
+    { url = "https://files.pythonhosted.org/packages/eb/cb/65fa110b483339add6a9bc7b6373614166b14e20375d4daa73483755f830/pyarrow-20.0.0-cp313-cp313t-musllinux_1_2_aarch64.whl", hash = "sha256:f3b117b922af5e4c6b9a9115825726cac7d8b1421c37c2b5e24fbacc8930612c", size = 42839441 },
+    { url = "https://files.pythonhosted.org/packages/98/7b/f30b1954589243207d7a0fbc9997401044bf9a033eec78f6cb50da3f304a/pyarrow-20.0.0-cp313-cp313t-musllinux_1_2_x86_64.whl", hash = "sha256:e724a3fd23ae5b9c010e7be857f4405ed5e679db5c93e66204db1a69f733936a", size = 44503279 },
+    { url = "https://files.pythonhosted.org/packages/37/40/ad395740cd641869a13bcf60851296c89624662575621968dcfafabaa7f6/pyarrow-20.0.0-cp313-cp313t-win_amd64.whl", hash = "sha256:82f1ee5133bd8f49d31be1299dc07f585136679666b502540db854968576faf9", size = 25944982 },
 ]
 
 [[package]]
@@ -4214,6 +4364,12 @@ sdist = { url = "https://files.pythonhosted.org/packages/bb/22/f1129e69d94ffff62
 wheels = [
     { url = "https://files.pythonhosted.org/packages/05/e7/df2285f3d08fee213f2d041540fa4fc9ca6c2d44cf36d3a035bf2a8d2bcc/pyparsing-3.2.3-py3-none-any.whl", hash = "sha256:a749938e02d6fd0b59b356ca504a24982314bb090c383e3cf201c95ef7e2bfcf", size = 111120 },
 ]
+
+[[package]]
+name = "pyperclip"
+version = "1.9.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/30/23/2f0a3efc4d6a32f3b63cdff36cd398d9701d26cda58e3ab97ac79fb5e60d/pyperclip-1.9.0.tar.gz", hash = "sha256:b7de0142ddc81bfc5c7507eea19da920b92252b548b96186caf94a5e2527d310", size = 20961 }
 
 [[package]]
 name = "pyproj"
@@ -4527,19 +4683,75 @@ wheels = [
 
 [[package]]
 name = "ray"
+version = "2.38.0"
+source = { registry = "https://pypi.org/simple" }
+resolution-markers = [
+    "python_full_version >= '3.13' and platform_machine == 'x86_64' and sys_platform == 'darwin'",
+    "python_full_version == '3.12.*' and platform_machine == 'x86_64' and sys_platform == 'darwin'",
+    "python_full_version < '3.12' and platform_machine == 'x86_64' and sys_platform == 'darwin'",
+]
+dependencies = [
+    { name = "aiosignal", marker = "(platform_machine == 'x86_64' and sys_platform == 'darwin') or (platform_machine != 'x86_64' and extra == 'extra-13-darts-nextgen-cpu' and extra == 'extra-13-darts-nextgen-cuda118') or (platform_machine != 'x86_64' and extra == 'extra-13-darts-nextgen-cpu' and extra == 'extra-13-darts-nextgen-cuda121') or (platform_machine != 'x86_64' and extra == 'extra-13-darts-nextgen-cpu' and extra == 'extra-13-darts-nextgen-cuda126') or (platform_machine != 'x86_64' and extra == 'extra-13-darts-nextgen-cuda118' and extra == 'extra-13-darts-nextgen-cuda121') or (platform_machine != 'x86_64' and extra == 'extra-13-darts-nextgen-cuda118' and extra == 'extra-13-darts-nextgen-cuda126') or (platform_machine != 'x86_64' and extra == 'extra-13-darts-nextgen-cuda121' and extra == 'extra-13-darts-nextgen-cuda126') or (sys_platform != 'darwin' and extra == 'extra-13-darts-nextgen-cpu' and extra == 'extra-13-darts-nextgen-cuda118') or (sys_platform != 'darwin' and extra == 'extra-13-darts-nextgen-cpu' and extra == 'extra-13-darts-nextgen-cuda121') or (sys_platform != 'darwin' and extra == 'extra-13-darts-nextgen-cpu' and extra == 'extra-13-darts-nextgen-cuda126') or (sys_platform != 'darwin' and extra == 'extra-13-darts-nextgen-cuda118' and extra == 'extra-13-darts-nextgen-cuda121') or (sys_platform != 'darwin' and extra == 'extra-13-darts-nextgen-cuda118' and extra == 'extra-13-darts-nextgen-cuda126') or (sys_platform != 'darwin' and extra == 'extra-13-darts-nextgen-cuda121' and extra == 'extra-13-darts-nextgen-cuda126')" },
+    { name = "click", marker = "(platform_machine == 'x86_64' and sys_platform == 'darwin') or (platform_machine != 'x86_64' and extra == 'extra-13-darts-nextgen-cpu' and extra == 'extra-13-darts-nextgen-cuda118') or (platform_machine != 'x86_64' and extra == 'extra-13-darts-nextgen-cpu' and extra == 'extra-13-darts-nextgen-cuda121') or (platform_machine != 'x86_64' and extra == 'extra-13-darts-nextgen-cpu' and extra == 'extra-13-darts-nextgen-cuda126') or (platform_machine != 'x86_64' and extra == 'extra-13-darts-nextgen-cuda118' and extra == 'extra-13-darts-nextgen-cuda121') or (platform_machine != 'x86_64' and extra == 'extra-13-darts-nextgen-cuda118' and extra == 'extra-13-darts-nextgen-cuda126') or (platform_machine != 'x86_64' and extra == 'extra-13-darts-nextgen-cuda121' and extra == 'extra-13-darts-nextgen-cuda126') or (sys_platform != 'darwin' and extra == 'extra-13-darts-nextgen-cpu' and extra == 'extra-13-darts-nextgen-cuda118') or (sys_platform != 'darwin' and extra == 'extra-13-darts-nextgen-cpu' and extra == 'extra-13-darts-nextgen-cuda121') or (sys_platform != 'darwin' and extra == 'extra-13-darts-nextgen-cpu' and extra == 'extra-13-darts-nextgen-cuda126') or (sys_platform != 'darwin' and extra == 'extra-13-darts-nextgen-cuda118' and extra == 'extra-13-darts-nextgen-cuda121') or (sys_platform != 'darwin' and extra == 'extra-13-darts-nextgen-cuda118' and extra == 'extra-13-darts-nextgen-cuda126') or (sys_platform != 'darwin' and extra == 'extra-13-darts-nextgen-cuda121' and extra == 'extra-13-darts-nextgen-cuda126')" },
+    { name = "filelock", marker = "(platform_machine == 'x86_64' and sys_platform == 'darwin') or (platform_machine != 'x86_64' and extra == 'extra-13-darts-nextgen-cpu' and extra == 'extra-13-darts-nextgen-cuda118') or (platform_machine != 'x86_64' and extra == 'extra-13-darts-nextgen-cpu' and extra == 'extra-13-darts-nextgen-cuda121') or (platform_machine != 'x86_64' and extra == 'extra-13-darts-nextgen-cpu' and extra == 'extra-13-darts-nextgen-cuda126') or (platform_machine != 'x86_64' and extra == 'extra-13-darts-nextgen-cuda118' and extra == 'extra-13-darts-nextgen-cuda121') or (platform_machine != 'x86_64' and extra == 'extra-13-darts-nextgen-cuda118' and extra == 'extra-13-darts-nextgen-cuda126') or (platform_machine != 'x86_64' and extra == 'extra-13-darts-nextgen-cuda121' and extra == 'extra-13-darts-nextgen-cuda126') or (sys_platform != 'darwin' and extra == 'extra-13-darts-nextgen-cpu' and extra == 'extra-13-darts-nextgen-cuda118') or (sys_platform != 'darwin' and extra == 'extra-13-darts-nextgen-cpu' and extra == 'extra-13-darts-nextgen-cuda121') or (sys_platform != 'darwin' and extra == 'extra-13-darts-nextgen-cpu' and extra == 'extra-13-darts-nextgen-cuda126') or (sys_platform != 'darwin' and extra == 'extra-13-darts-nextgen-cuda118' and extra == 'extra-13-darts-nextgen-cuda121') or (sys_platform != 'darwin' and extra == 'extra-13-darts-nextgen-cuda118' and extra == 'extra-13-darts-nextgen-cuda126') or (sys_platform != 'darwin' and extra == 'extra-13-darts-nextgen-cuda121' and extra == 'extra-13-darts-nextgen-cuda126')" },
+    { name = "frozenlist", marker = "(platform_machine == 'x86_64' and sys_platform == 'darwin') or (platform_machine != 'x86_64' and extra == 'extra-13-darts-nextgen-cpu' and extra == 'extra-13-darts-nextgen-cuda118') or (platform_machine != 'x86_64' and extra == 'extra-13-darts-nextgen-cpu' and extra == 'extra-13-darts-nextgen-cuda121') or (platform_machine != 'x86_64' and extra == 'extra-13-darts-nextgen-cpu' and extra == 'extra-13-darts-nextgen-cuda126') or (platform_machine != 'x86_64' and extra == 'extra-13-darts-nextgen-cuda118' and extra == 'extra-13-darts-nextgen-cuda121') or (platform_machine != 'x86_64' and extra == 'extra-13-darts-nextgen-cuda118' and extra == 'extra-13-darts-nextgen-cuda126') or (platform_machine != 'x86_64' and extra == 'extra-13-darts-nextgen-cuda121' and extra == 'extra-13-darts-nextgen-cuda126') or (sys_platform != 'darwin' and extra == 'extra-13-darts-nextgen-cpu' and extra == 'extra-13-darts-nextgen-cuda118') or (sys_platform != 'darwin' and extra == 'extra-13-darts-nextgen-cpu' and extra == 'extra-13-darts-nextgen-cuda121') or (sys_platform != 'darwin' and extra == 'extra-13-darts-nextgen-cpu' and extra == 'extra-13-darts-nextgen-cuda126') or (sys_platform != 'darwin' and extra == 'extra-13-darts-nextgen-cuda118' and extra == 'extra-13-darts-nextgen-cuda121') or (sys_platform != 'darwin' and extra == 'extra-13-darts-nextgen-cuda118' and extra == 'extra-13-darts-nextgen-cuda126') or (sys_platform != 'darwin' and extra == 'extra-13-darts-nextgen-cuda121' and extra == 'extra-13-darts-nextgen-cuda126')" },
+    { name = "jsonschema", marker = "(platform_machine == 'x86_64' and sys_platform == 'darwin') or (platform_machine != 'x86_64' and extra == 'extra-13-darts-nextgen-cpu' and extra == 'extra-13-darts-nextgen-cuda118') or (platform_machine != 'x86_64' and extra == 'extra-13-darts-nextgen-cpu' and extra == 'extra-13-darts-nextgen-cuda121') or (platform_machine != 'x86_64' and extra == 'extra-13-darts-nextgen-cpu' and extra == 'extra-13-darts-nextgen-cuda126') or (platform_machine != 'x86_64' and extra == 'extra-13-darts-nextgen-cuda118' and extra == 'extra-13-darts-nextgen-cuda121') or (platform_machine != 'x86_64' and extra == 'extra-13-darts-nextgen-cuda118' and extra == 'extra-13-darts-nextgen-cuda126') or (platform_machine != 'x86_64' and extra == 'extra-13-darts-nextgen-cuda121' and extra == 'extra-13-darts-nextgen-cuda126') or (sys_platform != 'darwin' and extra == 'extra-13-darts-nextgen-cpu' and extra == 'extra-13-darts-nextgen-cuda118') or (sys_platform != 'darwin' and extra == 'extra-13-darts-nextgen-cpu' and extra == 'extra-13-darts-nextgen-cuda121') or (sys_platform != 'darwin' and extra == 'extra-13-darts-nextgen-cpu' and extra == 'extra-13-darts-nextgen-cuda126') or (sys_platform != 'darwin' and extra == 'extra-13-darts-nextgen-cuda118' and extra == 'extra-13-darts-nextgen-cuda121') or (sys_platform != 'darwin' and extra == 'extra-13-darts-nextgen-cuda118' and extra == 'extra-13-darts-nextgen-cuda126') or (sys_platform != 'darwin' and extra == 'extra-13-darts-nextgen-cuda121' and extra == 'extra-13-darts-nextgen-cuda126')" },
+    { name = "msgpack", marker = "(platform_machine == 'x86_64' and sys_platform == 'darwin') or (platform_machine != 'x86_64' and extra == 'extra-13-darts-nextgen-cpu' and extra == 'extra-13-darts-nextgen-cuda118') or (platform_machine != 'x86_64' and extra == 'extra-13-darts-nextgen-cpu' and extra == 'extra-13-darts-nextgen-cuda121') or (platform_machine != 'x86_64' and extra == 'extra-13-darts-nextgen-cpu' and extra == 'extra-13-darts-nextgen-cuda126') or (platform_machine != 'x86_64' and extra == 'extra-13-darts-nextgen-cuda118' and extra == 'extra-13-darts-nextgen-cuda121') or (platform_machine != 'x86_64' and extra == 'extra-13-darts-nextgen-cuda118' and extra == 'extra-13-darts-nextgen-cuda126') or (platform_machine != 'x86_64' and extra == 'extra-13-darts-nextgen-cuda121' and extra == 'extra-13-darts-nextgen-cuda126') or (sys_platform != 'darwin' and extra == 'extra-13-darts-nextgen-cpu' and extra == 'extra-13-darts-nextgen-cuda118') or (sys_platform != 'darwin' and extra == 'extra-13-darts-nextgen-cpu' and extra == 'extra-13-darts-nextgen-cuda121') or (sys_platform != 'darwin' and extra == 'extra-13-darts-nextgen-cpu' and extra == 'extra-13-darts-nextgen-cuda126') or (sys_platform != 'darwin' and extra == 'extra-13-darts-nextgen-cuda118' and extra == 'extra-13-darts-nextgen-cuda121') or (sys_platform != 'darwin' and extra == 'extra-13-darts-nextgen-cuda118' and extra == 'extra-13-darts-nextgen-cuda126') or (sys_platform != 'darwin' and extra == 'extra-13-darts-nextgen-cuda121' and extra == 'extra-13-darts-nextgen-cuda126')" },
+    { name = "packaging", marker = "(platform_machine == 'x86_64' and sys_platform == 'darwin') or (platform_machine != 'x86_64' and extra == 'extra-13-darts-nextgen-cpu' and extra == 'extra-13-darts-nextgen-cuda118') or (platform_machine != 'x86_64' and extra == 'extra-13-darts-nextgen-cpu' and extra == 'extra-13-darts-nextgen-cuda121') or (platform_machine != 'x86_64' and extra == 'extra-13-darts-nextgen-cpu' and extra == 'extra-13-darts-nextgen-cuda126') or (platform_machine != 'x86_64' and extra == 'extra-13-darts-nextgen-cuda118' and extra == 'extra-13-darts-nextgen-cuda121') or (platform_machine != 'x86_64' and extra == 'extra-13-darts-nextgen-cuda118' and extra == 'extra-13-darts-nextgen-cuda126') or (platform_machine != 'x86_64' and extra == 'extra-13-darts-nextgen-cuda121' and extra == 'extra-13-darts-nextgen-cuda126') or (sys_platform != 'darwin' and extra == 'extra-13-darts-nextgen-cpu' and extra == 'extra-13-darts-nextgen-cuda118') or (sys_platform != 'darwin' and extra == 'extra-13-darts-nextgen-cpu' and extra == 'extra-13-darts-nextgen-cuda121') or (sys_platform != 'darwin' and extra == 'extra-13-darts-nextgen-cpu' and extra == 'extra-13-darts-nextgen-cuda126') or (sys_platform != 'darwin' and extra == 'extra-13-darts-nextgen-cuda118' and extra == 'extra-13-darts-nextgen-cuda121') or (sys_platform != 'darwin' and extra == 'extra-13-darts-nextgen-cuda118' and extra == 'extra-13-darts-nextgen-cuda126') or (sys_platform != 'darwin' and extra == 'extra-13-darts-nextgen-cuda121' and extra == 'extra-13-darts-nextgen-cuda126')" },
+    { name = "protobuf", marker = "(platform_machine == 'x86_64' and sys_platform == 'darwin') or (platform_machine != 'x86_64' and extra == 'extra-13-darts-nextgen-cpu' and extra == 'extra-13-darts-nextgen-cuda118') or (platform_machine != 'x86_64' and extra == 'extra-13-darts-nextgen-cpu' and extra == 'extra-13-darts-nextgen-cuda121') or (platform_machine != 'x86_64' and extra == 'extra-13-darts-nextgen-cpu' and extra == 'extra-13-darts-nextgen-cuda126') or (platform_machine != 'x86_64' and extra == 'extra-13-darts-nextgen-cuda118' and extra == 'extra-13-darts-nextgen-cuda121') or (platform_machine != 'x86_64' and extra == 'extra-13-darts-nextgen-cuda118' and extra == 'extra-13-darts-nextgen-cuda126') or (platform_machine != 'x86_64' and extra == 'extra-13-darts-nextgen-cuda121' and extra == 'extra-13-darts-nextgen-cuda126') or (sys_platform != 'darwin' and extra == 'extra-13-darts-nextgen-cpu' and extra == 'extra-13-darts-nextgen-cuda118') or (sys_platform != 'darwin' and extra == 'extra-13-darts-nextgen-cpu' and extra == 'extra-13-darts-nextgen-cuda121') or (sys_platform != 'darwin' and extra == 'extra-13-darts-nextgen-cpu' and extra == 'extra-13-darts-nextgen-cuda126') or (sys_platform != 'darwin' and extra == 'extra-13-darts-nextgen-cuda118' and extra == 'extra-13-darts-nextgen-cuda121') or (sys_platform != 'darwin' and extra == 'extra-13-darts-nextgen-cuda118' and extra == 'extra-13-darts-nextgen-cuda126') or (sys_platform != 'darwin' and extra == 'extra-13-darts-nextgen-cuda121' and extra == 'extra-13-darts-nextgen-cuda126')" },
+    { name = "pyyaml", marker = "(platform_machine == 'x86_64' and sys_platform == 'darwin') or (platform_machine != 'x86_64' and extra == 'extra-13-darts-nextgen-cpu' and extra == 'extra-13-darts-nextgen-cuda118') or (platform_machine != 'x86_64' and extra == 'extra-13-darts-nextgen-cpu' and extra == 'extra-13-darts-nextgen-cuda121') or (platform_machine != 'x86_64' and extra == 'extra-13-darts-nextgen-cpu' and extra == 'extra-13-darts-nextgen-cuda126') or (platform_machine != 'x86_64' and extra == 'extra-13-darts-nextgen-cuda118' and extra == 'extra-13-darts-nextgen-cuda121') or (platform_machine != 'x86_64' and extra == 'extra-13-darts-nextgen-cuda118' and extra == 'extra-13-darts-nextgen-cuda126') or (platform_machine != 'x86_64' and extra == 'extra-13-darts-nextgen-cuda121' and extra == 'extra-13-darts-nextgen-cuda126') or (sys_platform != 'darwin' and extra == 'extra-13-darts-nextgen-cpu' and extra == 'extra-13-darts-nextgen-cuda118') or (sys_platform != 'darwin' and extra == 'extra-13-darts-nextgen-cpu' and extra == 'extra-13-darts-nextgen-cuda121') or (sys_platform != 'darwin' and extra == 'extra-13-darts-nextgen-cpu' and extra == 'extra-13-darts-nextgen-cuda126') or (sys_platform != 'darwin' and extra == 'extra-13-darts-nextgen-cuda118' and extra == 'extra-13-darts-nextgen-cuda121') or (sys_platform != 'darwin' and extra == 'extra-13-darts-nextgen-cuda118' and extra == 'extra-13-darts-nextgen-cuda126') or (sys_platform != 'darwin' and extra == 'extra-13-darts-nextgen-cuda121' and extra == 'extra-13-darts-nextgen-cuda126')" },
+    { name = "requests", marker = "(platform_machine == 'x86_64' and sys_platform == 'darwin') or (platform_machine != 'x86_64' and extra == 'extra-13-darts-nextgen-cpu' and extra == 'extra-13-darts-nextgen-cuda118') or (platform_machine != 'x86_64' and extra == 'extra-13-darts-nextgen-cpu' and extra == 'extra-13-darts-nextgen-cuda121') or (platform_machine != 'x86_64' and extra == 'extra-13-darts-nextgen-cpu' and extra == 'extra-13-darts-nextgen-cuda126') or (platform_machine != 'x86_64' and extra == 'extra-13-darts-nextgen-cuda118' and extra == 'extra-13-darts-nextgen-cuda121') or (platform_machine != 'x86_64' and extra == 'extra-13-darts-nextgen-cuda118' and extra == 'extra-13-darts-nextgen-cuda126') or (platform_machine != 'x86_64' and extra == 'extra-13-darts-nextgen-cuda121' and extra == 'extra-13-darts-nextgen-cuda126') or (sys_platform != 'darwin' and extra == 'extra-13-darts-nextgen-cpu' and extra == 'extra-13-darts-nextgen-cuda118') or (sys_platform != 'darwin' and extra == 'extra-13-darts-nextgen-cpu' and extra == 'extra-13-darts-nextgen-cuda121') or (sys_platform != 'darwin' and extra == 'extra-13-darts-nextgen-cpu' and extra == 'extra-13-darts-nextgen-cuda126') or (sys_platform != 'darwin' and extra == 'extra-13-darts-nextgen-cuda118' and extra == 'extra-13-darts-nextgen-cuda121') or (sys_platform != 'darwin' and extra == 'extra-13-darts-nextgen-cuda118' and extra == 'extra-13-darts-nextgen-cuda126') or (sys_platform != 'darwin' and extra == 'extra-13-darts-nextgen-cuda121' and extra == 'extra-13-darts-nextgen-cuda126')" },
+]
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/5c/53/dd370e38bece1e4e9f586a4d9cec852f89b15690662bb15a6d65df258dc4/ray-2.38.0-cp311-cp311-macosx_10_15_x86_64.whl", hash = "sha256:cce1a39fa91fe08b15d2d62d084052968a155c8528415f248346567aa589580c", size = 66505597 },
+    { url = "https://files.pythonhosted.org/packages/5d/8b/d8b6e61641cf1c76f283dfd13a212870a0048704d1a21ac658b6bff19484/ray-2.38.0-cp311-cp311-macosx_11_0_arm64.whl", hash = "sha256:454f576b3dbef2231693e3081ba5bf093add610c72ebf3c17788943f6653fe68", size = 63889065 },
+    { url = "https://files.pythonhosted.org/packages/63/94/dd52085ba9f0c67264e01a013dd61f6d2cadb90597e23ab2be410ce90967/ray-2.38.0-cp311-cp311-manylinux2014_aarch64.whl", hash = "sha256:282a326d2848d411c3ce305e57e2de8357e24cb9becbec7e507e8800572c487e", size = 65262815 },
+    { url = "https://files.pythonhosted.org/packages/44/c6/9581d8db4d65506b5829f9c157e61a2d63149c216c1773ff909d85b8f456/ray-2.38.0-cp311-cp311-manylinux2014_x86_64.whl", hash = "sha256:ece802cf3a1c102b53f63b8bc90d947971c4b387deaf233c224ed8ef34a1f3cb", size = 66155518 },
+    { url = "https://files.pythonhosted.org/packages/47/f4/9f9c925bca971583aeb683accda8473fdfe2ab417194f7ea5851703f65bc/ray-2.38.0-cp311-cp311-win_amd64.whl", hash = "sha256:64f7cd908177dd50089469cf331afbeb22e61e26d0a4be210ad20dccddbf6efb", size = 25019364 },
+    { url = "https://files.pythonhosted.org/packages/d6/23/22b4977c4cbca8721751daad1d11e24c362ade307d1e64cda2192efdf994/ray-2.38.0-cp312-cp312-macosx_10_15_x86_64.whl", hash = "sha256:10174ac63406b95a0a795a89396aeb8966286f15558087127719b13c367b40e3", size = 66486133 },
+    { url = "https://files.pythonhosted.org/packages/a4/f9/d89e0bc92fcfc653af8ef392cab58c3557942cd267936cd88051884f8554/ray-2.38.0-cp312-cp312-macosx_11_0_arm64.whl", hash = "sha256:ea4148e929c17543378ba8909398fc81ce09d8e2257fc21afa62fc88ba4babc2", size = 63867762 },
+    { url = "https://files.pythonhosted.org/packages/ef/73/a572bcffb452271f39624c26023838b078af49b64eef09a4f5fc69dd1f1d/ray-2.38.0-cp312-cp312-manylinux2014_aarch64.whl", hash = "sha256:d4efaf1cfc727d60d78cc7112ff8eaa67634a5327e2a84f8dcaab5d167fe7fec", size = 65286991 },
+    { url = "https://files.pythonhosted.org/packages/7a/f9/eedc509d196bf5851ce302115bef5110562b209a24cabe57ebbf2ac4f00d/ray-2.38.0-cp312-cp312-manylinux2014_x86_64.whl", hash = "sha256:07507d2f9961e8d5390c0eb606df249216ef5afb1ff8185581f3e92041d66293", size = 66206763 },
+    { url = "https://files.pythonhosted.org/packages/52/9c/2f10a05ff79a84656033743cbc9e29a39ec389135bc4f26fdac7a5f37d38/ray-2.38.0-cp312-cp312-win_amd64.whl", hash = "sha256:6fdef893cbe617ac9d079e65702e9f1b3f455835f05b6f8b46467cf2184a52dc", size = 25010103 },
+]
+
+[package.optional-dependencies]
+data = [
+    { name = "fsspec", marker = "(platform_machine == 'x86_64' and sys_platform == 'darwin') or (platform_machine != 'x86_64' and extra == 'extra-13-darts-nextgen-cpu' and extra == 'extra-13-darts-nextgen-cuda118') or (platform_machine != 'x86_64' and extra == 'extra-13-darts-nextgen-cpu' and extra == 'extra-13-darts-nextgen-cuda121') or (platform_machine != 'x86_64' and extra == 'extra-13-darts-nextgen-cpu' and extra == 'extra-13-darts-nextgen-cuda126') or (platform_machine != 'x86_64' and extra == 'extra-13-darts-nextgen-cuda118' and extra == 'extra-13-darts-nextgen-cuda121') or (platform_machine != 'x86_64' and extra == 'extra-13-darts-nextgen-cuda118' and extra == 'extra-13-darts-nextgen-cuda126') or (platform_machine != 'x86_64' and extra == 'extra-13-darts-nextgen-cuda121' and extra == 'extra-13-darts-nextgen-cuda126') or (sys_platform != 'darwin' and extra == 'extra-13-darts-nextgen-cpu' and extra == 'extra-13-darts-nextgen-cuda118') or (sys_platform != 'darwin' and extra == 'extra-13-darts-nextgen-cpu' and extra == 'extra-13-darts-nextgen-cuda121') or (sys_platform != 'darwin' and extra == 'extra-13-darts-nextgen-cpu' and extra == 'extra-13-darts-nextgen-cuda126') or (sys_platform != 'darwin' and extra == 'extra-13-darts-nextgen-cuda118' and extra == 'extra-13-darts-nextgen-cuda121') or (sys_platform != 'darwin' and extra == 'extra-13-darts-nextgen-cuda118' and extra == 'extra-13-darts-nextgen-cuda126') or (sys_platform != 'darwin' and extra == 'extra-13-darts-nextgen-cuda121' and extra == 'extra-13-darts-nextgen-cuda126')" },
+    { name = "numpy", marker = "(platform_machine == 'x86_64' and sys_platform == 'darwin') or (platform_machine != 'x86_64' and extra == 'extra-13-darts-nextgen-cpu' and extra == 'extra-13-darts-nextgen-cuda118') or (platform_machine != 'x86_64' and extra == 'extra-13-darts-nextgen-cpu' and extra == 'extra-13-darts-nextgen-cuda121') or (platform_machine != 'x86_64' and extra == 'extra-13-darts-nextgen-cpu' and extra == 'extra-13-darts-nextgen-cuda126') or (platform_machine != 'x86_64' and extra == 'extra-13-darts-nextgen-cuda118' and extra == 'extra-13-darts-nextgen-cuda121') or (platform_machine != 'x86_64' and extra == 'extra-13-darts-nextgen-cuda118' and extra == 'extra-13-darts-nextgen-cuda126') or (platform_machine != 'x86_64' and extra == 'extra-13-darts-nextgen-cuda121' and extra == 'extra-13-darts-nextgen-cuda126') or (sys_platform != 'darwin' and extra == 'extra-13-darts-nextgen-cpu' and extra == 'extra-13-darts-nextgen-cuda118') or (sys_platform != 'darwin' and extra == 'extra-13-darts-nextgen-cpu' and extra == 'extra-13-darts-nextgen-cuda121') or (sys_platform != 'darwin' and extra == 'extra-13-darts-nextgen-cpu' and extra == 'extra-13-darts-nextgen-cuda126') or (sys_platform != 'darwin' and extra == 'extra-13-darts-nextgen-cuda118' and extra == 'extra-13-darts-nextgen-cuda121') or (sys_platform != 'darwin' and extra == 'extra-13-darts-nextgen-cuda118' and extra == 'extra-13-darts-nextgen-cuda126') or (sys_platform != 'darwin' and extra == 'extra-13-darts-nextgen-cuda121' and extra == 'extra-13-darts-nextgen-cuda126')" },
+    { name = "pandas", marker = "(platform_machine == 'x86_64' and sys_platform == 'darwin') or (platform_machine != 'x86_64' and extra == 'extra-13-darts-nextgen-cpu' and extra == 'extra-13-darts-nextgen-cuda118') or (platform_machine != 'x86_64' and extra == 'extra-13-darts-nextgen-cpu' and extra == 'extra-13-darts-nextgen-cuda121') or (platform_machine != 'x86_64' and extra == 'extra-13-darts-nextgen-cpu' and extra == 'extra-13-darts-nextgen-cuda126') or (platform_machine != 'x86_64' and extra == 'extra-13-darts-nextgen-cuda118' and extra == 'extra-13-darts-nextgen-cuda121') or (platform_machine != 'x86_64' and extra == 'extra-13-darts-nextgen-cuda118' and extra == 'extra-13-darts-nextgen-cuda126') or (platform_machine != 'x86_64' and extra == 'extra-13-darts-nextgen-cuda121' and extra == 'extra-13-darts-nextgen-cuda126') or (sys_platform != 'darwin' and extra == 'extra-13-darts-nextgen-cpu' and extra == 'extra-13-darts-nextgen-cuda118') or (sys_platform != 'darwin' and extra == 'extra-13-darts-nextgen-cpu' and extra == 'extra-13-darts-nextgen-cuda121') or (sys_platform != 'darwin' and extra == 'extra-13-darts-nextgen-cpu' and extra == 'extra-13-darts-nextgen-cuda126') or (sys_platform != 'darwin' and extra == 'extra-13-darts-nextgen-cuda118' and extra == 'extra-13-darts-nextgen-cuda121') or (sys_platform != 'darwin' and extra == 'extra-13-darts-nextgen-cuda118' and extra == 'extra-13-darts-nextgen-cuda126') or (sys_platform != 'darwin' and extra == 'extra-13-darts-nextgen-cuda121' and extra == 'extra-13-darts-nextgen-cuda126')" },
+    { name = "pyarrow", marker = "(platform_machine == 'x86_64' and sys_platform == 'darwin') or (platform_machine != 'x86_64' and extra == 'extra-13-darts-nextgen-cpu' and extra == 'extra-13-darts-nextgen-cuda118') or (platform_machine != 'x86_64' and extra == 'extra-13-darts-nextgen-cpu' and extra == 'extra-13-darts-nextgen-cuda121') or (platform_machine != 'x86_64' and extra == 'extra-13-darts-nextgen-cpu' and extra == 'extra-13-darts-nextgen-cuda126') or (platform_machine != 'x86_64' and extra == 'extra-13-darts-nextgen-cuda118' and extra == 'extra-13-darts-nextgen-cuda121') or (platform_machine != 'x86_64' and extra == 'extra-13-darts-nextgen-cuda118' and extra == 'extra-13-darts-nextgen-cuda126') or (platform_machine != 'x86_64' and extra == 'extra-13-darts-nextgen-cuda121' and extra == 'extra-13-darts-nextgen-cuda126') or (sys_platform != 'darwin' and extra == 'extra-13-darts-nextgen-cpu' and extra == 'extra-13-darts-nextgen-cuda118') or (sys_platform != 'darwin' and extra == 'extra-13-darts-nextgen-cpu' and extra == 'extra-13-darts-nextgen-cuda121') or (sys_platform != 'darwin' and extra == 'extra-13-darts-nextgen-cpu' and extra == 'extra-13-darts-nextgen-cuda126') or (sys_platform != 'darwin' and extra == 'extra-13-darts-nextgen-cuda118' and extra == 'extra-13-darts-nextgen-cuda121') or (sys_platform != 'darwin' and extra == 'extra-13-darts-nextgen-cuda118' and extra == 'extra-13-darts-nextgen-cuda126') or (sys_platform != 'darwin' and extra == 'extra-13-darts-nextgen-cuda121' and extra == 'extra-13-darts-nextgen-cuda126')" },
+]
+
+[[package]]
+name = "ray"
 version = "2.44.1"
 source = { registry = "https://pypi.org/simple" }
+resolution-markers = [
+    "python_full_version >= '3.13' and platform_machine != 'aarch64' and sys_platform == 'linux'",
+    "python_full_version == '3.12.*' and platform_machine != 'aarch64' and sys_platform == 'linux'",
+    "python_full_version >= '3.13' and platform_machine != 'x86_64' and sys_platform == 'darwin'",
+    "python_full_version == '3.12.*' and platform_machine != 'x86_64' and sys_platform == 'darwin'",
+    "python_full_version >= '3.13' and sys_platform != 'darwin' and sys_platform != 'linux'",
+    "python_full_version == '3.12.*' and sys_platform != 'darwin' and sys_platform != 'linux'",
+    "python_full_version >= '3.13' and platform_machine == 'aarch64' and sys_platform == 'linux'",
+    "python_full_version == '3.12.*' and platform_machine == 'aarch64' and sys_platform == 'linux'",
+    "python_full_version < '3.12' and platform_machine != 'aarch64' and sys_platform == 'linux'",
+    "python_full_version < '3.12' and platform_machine != 'x86_64' and sys_platform == 'darwin'",
+    "python_full_version < '3.12' and sys_platform != 'darwin' and sys_platform != 'linux'",
+    "python_full_version < '3.12' and platform_machine == 'aarch64' and sys_platform == 'linux'",
+]
 dependencies = [
-    { name = "aiosignal" },
-    { name = "click" },
-    { name = "filelock" },
-    { name = "frozenlist" },
-    { name = "jsonschema" },
-    { name = "msgpack" },
-    { name = "packaging" },
-    { name = "protobuf" },
-    { name = "pyyaml" },
-    { name = "requests" },
+    { name = "aiosignal", marker = "platform_machine != 'x86_64' or sys_platform != 'darwin' or (extra == 'extra-13-darts-nextgen-cpu' and extra == 'extra-13-darts-nextgen-cuda118') or (extra == 'extra-13-darts-nextgen-cpu' and extra == 'extra-13-darts-nextgen-cuda121') or (extra == 'extra-13-darts-nextgen-cpu' and extra == 'extra-13-darts-nextgen-cuda126') or (extra == 'extra-13-darts-nextgen-cuda118' and extra == 'extra-13-darts-nextgen-cuda121') or (extra == 'extra-13-darts-nextgen-cuda118' and extra == 'extra-13-darts-nextgen-cuda126') or (extra == 'extra-13-darts-nextgen-cuda121' and extra == 'extra-13-darts-nextgen-cuda126')" },
+    { name = "click", marker = "platform_machine != 'x86_64' or sys_platform != 'darwin' or (extra == 'extra-13-darts-nextgen-cpu' and extra == 'extra-13-darts-nextgen-cuda118') or (extra == 'extra-13-darts-nextgen-cpu' and extra == 'extra-13-darts-nextgen-cuda121') or (extra == 'extra-13-darts-nextgen-cpu' and extra == 'extra-13-darts-nextgen-cuda126') or (extra == 'extra-13-darts-nextgen-cuda118' and extra == 'extra-13-darts-nextgen-cuda121') or (extra == 'extra-13-darts-nextgen-cuda118' and extra == 'extra-13-darts-nextgen-cuda126') or (extra == 'extra-13-darts-nextgen-cuda121' and extra == 'extra-13-darts-nextgen-cuda126')" },
+    { name = "filelock", marker = "platform_machine != 'x86_64' or sys_platform != 'darwin' or (extra == 'extra-13-darts-nextgen-cpu' and extra == 'extra-13-darts-nextgen-cuda118') or (extra == 'extra-13-darts-nextgen-cpu' and extra == 'extra-13-darts-nextgen-cuda121') or (extra == 'extra-13-darts-nextgen-cpu' and extra == 'extra-13-darts-nextgen-cuda126') or (extra == 'extra-13-darts-nextgen-cuda118' and extra == 'extra-13-darts-nextgen-cuda121') or (extra == 'extra-13-darts-nextgen-cuda118' and extra == 'extra-13-darts-nextgen-cuda126') or (extra == 'extra-13-darts-nextgen-cuda121' and extra == 'extra-13-darts-nextgen-cuda126')" },
+    { name = "frozenlist", marker = "platform_machine != 'x86_64' or sys_platform != 'darwin' or (extra == 'extra-13-darts-nextgen-cpu' and extra == 'extra-13-darts-nextgen-cuda118') or (extra == 'extra-13-darts-nextgen-cpu' and extra == 'extra-13-darts-nextgen-cuda121') or (extra == 'extra-13-darts-nextgen-cpu' and extra == 'extra-13-darts-nextgen-cuda126') or (extra == 'extra-13-darts-nextgen-cuda118' and extra == 'extra-13-darts-nextgen-cuda121') or (extra == 'extra-13-darts-nextgen-cuda118' and extra == 'extra-13-darts-nextgen-cuda126') or (extra == 'extra-13-darts-nextgen-cuda121' and extra == 'extra-13-darts-nextgen-cuda126')" },
+    { name = "jsonschema", marker = "platform_machine != 'x86_64' or sys_platform != 'darwin' or (extra == 'extra-13-darts-nextgen-cpu' and extra == 'extra-13-darts-nextgen-cuda118') or (extra == 'extra-13-darts-nextgen-cpu' and extra == 'extra-13-darts-nextgen-cuda121') or (extra == 'extra-13-darts-nextgen-cpu' and extra == 'extra-13-darts-nextgen-cuda126') or (extra == 'extra-13-darts-nextgen-cuda118' and extra == 'extra-13-darts-nextgen-cuda121') or (extra == 'extra-13-darts-nextgen-cuda118' and extra == 'extra-13-darts-nextgen-cuda126') or (extra == 'extra-13-darts-nextgen-cuda121' and extra == 'extra-13-darts-nextgen-cuda126')" },
+    { name = "msgpack", marker = "platform_machine != 'x86_64' or sys_platform != 'darwin' or (extra == 'extra-13-darts-nextgen-cpu' and extra == 'extra-13-darts-nextgen-cuda118') or (extra == 'extra-13-darts-nextgen-cpu' and extra == 'extra-13-darts-nextgen-cuda121') or (extra == 'extra-13-darts-nextgen-cpu' and extra == 'extra-13-darts-nextgen-cuda126') or (extra == 'extra-13-darts-nextgen-cuda118' and extra == 'extra-13-darts-nextgen-cuda121') or (extra == 'extra-13-darts-nextgen-cuda118' and extra == 'extra-13-darts-nextgen-cuda126') or (extra == 'extra-13-darts-nextgen-cuda121' and extra == 'extra-13-darts-nextgen-cuda126')" },
+    { name = "packaging", marker = "platform_machine != 'x86_64' or sys_platform != 'darwin' or (extra == 'extra-13-darts-nextgen-cpu' and extra == 'extra-13-darts-nextgen-cuda118') or (extra == 'extra-13-darts-nextgen-cpu' and extra == 'extra-13-darts-nextgen-cuda121') or (extra == 'extra-13-darts-nextgen-cpu' and extra == 'extra-13-darts-nextgen-cuda126') or (extra == 'extra-13-darts-nextgen-cuda118' and extra == 'extra-13-darts-nextgen-cuda121') or (extra == 'extra-13-darts-nextgen-cuda118' and extra == 'extra-13-darts-nextgen-cuda126') or (extra == 'extra-13-darts-nextgen-cuda121' and extra == 'extra-13-darts-nextgen-cuda126')" },
+    { name = "protobuf", marker = "platform_machine != 'x86_64' or sys_platform != 'darwin' or (extra == 'extra-13-darts-nextgen-cpu' and extra == 'extra-13-darts-nextgen-cuda118') or (extra == 'extra-13-darts-nextgen-cpu' and extra == 'extra-13-darts-nextgen-cuda121') or (extra == 'extra-13-darts-nextgen-cpu' and extra == 'extra-13-darts-nextgen-cuda126') or (extra == 'extra-13-darts-nextgen-cuda118' and extra == 'extra-13-darts-nextgen-cuda121') or (extra == 'extra-13-darts-nextgen-cuda118' and extra == 'extra-13-darts-nextgen-cuda126') or (extra == 'extra-13-darts-nextgen-cuda121' and extra == 'extra-13-darts-nextgen-cuda126')" },
+    { name = "pyyaml", marker = "platform_machine != 'x86_64' or sys_platform != 'darwin' or (extra == 'extra-13-darts-nextgen-cpu' and extra == 'extra-13-darts-nextgen-cuda118') or (extra == 'extra-13-darts-nextgen-cpu' and extra == 'extra-13-darts-nextgen-cuda121') or (extra == 'extra-13-darts-nextgen-cpu' and extra == 'extra-13-darts-nextgen-cuda126') or (extra == 'extra-13-darts-nextgen-cuda118' and extra == 'extra-13-darts-nextgen-cuda121') or (extra == 'extra-13-darts-nextgen-cuda118' and extra == 'extra-13-darts-nextgen-cuda126') or (extra == 'extra-13-darts-nextgen-cuda121' and extra == 'extra-13-darts-nextgen-cuda126')" },
+    { name = "requests", marker = "platform_machine != 'x86_64' or sys_platform != 'darwin' or (extra == 'extra-13-darts-nextgen-cpu' and extra == 'extra-13-darts-nextgen-cuda118') or (extra == 'extra-13-darts-nextgen-cpu' and extra == 'extra-13-darts-nextgen-cuda121') or (extra == 'extra-13-darts-nextgen-cpu' and extra == 'extra-13-darts-nextgen-cuda126') or (extra == 'extra-13-darts-nextgen-cuda118' and extra == 'extra-13-darts-nextgen-cuda121') or (extra == 'extra-13-darts-nextgen-cuda118' and extra == 'extra-13-darts-nextgen-cuda126') or (extra == 'extra-13-darts-nextgen-cuda121' and extra == 'extra-13-darts-nextgen-cuda126')" },
 ]
 wheels = [
     { url = "https://files.pythonhosted.org/packages/70/87/04379e634f0d7a7810afc3c7e4bd5270a3b7990003e754f9dfe38573fc01/ray-2.44.1-cp311-cp311-macosx_10_15_x86_64.whl", hash = "sha256:949dbd735e5edec80f6140fa6bb536248c7c97535fe5a11acd279295b7bd1a6d", size = 68147076 },
@@ -4556,10 +4768,10 @@ wheels = [
 
 [package.optional-dependencies]
 data = [
-    { name = "fsspec" },
-    { name = "numpy" },
-    { name = "pandas" },
-    { name = "pyarrow" },
+    { name = "fsspec", marker = "platform_machine != 'x86_64' or sys_platform != 'darwin' or (extra == 'extra-13-darts-nextgen-cpu' and extra == 'extra-13-darts-nextgen-cuda118') or (extra == 'extra-13-darts-nextgen-cpu' and extra == 'extra-13-darts-nextgen-cuda121') or (extra == 'extra-13-darts-nextgen-cpu' and extra == 'extra-13-darts-nextgen-cuda126') or (extra == 'extra-13-darts-nextgen-cuda118' and extra == 'extra-13-darts-nextgen-cuda121') or (extra == 'extra-13-darts-nextgen-cuda118' and extra == 'extra-13-darts-nextgen-cuda126') or (extra == 'extra-13-darts-nextgen-cuda121' and extra == 'extra-13-darts-nextgen-cuda126')" },
+    { name = "numpy", marker = "platform_machine != 'x86_64' or sys_platform != 'darwin' or (extra == 'extra-13-darts-nextgen-cpu' and extra == 'extra-13-darts-nextgen-cuda118') or (extra == 'extra-13-darts-nextgen-cpu' and extra == 'extra-13-darts-nextgen-cuda121') or (extra == 'extra-13-darts-nextgen-cpu' and extra == 'extra-13-darts-nextgen-cuda126') or (extra == 'extra-13-darts-nextgen-cuda118' and extra == 'extra-13-darts-nextgen-cuda121') or (extra == 'extra-13-darts-nextgen-cuda118' and extra == 'extra-13-darts-nextgen-cuda126') or (extra == 'extra-13-darts-nextgen-cuda121' and extra == 'extra-13-darts-nextgen-cuda126')" },
+    { name = "pandas", marker = "platform_machine != 'x86_64' or sys_platform != 'darwin' or (extra == 'extra-13-darts-nextgen-cpu' and extra == 'extra-13-darts-nextgen-cuda118') or (extra == 'extra-13-darts-nextgen-cpu' and extra == 'extra-13-darts-nextgen-cuda121') or (extra == 'extra-13-darts-nextgen-cpu' and extra == 'extra-13-darts-nextgen-cuda126') or (extra == 'extra-13-darts-nextgen-cuda118' and extra == 'extra-13-darts-nextgen-cuda121') or (extra == 'extra-13-darts-nextgen-cuda118' and extra == 'extra-13-darts-nextgen-cuda126') or (extra == 'extra-13-darts-nextgen-cuda121' and extra == 'extra-13-darts-nextgen-cuda126')" },
+    { name = "pyarrow", marker = "platform_machine != 'x86_64' or sys_platform != 'darwin' or (extra == 'extra-13-darts-nextgen-cpu' and extra == 'extra-13-darts-nextgen-cuda118') or (extra == 'extra-13-darts-nextgen-cpu' and extra == 'extra-13-darts-nextgen-cuda121') or (extra == 'extra-13-darts-nextgen-cpu' and extra == 'extra-13-darts-nextgen-cuda126') or (extra == 'extra-13-darts-nextgen-cuda118' and extra == 'extra-13-darts-nextgen-cuda121') or (extra == 'extra-13-darts-nextgen-cuda118' and extra == 'extra-13-darts-nextgen-cuda126') or (extra == 'extra-13-darts-nextgen-cuda121' and extra == 'extra-13-darts-nextgen-cuda126')" },
 ]
 
 [[package]]
@@ -5098,7 +5310,7 @@ wheels = [
 
 [[package]]
 name = "smart-geocubes"
-version = "0.0.6"
+version = "0.0.8"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "geopandas" },
@@ -5110,9 +5322,9 @@ dependencies = [
     { name = "xarray" },
     { name = "zarr" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/b4/39/8d216e13f3048d0a9959522d4cf6710de3c4ab266ae6b1ea6afee14e13bc/smart_geocubes-0.0.6.tar.gz", hash = "sha256:b1476eb1f48345d76c2ed4dd531e6702e6e18cf416fa0c80153bc92011469246", size = 11433023 }
+sdist = { url = "https://files.pythonhosted.org/packages/6a/57/7f9e445cbef9230911f1d6215503e641e798ee41f9e1c0335b724a4322b4/smart_geocubes-0.0.8.tar.gz", hash = "sha256:425a04056379210f02f5593e0e25de747e118569ab9d92c47e0a8ceaa9b7efc5", size = 11433280 }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/02/d3/46c03c64ef4b7f704a5252c3562ac3eed7c662927d48a185c6e759533811/smart_geocubes-0.0.6-py3-none-any.whl", hash = "sha256:d5ec365a0a0c8157250860049d11a0fdd6349e5985d4e0bb458f0249d2ad4c5f", size = 25148 },
+    { url = "https://files.pythonhosted.org/packages/e4/f6/4cc96151cbeff873c4d2788af8ec0760def08751bf7a41f7a9f54dfb2cb9/smart_geocubes-0.0.8-py3-none-any.whl", hash = "sha256:716f1e8e55a2b8540d37fd4994b5b62361c7e35ebd9b07cce2b71e0efe5964b2", size = 25376 },
 ]
 
 [package.optional-dependencies]
@@ -5124,6 +5336,7 @@ gee = [
 ]
 stac = [
     { name = "odc-stac" },
+    { name = "pyarrow" },
     { name = "pystac" },
     { name = "pystac-client" },
     { name = "xpystac" },
@@ -5145,6 +5358,15 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/e8/c4/ba2f8066cceb6f23394729afe52f3bf7adec04bf9ed2c820b39e19299111/sortedcontainers-2.4.0.tar.gz", hash = "sha256:25caa5a06cc30b6b83d11423433f65d1f9d76c4c6a0c90e3379eaa43b9bfdb88", size = 30594 }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/32/46/9cb0e58b2deb7f82b84065f37f3bffeb12413f947f9388e4cac22c4621ce/sortedcontainers-2.4.0-py2.py3-none-any.whl", hash = "sha256:a163dcaede0f1c021485e957a39245190e74249897e2ae4b2aa38595db237ee0", size = 29575 },
+]
+
+[[package]]
+name = "soupsieve"
+version = "2.7"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/3f/f4/4a80cd6ef364b2e8b65b15816a843c0980f7a5a2b4dc701fc574952aa19f/soupsieve-2.7.tar.gz", hash = "sha256:ad282f9b6926286d2ead4750552c8a6142bc4c783fd66b0293547c8fe6ae126a", size = 103418 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/e7/9c/0e6afc12c269578be5c0c1c9f4b49a8d32770a080260c333ac04cc1c832d/soupsieve-2.7-py3-none-any.whl", hash = "sha256:6e60cc5c1ffaf1cebcc12e8188320b72071e922c2e897f737cadce79ad5d30c4", size = 36677 },
 ]
 
 [[package]]
@@ -5200,11 +5422,11 @@ wheels = [
 
 [[package]]
 name = "stopuhr"
-version = "0.0.4"
+version = "0.0.6"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/19/94/44017c1e168eb401921a3538b420c1b06099f22a5cfb1eba5ed9918dc686/stopuhr-0.0.4.tar.gz", hash = "sha256:1ec732b7b9f0a2e2df17aa7718c16864bb7f6a61cf86099172ac8337e5aeff0a", size = 109884 }
+sdist = { url = "https://files.pythonhosted.org/packages/8e/fd/5aa15cbcefcd992264af54367971815d567f597857041d46f5551c255625/stopuhr-0.0.6.tar.gz", hash = "sha256:8b4b42edc5991d5183f7452602fd619c11ff71746c3a0d34bee26d9b2b8528b5", size = 113833 }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/1c/c1/1a5ff778732c49452095021d9b71827b1a30c2f6a139102976016a190089/stopuhr-0.0.4-py3-none-any.whl", hash = "sha256:5cd4ae28040d04070d1c5aa3c7c5113efaba18f6ae88854fa14f7cbf8a48ad97", size = 6844 },
+    { url = "https://files.pythonhosted.org/packages/ae/b9/21b96656ab711b1f394fb82c5df99e595024c44f339e705b77ae6bd3687b/stopuhr-0.0.6-py3-none-any.whl", hash = "sha256:da4c0f544a81b489f459f5e3d0cdaafdebf16d4fc47d3ea0d2747c7a1826f203", size = 10967 },
 ]
 
 [[package]]

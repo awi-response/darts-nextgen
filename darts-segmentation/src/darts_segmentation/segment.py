@@ -5,13 +5,13 @@ from pathlib import Path
 from typing import Any, TypedDict
 
 import segmentation_models_pytorch as smp
-import stopuhr
 import torch
 import torch.nn as nn
 import xarray as xr
 from darts_utils.cuda import free_torch
+from stopuhr import stopwatch
 
-from darts_segmentation.utils import predict_in_patches
+from darts_segmentation.utils import Band, Bands, predict_in_patches
 
 logger = logging.getLogger(__name__.replace("darts_", "darts."))
 
@@ -21,32 +21,33 @@ DEFAULT_DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 class SMPSegmenterConfig(TypedDict):
     """Configuration for the segmentor."""
 
-    input_combination: list[str]
     model: dict[str, Any]
-    norm_factors: dict[str, float]
-    # patch_size: int
+    bands: Bands
 
+    @classmethod
+    def from_ckpt(cls, config: dict[str, Any]) -> "SMPSegmenterConfig":
+        """Validate the config for the segmentor.
 
-def validate_config(config: dict[str, Any]) -> SMPSegmenterConfig:
-    """Validate the config for the segmentor.
+        Args:
+            config: The configuration to validate.
 
-    Args:
-        config: The configuration to validate.
+        Returns:
+            The validated configuration.
 
-    Returns:
-        The validated configuration.
+        """
+        # Handling legacy case that the config contains the old keys
+        if "input_combination" in config and "norm_factors" in config:
+            # Check if all input_combination features are in norm_factors
+            config["bands"] = Bands([Band(name, config["norm_factors"][name]) for name in config["input_combination"]])
+            config.pop("norm_factors")
+            config.pop("input_combination")
 
-    Raises:
-        KeyError: in case the config is missing required keys.
-
-    """
-    if "input_combination" not in config:
-        raise KeyError("input_combination not found in the config!")
-    if "model" not in config:
-        raise KeyError("model not found in the config!")
-    if "norm_factors" not in config:
-        raise KeyError("norm_factors not found in the config!")
-    return config
+        assert "model" in config, "Model config is missing!"
+        assert "bands" in config, "Bands config is missing!"
+        # The Bands object is always pickled as a dict for interoperability, so we need to convert it back
+        if not isinstance(config["bands"], Bands):
+            config["bands"] = Bands.from_config(config["bands"])
+        return config
 
 
 class SMPSegmenter:
@@ -68,7 +69,7 @@ class SMPSegmenter:
         model_checkpoint = model_checkpoint if isinstance(model_checkpoint, Path) else Path(model_checkpoint)
         self.device = device
         ckpt = torch.load(model_checkpoint, map_location=self.device)
-        self.config = validate_config(ckpt["config"])
+        self.config = SMPSegmenterConfig.from_ckpt(ckpt["config"])
         # Overwrite the encoder weights with None, because we load our own
         self.config["model"] |= {"encoder_weights": None}
         self.model = smp.create_model(**self.config["model"])
@@ -76,10 +77,7 @@ class SMPSegmenter:
         self.model.load_state_dict(ckpt["statedict"])
         self.model.eval()
 
-        logger.debug(
-            f"Successfully loaded model from {model_checkpoint.resolve()} with inputs: "
-            f"{self.config['input_combination']}"
-        )
+        logger.debug(f"Successfully loaded model from {model_checkpoint.resolve()} with inputs: {self.config['bands']}")
 
     def tile2tensor(self, tile: xr.Dataset) -> torch.Tensor:
         """Take a tile and convert it to a pytorch tensor.
@@ -91,14 +89,17 @@ class SMPSegmenter:
 
         """
         bands = []
-        # e.g. input_combination: ["red", "green", "blue", "relative_elevation", ...]
+        # e.g. band.names: ["red", "green", "blue", "relative_elevation", ...]
         # tile.data_vars: ["red", "green", "blue", "relative_elevation", ...]
 
-        for feature_name in self.config["input_combination"]:
-            norm = self.config["norm_factors"][feature_name]
-            band_data = tile[feature_name]
-            # Normalize the band data
-            band_data = band_data * norm
+        for band in self.config["bands"]:
+            band_data = tile[band.name]
+            # Normalize the band data to the range [0, 1]
+            # Follows CF conventions for scaling and offsetting
+            # decode_values = encoded_values * scale_factor + add_offset
+            # the range [0, 1] is the decoded range
+            band_data = band_data * band.factor + band.offset
+            band_data = band_data.clip(min=0, max=1)
             bands.append(torch.from_numpy(band_data.to_numpy().astype("float32")))
 
         return torch.stack(bands, dim=0)
@@ -113,17 +114,17 @@ class SMPSegmenter:
 
         """
         bands = []
-        for feature_name in self.config["input_combination"]:
-            norm = self.config["norm_factors"][feature_name]
+        for band in self.config["bands"]:
             for tile in tiles:
-                band_data = tile[feature_name]
+                band_data = tile[band.name]
                 # Normalize the band data
-                band_data = band_data * norm
+                band_data = band_data * band.factor + band.offset
+                band_data = band_data.clip(min=0, max=1)
                 bands.append(torch.from_numpy(band_data.to_numpy().astype("float32")))
         # TODO: Test this
-        return torch.stack(bands, dim=0).reshape(len(tiles), len(self.config["input_combination"]), *bands[0].shape)
+        return torch.stack(bands, dim=0).reshape(len(tiles), len(self.config["bands"]), *bands[0].shape)
 
-    @stopuhr.funkuhr(
+    @stopwatch.f(
         "Segmenting tile",
         logger.debug,
         print_kwargs=["patch_size", "overlap", "batch_size", "reflection"],
@@ -167,7 +168,7 @@ class SMPSegmenter:
 
         return tile
 
-    @stopuhr.funkuhr(
+    @stopwatch.f(
         "Segmenting tiles",
         logger.debug,
         print_kwargs=["patch_size", "overlap", "batch_size", "reflection"],

@@ -178,7 +178,6 @@ A list of all options can be found in the [config guide](guides/config.md) or by
     ```toml title="config.toml"
     [darts]
     ee-project = "ee-tobias-hoelzer"
-    dask-worker = 4
 
     [darts.aoi]
     aoi-shapefile = "./data/banks_island.shp"

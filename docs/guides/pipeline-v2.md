@@ -24,13 +24,13 @@ The pipeline currently consists of the following steps:
 
 1. Load the optical and auxiliary data
     This step depends on the realisation of the pipeline.
-    Either [darts_acquisition.load_planet_scene](../reference/darts_acquisition/load_planet_scene.md), [darts_acquisition.load_s2_scene](../reference/darts_acquisition/load_s2_scene.md) [darts_acquisition.load_s2_from_gee](../reference/darts_acquisition/load_s2_from_gee.md) or [darts_acquisition.load_s2_from_stac](../reference/darts_acquisition/load_s2_from_stac.md).
-    Also loads the masks if not loaded from gee or stac: [darts_acquisition.load_planet_masks](../reference/darts_acquisition/load_planet_masks.md) or [darts_acquisition.load_s2_masks](../reference/darts_acquisition/load_s2_masks.md), for the gee and stac versions the masks are already included.
-    For the auxiliary data: [darts_acquisition.load_arcticdem](../reference/darts_acquisition/load_arcticdem.md) and [darts_acquisition.load_tcvis](../reference/darts_acquisition/load_tcvis.md)
-2. Preprocess the optical data: [darts_preprocessing.preprocess_legacy_fast](../reference/darts_preprocessing/preprocess_legacy_fast.md)
-3. Segment the optical data: [darts_segmentation.SMPSegmenter.segment_tile](../reference/darts_segmentation/SMPSegmenter.md#darts_segmentation.SMPSegmenter.segment_tile) or [darts_ensemble.segment_tile](../reference/darts_ensemble//EnsembleV1.md#darts_ensemble.EnsembleV1.segment_tile).
-4. Postprocess the segmentation and make it ready for export: [darts_postprocessing.prepare_export](../reference//darts_postprocessing//prepare_export.md)
-5. Export the data: [darts_export.export_tile](../reference/darts_export/export_tile.md).
+    Either [darts_acquisition.load_planet_scene][], [darts_acquisition.load_s2_scene][], [darts_acquisition.load_s2_from_gee][] or [darts_acquisition.load_s2_from_stac][].
+    Also loads the masks if not loaded from gee or stac: [darts_acquisition.load_planet_masks][] or [darts_acquisition.load_s2_masks][], for the gee and stac versions the masks are already included.
+    For the auxiliary data: [darts_acquisition.load_arcticdem][] and [darts_acquisition.load_tcvis][]
+2. Preprocess the optical data: [darts_preprocessing.preprocess_legacy_fast][] or [darts_preprocessing.preprocess_v2][].
+3. Segment the optical data: [darts_segmentation.segment.SMPSegmenter.segment_tile][] or [darts_ensemble.EnsembleV1.segment_tile][].
+4. Postprocess the segmentation and make it ready for export: [darts_postprocessing.prepare_export][].
+5. Export the data: [darts_export.export_tile][].
 
 ![DARTS nextgen pipeline v2](../assets/darts_nextgen_pipeline_v2.png){ loading=lazy }
 
@@ -78,7 +78,7 @@ export_tile(tile, outpath)
 
     - The Paper about the DARTS Dataset (No link yet)
     - The [Components Guide](components.md)
-    - The [API Reference](../reference/index.md)
+    - The [API Reference](../reference/darts/index.md)
 
 There are further features implemented, which do not come from the components:
 

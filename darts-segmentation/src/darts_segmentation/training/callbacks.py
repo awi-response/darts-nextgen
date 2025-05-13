@@ -1,12 +1,15 @@
 """PyTorch Lightning Callbacks for training and validation."""
 
+import copy
 import logging
 from pathlib import Path
 from typing import Literal
 
 import matplotlib.pyplot as plt
+import torch
 import wandb
 from lightning import LightningModule, Trainer
+from lightning.fabric.utilities import measure_flops
 from lightning.pytorch.callbacks import Callback
 from lightning.pytorch.loggers import CSVLogger, WandbLogger
 from torchmetrics import (
@@ -38,6 +41,7 @@ from darts_segmentation.metrics import (
     BinaryInstanceRecall,
 )
 from darts_segmentation.training.viz import plot_sample
+from darts_segmentation.utils import Bands
 
 logger = logging.getLogger(__name__.replace("darts_", "darts."))
 
@@ -66,16 +70,18 @@ class BinarySegmentationMetrics(Callback):
     def __init__(
         self,
         *,
-        input_combination: list[str],
+        bands: Bands,
         val_set: str = "val",
         test_set: str = "test",
         plot_every_n_val_epochs: int = 5,
         is_crossval: bool = False,
+        batch_size: int = 8,
+        patch_size: int = 512,
     ):
         """Initialize the ValidationCallback.
 
         Args:
-            input_combination (list[str]): List of input names to combine for the visualization.
+            bands (Bands): List of bands to combine for the visualization.
             val_set (str, optional): Name of the validation set. Only used for naming the validation metrics.
                 Defaults to "val".
             test_set (str, optional): Name of the test set. Only used for naming the test metrics. Defaults to "test".
@@ -84,6 +90,8 @@ class BinarySegmentationMetrics(Callback):
                 This will change the logging behavior of scalar metrics from logging to {val_set} to just "val".
                 The logging behaviour of the samples is not affected.
                 Defaults to False.
+            batch_size (int, optional): Batch size. Needed for throughput measurements. Defaults to 8.
+            patch_size (int, optional): Patch size. Needed for throughput measurements. Defaults to 512.
 
         """
         assert "/" not in val_set, "val_set must not contain '/'"
@@ -91,12 +99,20 @@ class BinarySegmentationMetrics(Callback):
         self.val_set = val_set
         self.test_set = test_set
         self.plot_every_n_val_epochs = plot_every_n_val_epochs
-        self.input_combination = input_combination
+        self.band_names = bands.names
         self.is_crossval = is_crossval
+        self.batch_size = batch_size
+        self.patch_size = patch_size
 
     @property
     def _val_prefix(self):
-        return "val" if self.is_crossval else self.val_set
+        # This is used to prefix the validation metrics with the fold number (val-set) instead of just "val"
+        # Intended to be used outside of cross-validations to avaid confusion which metrics belong to which fold
+        # However, is is probably better to just use "val" for all folds to avoid confusion and
+        # increase the usability of wandb
+        # Disable this functionality for now
+        # return "val" if self.is_crossval else self.val_set
+        return "val"
 
     def is_val_plot_epoch(self, current_epoch: int, check_val_every_n_epoch: int | None) -> bool:
         """Check if the current epoch is an epoch where validation samples should be plotted.
@@ -148,6 +164,29 @@ class BinarySegmentationMetrics(Callback):
         if stage == "predict":
             return
 
+        # Add throughput metric, meant to be consumed by the ThroughputMonitor callback
+        # ! This will assume that the batch size does not change during training!
+        with torch.device("meta"):
+            model: torch.Module = copy.deepcopy(self.pl_module.model).to(device="meta")
+
+            def sample_forward():
+                batch = torch.randn(
+                    self.batch_size,
+                    len(self.band_names),
+                    self.patch_size,
+                    self.patch_size,
+                    device="meta",
+                )
+                return model(batch)
+
+            if stage == "fit":
+                # We use sum as a dummy loss function because we don't have a second input available
+                self.pl_module.flops_per_batch = measure_flops(model, sample_forward, loss_fn=torch.Tensor.sum)
+            else:
+                # Don't compute backward pass for validation and test
+                self.pl_module.flops_per_batch = measure_flops(model, sample_forward)
+            logger.debug(f"FLOPS per batch: {self.pl_module.flops_per_batch}")
+
         metric_kwargs = {"task": "binary", "validate_args": False, "ignore_index": 2}
         metrics = MetricCollection(
             {
@@ -182,6 +221,10 @@ class BinarySegmentationMetrics(Callback):
             pl_module.val_cmx = ConfusionMatrix(normalize="true", **metric_kwargs)
             added_metrics += list(pl_module.val_metrics.keys())
             added_metrics += [f"{self._val_prefix}/{m}" for m in ["roc", "prc", "cmx"]]
+
+            # Internal state to track how many visualizations have been generated in an epoch
+            self._val_pos_visualizations = 0
+            self._val_neg_visualizations = 0
 
         # Test metrics and visualizations for the test stage
         if stage == "test":
@@ -218,6 +261,10 @@ class BinarySegmentationMetrics(Callback):
 
             added_metrics += list(pl_module.test_metrics.keys())
             added_metrics += [f"{self.test_set}/{m}" for m in ["roc", "prc", "cmx", "instance_prc", "instance_cmx"]]
+
+            # Internal state to track how many visualizations have been generated in an epoch
+            self._test_pos_visualizations = 0
+            self._test_neg_visualizations = 0
 
         # Log the added metrics
         sep = "\n\t- "
@@ -284,38 +331,48 @@ class BinarySegmentationMetrics(Callback):
         pl_module.val_prc.update(y_hat, y)
         pl_module.val_cmx.update(y_hat, y)
 
-        # Create figures for the samples (plot at maximum 24)
-        is_last_batch = trainer.num_val_batches == (batch_idx + 1)
-        max_batch_idx = (24 // x.shape[0]) - 1  # Does only work if NOT last batch, since last batch may be smaller
-        # If num_val_batches is 1 then this batch is the last one, but we still want to log it. despite its size
-        # Will plot the first 24 samples of the first batch if batch-size is larger than 24
-        should_log_batch = (
-            (max_batch_idx >= batch_idx and not is_last_batch)
-            or trainer.num_val_batches == 1
-            or (max_batch_idx == -1 and batch_idx == 0)
-        )
-        is_val_plot_epoch = self.is_val_plot_epoch(pl_module.current_epoch, trainer.check_val_every_n_epoch)
-        if is_val_plot_epoch and should_log_batch:
-            for i in range(min(x.shape[0], 24)):
-                fig, _ = plot_sample(x[i], y[i], y_hat[i], self.input_combination)
-                for pllogger in pl_module.loggers:
-                    if isinstance(pllogger, CSVLogger):
-                        fig_dir = Path(pllogger.log_dir) / "figures" / f"{self.val_set}-samples"
-                        fig_dir.mkdir(exist_ok=True, parents=True)
-                        fig.savefig(fig_dir / f"sample_{pl_module.global_step}_{batch_idx}_{i}.png")
-                    if isinstance(pllogger, WandbLogger):
-                        wandb_run: Run = pllogger.experiment
-                        # We don't commit the log yet, so that the step is increased with the next lightning log
-                        # Which happens at the end of the validation epoch
-                        img_name = f"{self.val_set}-samples/sample_{batch_idx}_{i}"
-                        wandb_run.log({img_name: wandb.Image(fig)}, commit=False)
-                fig.clear()
-                plt.close(fig)
+        # Create figures for the samples (plot at maximum 30)
+        # We want to plot at max 20 POSITIVE samples and 10 NEGATIVE samples in a single epoch
+        # These should also be the same over all epochs
+        for i in range(x.shape[0]):
+            if self._val_pos_visualizations >= 20 and self._val_neg_visualizations >= 10:
+                break
+
+            # Don't plot in sanity check
+            if trainer.state.stage != "sanity_check":
+                break
+
+            # Plot positive sample
+            is_postive = (y[i] == 1).sum() > 0
+            if is_postive and self._val_pos_visualizations < 20:
+                fig, _ = plot_sample(x[i], y[i], y_hat[i], self.band_names)
+                self._val_pos_visualizations += 1
+            # Plot negative sample
+            elif not is_postive and self._val_neg_visualizations < 10:
+                fig, _ = plot_sample(x[i], y[i], y_hat[i], self.band_names)
+                self._val_neg_visualizations += 1
+            # Either the number of positive or negative samples is already full
+            else:
+                continue
+
+            for pllogger in pl_module.loggers:
+                if isinstance(pllogger, CSVLogger):
+                    fig_dir = Path(pllogger.log_dir) / "figures" / f"{self.val_set}-samples"
+                    fig_dir.mkdir(exist_ok=True, parents=True)
+                    fig.savefig(fig_dir / f"sample_{pl_module.global_step}_{batch_idx}_{i}.png")
+                if isinstance(pllogger, WandbLogger):
+                    wandb_run: Run = pllogger.experiment
+                    # We don't commit the log yet, so that the step is increased with the next lightning log
+                    # Which happens at the end of the validation epoch
+                    img_name = f"{self.val_set}-samples/sample_{batch_idx}_{i}"
+                    wandb_run.log({img_name: wandb.Image(fig)}, commit=False)
+            fig.clear()
+            plt.close(fig)
 
     def on_validation_epoch_end(self, trainer: Trainer, pl_module: LightningModule):  # noqa: D102
         # Only do this every self.plot_every_n_val_epochs epochs
         is_val_plot_epoch = self.is_val_plot_epoch(pl_module.current_epoch, trainer.check_val_every_n_epoch)
-        if is_val_plot_epoch:
+        if is_val_plot_epoch and trainer.state.stage != "sanity_check":
             pl_module.val_cmx.compute()
             pl_module.val_roc.compute()
             pl_module.val_prc.compute()
@@ -352,6 +409,9 @@ class BinarySegmentationMetrics(Callback):
         pl_module.val_prc.reset()
         pl_module.val_cmx.reset()
 
+        self._val_pos_visualizations = 0
+        self._val_neg_visualizations = 0
+
     def on_test_batch_end(  # noqa: D102
         self, trainer: Trainer, pl_module: LightningModule, outputs, batch, batch_idx, dataloader_idx=0
     ):
@@ -372,32 +432,38 @@ class BinarySegmentationMetrics(Callback):
         pl_module.test_instance_prc.update(y_hat, y)
         pl_module.test_instance_cmx.update(y_hat, y)
 
-        # Create figures for the samples (plot at maximum 24)
-        is_last_batch = trainer.num_val_batches == (batch_idx + 1)
-        max_batch_idx = (24 // x.shape[0]) - 1  # Does only work if NOT last batch, since last batch may be smaller
-        # If num_val_batches is 1 then this batch is the last one, but we still want to log it. despite its size
-        # Will plot the first 24 samples of the first batch if batch-size is larger than 24
-        should_log_batch = (
-            (max_batch_idx >= batch_idx and not is_last_batch)
-            or trainer.num_val_batches == 1
-            or (max_batch_idx == -1 and batch_idx == 0)
-        )
-        if should_log_batch:
-            for i in range(min(x.shape[0], 24)):
-                fig, _ = plot_sample(x[i], y[i], y_hat[i], self.input_combination)
-                for pllogger in pl_module.loggers:
-                    if isinstance(pllogger, CSVLogger):
-                        fig_dir = Path(pllogger.log_dir) / "figures" / f"{self.test_set}-samples"
-                        fig_dir.mkdir(exist_ok=True, parents=True)
-                        fig.savefig(fig_dir / f"sample_{pl_module.global_step}_{batch_idx}_{i}.png")
-                    if isinstance(pllogger, WandbLogger):
-                        wandb_run: Run = pllogger.experiment
-                        # We don't commit the log yet, so that the step is increased with the next lightning log
-                        # Which happens at the end of the validation epoch
-                        img_name = f"{self.test_set}-samples/sample_{batch_idx}_{i}"
-                        wandb_run.log({img_name: wandb.Image(fig)}, commit=False)
-                fig.clear()
-                plt.close(fig)
+        # Create figures for the samples (plot at maximum 30)
+        # We want to plot at max 20 POSITIVE samples and 10 NEGATIVE samples in a single epoch
+        # These should also be the same over all epochs
+        for i in range(x.shape[0]):
+            if self._test_pos_visualizations >= 20 and self._test_neg_visualizations >= 10:
+                break
+
+            # Plot positive sample
+            if y[i].sum() > 0 and self._test_pos_visualizations < 20:
+                fig, _ = plot_sample(x[i], y[i], y_hat[i], self.band_names)
+                self._test_pos_visualizations += 1
+            # Plot negative sample
+            elif y[i].sum() == 0 and self._test_neg_visualizations < 10:
+                fig, _ = plot_sample(x[i], y[i], y_hat[i], self.band_names)
+                self._test_neg_visualizations += 1
+            # Either the number of positive or negative samples is already full
+            else:
+                continue
+
+            for pllogger in pl_module.loggers:
+                if isinstance(pllogger, CSVLogger):
+                    fig_dir = Path(pllogger.log_dir) / "figures" / f"{self.test_set}-samples"
+                    fig_dir.mkdir(exist_ok=True, parents=True)
+                    fig.savefig(fig_dir / f"sample_{pl_module.global_step}_{batch_idx}_{i}.png")
+                if isinstance(pllogger, WandbLogger):
+                    wandb_run: Run = pllogger.experiment
+                    # We don't commit the log yet, so that the step is increased with the next lightning log
+                    # Which happens at the end of the validation epoch
+                    img_name = f"{self.test_set}-samples/sample_{batch_idx}_{i}"
+                    wandb_run.log({img_name: wandb.Image(fig)}, commit=False)
+            fig.clear()
+            plt.close(fig)
 
     def on_test_epoch_end(self, trainer: Trainer, pl_module: LightningModule):  # noqa: D102
         pl_module.test_cmx.compute()
@@ -447,3 +513,6 @@ class BinarySegmentationMetrics(Callback):
         pl_module.test_cmx.reset()
         pl_module.test_instance_prc.reset()
         pl_module.test_instance_cmx.reset()
+
+        self._test_pos_visualizations = 0
+        self._test_neg_visualizations = 0

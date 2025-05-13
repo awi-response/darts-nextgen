@@ -83,10 +83,6 @@ jobs:
           draft: false
           prerelease: false
 
-      # TODO: Setup PyPI publishing
-      # - name: Publish to PyPI
-      #   run: uv publish --trusted-publishing always
-
   build-and-publish-docs:
     runs-on: ubuntu-latest
     needs:

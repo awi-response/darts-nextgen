@@ -5,7 +5,7 @@ import time
 from pathlib import Path
 
 import cyclopts
-from darts_utils.rich import RichManager
+import rich
 from rich.logging import RichHandler
 
 # A global level to easy change the log level for interal darts modules
@@ -88,7 +88,7 @@ class LoggingManagerSingleton:
         if L:
             traceback_suppress.append(L)
         rich_handler = RichHandler(
-            console=RichManager.console,
+            console=rich.get_console(),
             rich_tracebacks=True,
             tracebacks_suppress=traceback_suppress,
             tracebacks_show_locals=tracebacks_show_locals,

@@ -4,18 +4,19 @@ import logging
 from typing import Literal
 
 import numpy as np
-import stopuhr
 import xarray as xr
 from darts_utils.cuda import free_cupy
 from skimage.morphology import binary_erosion, disk, label, remove_small_objects
+from stopuhr import stopwatch
 
 logger = logging.getLogger(__name__.replace("darts_", "darts."))
 
 try:
-    import cupy as cp
-    from cucim.skimage.morphology import binary_erosion as binary_erosion_gpu
-    from cucim.skimage.morphology import disk as disk_gpu
-    from cucim.skimage.morphology import remove_small_objects as remove_small_objects_gpu
+    import cupy as cp  # type: ignore
+    import cupy_xarray  # noqa: F401
+    from cucim.skimage.morphology import binary_erosion as binary_erosion_gpu  # type: ignore
+    from cucim.skimage.morphology import disk as disk_gpu  # type: ignore
+    from cucim.skimage.morphology import remove_small_objects as remove_small_objects_gpu  # type: ignore
 
     CUCIM_AVAILABLE = True
     DEFAULT_DEVICE = "cuda"
@@ -26,7 +27,7 @@ except ImportError:
     logger.debug("GPU-accelerated cucim functions are not available.")
 
 
-@stopuhr.funkuhr("Eroding mask", printer=logger.debug, print_kwargs=["size"])
+@stopwatch.f("Eroding mask", printer=logger.debug, print_kwargs=["size"])
 def erode_mask(mask: xr.DataArray, size: int, device: Literal["cuda", "cpu"] | int) -> xr.DataArray:
     """Erode the mask, also set the edges to invalid.
 
@@ -78,7 +79,7 @@ def erode_mask(mask: xr.DataArray, size: int, device: Literal["cuda", "cpu"] | i
     return mask
 
 
-@stopuhr.funkuhr("Binarizing probabilities", printer=logger.debug, print_kwargs=["threshold", "min_object_size"])
+@stopwatch.f("Binarizing probabilities", printer=logger.debug, print_kwargs=["threshold", "min_object_size"])
 def binarize(
     probs: xr.DataArray,
     threshold: float,
@@ -149,7 +150,7 @@ def binarize(
     return binarized
 
 
-@stopuhr.funkuhr(
+@stopwatch.f(
     "Preparing export",
     printer=logger.debug,
     print_kwargs=["bin_threshold", "mask_erosion_size", "min_object_size", "quality_level", "ensemble_subsets"],
