@@ -176,7 +176,7 @@ def train_smp(
     from darts.utils.logging import LoggingManager
     from darts_utils.namegen import generate_counted_name, generate_id
     from lightning.pytorch import seed_everything
-    from lightning.pytorch.callbacks import EarlyStopping, RichProgressBar, ThroughputMonitor
+    from lightning.pytorch.callbacks import EarlyStopping, RichProgressBar
     from lightning.pytorch.loggers import CSVLogger, WandbLogger
 
     from darts_segmentation.segment import SMPSegmenterConfig
@@ -306,7 +306,7 @@ def train_smp(
             batch_size=batch_size,
             patch_size=data_config["patch_size"],
         ),
-        ThroughputMonitor(batch_size_fn=lambda batch: batch[0].size(0), window_size=log_every_n_steps),
+        # ThroughputMonitor(batch_size_fn=lambda batch: batch[0].size(0), window_size=log_every_n_steps),
     ]
     if early_stopping_patience:
         logger.debug(f"Using EarlyStopping with patience {early_stopping_patience}")
