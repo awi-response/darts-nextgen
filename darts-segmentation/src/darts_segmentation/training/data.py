@@ -327,7 +327,7 @@ class DartsDataModule(L.LightningDataModule):
         if stage == "predict" or stage is None:
             return
 
-        metadata = gpd.read_parquet(self.data_dir / "metadata.parquet").sample(40, random_state=42)
+        metadata = gpd.read_parquet(self.data_dir / "metadata.parquet")
         train_metadata, test_metadata = _split_metadata(metadata, self.data_split_method, self.data_split_by)
 
         _log_stats(train_metadata, "train-split")
