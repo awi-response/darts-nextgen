@@ -43,7 +43,7 @@ Copy this configuration file to your local machine, e.g. under `configs/planet-t
     device = "auto"
     num-workers = 16
     max-epochs = 6
-    log-every-n-steps = 2
+    log-every-n-steps = 50
     check-val-every-n-epoch = 5
     plot-every-n-val-epochs = 4 # == 20 epochs
     early-stopping-patience = 0
