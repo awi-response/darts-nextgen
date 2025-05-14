@@ -83,6 +83,7 @@ def env_info():
 app.command(name="run-sequential-aoi-sentinel2-pipeline", group=pipeline_group)(AOISentinel2Pipeline.cli)
 app.command(name="run-sequential-sentinel2-pipeline", group=pipeline_group)(Sentinel2Pipeline.cli)
 app.command(name="run-sequential-planet-pipeline", group=pipeline_group)(PlanetPipeline.cli)
+app.command(name="run-ray-aoi-sentinel2-pipeline", group=pipeline_group)(AOISentinel2RayPipeline.cli)
 
 app.command(group=train_group)(preprocess_planet_train_data)
 app.command(group=train_group)(train_smp)
