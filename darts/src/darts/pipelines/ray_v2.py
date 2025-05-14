@@ -74,7 +74,183 @@ class _BasePipeline(ABC):
     def _load_tile(self, tileinfo: Any) -> "xr.Dataset":
         pass
 
+    def _process_tile(self, tilekey, outpath, models, timer):
+        """Process a single tile in the pipeline.
+
+        Args:
+            tilekey: The tile identifier (could be path, ID, etc.)
+            outpath: Path where output should be saved
+            models: Dictionary of model names and paths
+            timer: Chronometer instance for timing operations
+
+        Returns:
+            Dictionary containing processing results for this tile
+        """
+        from darts_acquisition import load_arcticdem, load_tcvis
+        from darts_export import export_tile, missing_outputs
+        from darts_postprocessing import prepare_export
+        from darts_preprocessing import preprocess_legacy_fast
+
+        tile_id = self._get_tile_id(tilekey)
+        result = {
+            "tile_id": tile_id,
+            "output_path": str(outpath.resolve()),
+            "status": "failed",  # Default to failed, will update if successful
+            "error": None,
+        }
+
+        try:
+            if not self.overwrite:
+                mo = missing_outputs(outpath, bands=self.export_bands, ensemble_subsets=models.keys())
+                if mo == "none":
+                    logger.info(f"Tile {tile_id} already processed. Skipping...")
+                    result["status"] = "skipped"
+                    return result
+                if mo == "some":
+                    logger.warning(
+                        f"Tile {tile_id} already processed. Some outputs are missing."
+                        " Skipping because overwrite=False..."
+                    )
+                    result["status"] = "skipped_partial"
+                    return result
+
+            with timer("Loading optical data", log=False):
+                tile = self._load_tile(tilekey)
+            with timer("Loading ArcticDEM", log=False):
+                arcticdem = load_arcticdem(
+                    tile.odc.geobox,
+                    self.arcticdem_dir,
+                    resolution=self._arcticdem_resolution(),
+                    buffer=ceil(self.tpi_outer_radius / 2 * sqrt(2)),
+                )
+            with timer("Loading TCVis", log=False):
+                tcvis = load_tcvis(tile.odc.geobox, self.tcvis_dir)
+            with timer("Preprocessing tile", log=False):
+                tile = preprocess_legacy_fast(
+                    tile,
+                    arcticdem,
+                    tcvis,
+                    self.tpi_outer_radius,
+                    self.tpi_inner_radius,
+                    self.device,
+                )
+            with timer("Segmenting", log=False):
+                tile = self.ensemble.segment_tile(
+                    tile,
+                    patch_size=self.patch_size,
+                    overlap=self.overlap,
+                    batch_size=self.batch_size,
+                    reflection=self.reflection,
+                    keep_inputs=self.write_model_outputs,
+                )
+            with timer("Postprosessing", log=False):
+                tile = prepare_export(
+                    tile,
+                    bin_threshold=self.binarization_threshold,
+                    mask_erosion_size=self.mask_erosion_size,
+                    min_object_size=self.min_object_size,
+                    quality_level=self.quality_level,
+                    ensemble_subsets=models.keys() if self.write_model_outputs else [],
+                    device=self.device,
+                )
+
+            with timer("Exporting", log=False):
+                export_tile(
+                    tile,
+                    outpath,
+                    bands=self.export_bands,
+                    ensemble_subsets=models.keys() if self.write_model_outputs else [],
+                )
+
+            result["status"] = "success"
+            return result
+
+        except KeyboardInterrupt:
+            logger.warning("Keyboard interrupt detected.\nExiting...")
+            raise
+        except Exception as e:
+            logger.warning(f"Could not process '{tilekey}' ({tile_id=}).\nSkipping...")
+            logger.exception(e)
+            result["error"] = str(e)
+            return result
+
     def run(self):  # noqa: C901
+        if self.model_files is None or len(self.model_files) == 0:
+            raise ValueError("No model files provided. Please provide a list of model files.")
+        if len(self.export_bands) == 0:
+            raise ValueError("No export bands provided. Please provide a list of export bands.")
+
+        current_time = time.strftime("%Y-%m-%d_%H-%M-%S")
+        logger.info(f"Starting pipeline at {current_time}.")
+
+        # Storing the configuration as JSON file
+        self.output_data_dir.mkdir(parents=True, exist_ok=True)
+        with open(self.output_data_dir / f"{current_time}.config.json", "w") as f:
+            config = asdict(self)
+            # Convert everything to json serializable
+            for key, value in config.items():
+                if isinstance(value, Path):
+                    config[key] = str(value.resolve())
+                elif isinstance(value, list):
+                    config[key] = [str(v.resolve()) if isinstance(v, Path) else v for v in value]
+            json.dump(config, f)
+
+        from stopuhr import Chronometer
+        import pandas as pd
+        import torch
+        import smart_geocubes
+        from darts_ensemble import EnsembleV1
+        from darts.utils.cuda import debug_info, decide_device
+        from darts.utils.earthengine import init_ee
+        from darts.utils.logging import LoggingManager
+
+        timer = Chronometer(printer=logger.debug)
+        debug_info()
+        init_ee(self.ee_project, self.ee_use_highvolume)
+        self.device = decide_device(self.device)
+
+        # determine models to use
+        if isinstance(self.model_files, Path):
+            self.model_files = [self.model_files]
+            self.write_model_outputs = False
+        models = {model_file.stem: model_file for model_file in self.model_files}
+        self.ensemble = EnsembleV1(models, device=torch.device(self.device))
+
+        # Create the datacubes if they do not exist
+        LoggingManager.apply_logging_handlers("smart_geocubes")
+        arcticdem_resolution = self._arcticdem_resolution()
+        if arcticdem_resolution == 2:
+            accessor = smart_geocubes.ArcticDEM2m(self.arcticdem_dir)
+        elif arcticdem_resolution == 10:
+            accessor = smart_geocubes.ArcticDEM10m(self.arcticdem_dir)
+        if not accessor.created:
+            accessor.create(overwrite=False)
+        accessor = smart_geocubes.TCTrend(self.tcvis_dir)
+        if not accessor.created:
+            accessor.create(overwrite=False)
+
+        # Process all tiles
+        tileinfo = self._tileinfos()
+        logger.info(f"Found {len(tileinfo)} tiles to process.")
+        results = []
+        n_tiles = 0
+
+        for i, (tilekey, outpath) in enumerate(tileinfo):
+            result = self._process_tile(tilekey, outpath, models, timer)
+            results.append(result)
+
+            if result["status"] == "success":
+                n_tiles += 1
+                logger.info(f"Processed sample {i + 1} of {len(tileinfo)} '{tilekey}' ({result['tile_id']=}).")
+
+            # Save intermediate results
+            pd.DataFrame(results).to_parquet(self.output_data_dir / f"{current_time}.results.parquet")
+            timer.export().to_parquet(self.output_data_dir / f"{current_time}.stopuhr.parquet")
+
+        logger.info(f"Processed {n_tiles} tiles to {self.output_data_dir.resolve()}.")
+        timer.summary()
+
+    def run_old(self):  # noqa: C901
         if self.model_files is None or len(self.model_files) == 0:
             raise ValueError("No model files provided. Please provide a list of model files.")
         if len(self.export_bands) == 0:
@@ -146,6 +322,7 @@ class _BasePipeline(ABC):
         n_tiles = 0
         logger.info(f"Found {len(tileinfo)} tiles to process.")
         results = []
+        # TODO refactor this for loop into an additional method
         for i, (tilekey, outpath) in enumerate(tileinfo):
             tile_id = self._get_tile_id(tilekey)
             try:
@@ -238,6 +415,7 @@ class _BasePipeline(ABC):
                     pd.DataFrame(results).to_parquet(self.output_data_dir / f"{current_time}.results.parquet")
                 if len(timer.durations) > 0:
                     timer.export().to_parquet(self.output_data_dir / f"{current_time}.stopuhr.parquet")
+        # TODO end refactoring
         else:
             logger.info(f"Processed {n_tiles} tiles to {self.output_data_dir.resolve()}.")
             timer.summary()
