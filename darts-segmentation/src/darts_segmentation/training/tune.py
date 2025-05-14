@@ -116,7 +116,6 @@ def tune_mp_smp(
     data_split_by: list[str | float] | None = None,
     fold_method: Literal["kfold", "shuffle", "stratified", "region", "region-stratified"] = "kfold",
     total_folds: int = 5,
-    bands: list[str] | None = None,
     # Tune config
     n_folds: int | None = None,
     n_randoms: int = 3,
@@ -184,13 +183,13 @@ def tune_mp_smp(
                     data_split_by=data_split_by,
                     fold_method=fold_method,
                     total_folds=total_folds,
-                    bands=bands,
                     # CV config
                     n_folds=n_folds,
                     n_randoms=n_randoms,
                     tune_name=tune_name,
                     artifact_dir=artifact_dir,
                     # Hyperparameters
+                    bands=hp.bands,
                     model_arch=hp.model_arch,
                     model_encoder=hp.model_encoder,
                     model_encoder_weights=hp.model_encoder_weights,
@@ -258,7 +257,6 @@ def tune_smp(
     data_split_by: list[str | float] | None = None,
     fold_method: Literal["kfold", "shuffle", "stratified", "region", "region-stratified"] = "kfold",
     total_folds: int = 5,
-    bands: list[str] | None = None,
     # Tune config
     n_folds: int | None = None,
     n_randoms: int = 3,
@@ -372,7 +370,6 @@ def tune_smp(
         fold_method (Literal["kfold", "shuffle", "stratified", "region", "region-stratified"], optional):
             Method for cross-validation split. Defaults to "kfold".
         total_folds (int, optional): Total number of folds in cross-validation. Defaults to 5.
-        bands (list[str] | None, optional): List of bands to use. Defaults to None.
         n_folds (int | None, optional): Number of folds to perform in cross-validation.
             If None, all folds (total_folds) will be used.
             Defaults to None.
@@ -448,7 +445,6 @@ def tune_smp(
             data_split_by=data_split_by,
             fold_method=fold_method,
             total_folds=total_folds,
-            bands=bands,
             # CV config
             n_folds=n_folds,
             n_randoms=n_randoms,
@@ -456,6 +452,7 @@ def tune_smp(
             tune_name=tune_name,
             artifact_dir=artifact_dir,
             # Hyperparameters
+            bands=hp.bands,
             model_arch=hp.model_arch,
             model_encoder=hp.model_encoder,
             model_encoder_weights=hp.model_encoder_weights,

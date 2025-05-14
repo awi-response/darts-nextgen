@@ -60,6 +60,7 @@ def preprocess_planet_train_data(
     admin_dir: Path,
     preprocess_cache: Path | None = None,
     force_preprocess: bool = False,
+    append: bool = True,
     device: Literal["cuda", "cpu", "auto"] | int | None = None,
     ee_project: str | None = None,
     ee_use_highvolume: bool = True,
@@ -120,6 +121,7 @@ def preprocess_planet_train_data(
         admin_dir (Path): The directory containing the admin files.
         preprocess_cache (Path, optional): The directory to store the preprocessed data. Defaults to None.
         force_preprocess (bool, optional): Whether to force the preprocessing of the data. Defaults to False.
+        append (bool, optional): Whether to append the data to the existing data. Defaults to True.
         device (Literal["cuda", "cpu"] | int, optional): The device to run the model on.
             If "cuda" take the first device (0), if int take the specified device.
             If "auto" try to automatically select a free GPU (<50% memory usage).
@@ -226,8 +228,15 @@ def preprocess_planet_train_data(
         exclude_nan=exclude_nan,
         mask_erosion_size=mask_erosion_size,
         device=device,
+        append=append,
     )
     cache_manager = XarrayCacheManager(preprocess_cache / "planet_v2")
+
+    if append and (train_data_dir / "metadata.parquet").exists():
+        metadata = gpd.read_parquet(train_data_dir / "metadata.parquet")
+        already_processed_planet_ids = set(metadata["planet_id"].unique())
+        logger.info(f"Already processed {len(already_processed_planet_ids)} samples.")
+        footprints = footprints[~footprints.image_id.isin(already_processed_planet_ids)]
 
     for i, footprint in track(
         footprints.iterrows(), description="Processing samples", total=len(footprints), console=rich.get_console()
@@ -274,7 +283,7 @@ def preprocess_planet_train_data(
             region = _get_region_name(footprint, admin2)
 
             with timer("Save as patches"):
-                builder.add_tile(
+                builder.add_tile_batched(
                     tile=tile,
                     labels=footprint_labels,
                     region=region,

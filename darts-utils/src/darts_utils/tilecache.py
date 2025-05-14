@@ -94,7 +94,7 @@ class XarrayCacheManager:
 
         self.cache_dir.mkdir(exist_ok=True, parents=True)
         cache_path = self.cache_dir / f"{identifier}.nc"
-
+        logger.debug(f"Caching {identifier=} to {cache_path}")
         dataset.to_netcdf(cache_path, engine="h5netcdf")
         return True
 
@@ -119,11 +119,13 @@ class XarrayCacheManager:
             xr.Dataset: The Dataset (either loaded from cache or newly created)
 
         """
+        logger.debug(f"Checking cache for {identifier} ({force=})")
         cached_dataset = None if force else self.load_from_cache(identifier)
+        logger.debug(f"Cache hit: {cached_dataset is not None}")
         if cached_dataset is not None:
             return cached_dataset
 
         dataset = creation_func(*args, **kwargs)
-        if cached_dataset is not None:
+        if cached_dataset is None:
             self.save_to_cache(dataset, identifier)
         return dataset
