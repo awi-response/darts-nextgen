@@ -17,7 +17,7 @@ from darts_segmentation.training import (
 from darts_segmentation.training.tune import tune_mp_smp
 
 from darts import __version__
-from darts.pipelines import AOISentinel2Pipeline, PlanetPipeline, Sentinel2Pipeline
+from darts.pipelines import AOISentinel2Pipeline, PlanetPipeline, Sentinel2Pipeline, AOISentinel2RayPipeline
 from darts.training import (
     preprocess_planet_train_data,
 )
