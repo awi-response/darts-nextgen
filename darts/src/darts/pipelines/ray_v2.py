@@ -523,62 +523,17 @@ class Sentinel2RayPipeline(_BasePipeline):
 
 
 @dataclass
+@dataclass
 class AOISentinel2RayPipeline(_BasePipeline):
-    """Pipeline for Sentinel 2 data based on an area of interest.
-
-    Args:
-        aoi_shapefile (Path): The shapefile containing the area of interest.
-        start_date (str): The start date of the time series in YYYY-MM-DD format.
-        end_date (str): The end date of the time series in YYYY-MM-DD format.
-        max_cloud_cover (int): The maximum cloud cover percentage to use for filtering the Sentinel 2 scenes.
-            Defaults to 10.
-        input_cache (Path): The directory to use for caching the input data. Defaults to Path("data/cache/input").
-
-        model_files (Path | list[Path]): The path to the models to use for segmentation.
-            Can also be a single Path to only use one model. This implies `write_model_outputs=False`
-            If a list is provided, will use an ensemble of the models.
-        output_data_dir (Path): The "output" directory. Defaults to Path("data/output").
-        arcticdem_dir (Path): The directory containing the ArcticDEM data (the datacube and the extent files).
-            Will be created and downloaded if it does not exist.
-            Defaults to Path("data/download/arcticdem").
-        tcvis_dir (Path): The directory containing the TCVis data. Defaults to Path("data/download/tcvis").
-        device (Literal["cuda", "cpu"] | int, optional): The device to run the model on.
-            If "cuda" take the first device (0), if int take the specified device.
-            If "auto" try to automatically select a free GPU (<50% memory usage).
-            Defaults to "cuda" if available, else "cpu".
-        ee_project (str, optional): The Earth Engine project ID or number to use. May be omitted if
-            project is defined within persistent API credentials obtained via `earthengine authenticate`.
-        ee_use_highvolume (bool, optional): Whether to use the high volume server (https://earthengine-highvolume.googleapis.com).
-        tpi_outer_radius (int, optional): The outer radius of the annulus kernel for the tpi calculation
-            in m. Defaults to 100m.
-        tpi_inner_radius (int, optional): The inner radius of the annulus kernel for the tpi calculation
-            in m. Defaults to 0.
-        patch_size (int, optional): The patch size to use for inference. Defaults to 1024.
-        overlap (int, optional): The overlap to use for inference. Defaults to 16.
-        batch_size (int, optional): The batch size to use for inference. Defaults to 8.
-        reflection (int, optional): The reflection padding to use for inference. Defaults to 0.
-        binarization_threshold (float, optional): The threshold to binarize the probabilities. Defaults to 0.5.
-        mask_erosion_size (int, optional): The size of the disk to use for mask erosion and the edge-cropping.
-            Defaults to 10.
-        min_object_size (int, optional): The minimum object size to keep in pixel. Defaults to 32.
-        quality_level (int | Literal["high_quality", "low_quality", "none"], optional):
-            The quality level to use for the segmentation. Can also be an int.
-            In this case 0="none" 1="low_quality" 2="high_quality". Defaults to 1.
-        export_bands (list[str], optional): The bands to export.
-            Can be a list of "probabilities", "binarized", "polygonized", "extent", "thumbnail", "optical", "dem",
-            "tcvis" or concrete band-names.
-            Defaults to ["probabilities", "binarized", "polygonized", "extent", "thumbnail"].
-        write_model_outputs (bool, optional): Also save the model outputs, not only the ensemble result.
-            Defaults to False.
-        overwrite (bool, optional): Whether to overwrite existing files. Defaults to False.
-
-    """
+    """Pipeline for Sentinel 2 data based on an area of interest with Ray parallel processing."""
 
     aoi_shapefile: Path = None
     start_date: str = None
     end_date: str = None
     max_cloud_cover: int = 10
     input_cache: Path = Path("data/cache/input")
+    num_cpus: int = 1  # Number of CPUs to use for parallel processing
+    num_gpus: int = 0  # Number of GPUs to use for parallel processing
 
     def _arcticdem_resolution(self) -> Literal[10]:
         return 10
@@ -586,11 +541,9 @@ class AOISentinel2RayPipeline(_BasePipeline):
     @cached_property
     def _s2ids(self) -> list[str]:
         from darts_acquisition.s2 import get_s2ids_from_shape_ee
-
         return sorted(get_s2ids_from_shape_ee(self.aoi_shapefile, self.start_date, self.end_date, self.max_cloud_cover))
 
     def _get_tile_id(self, tilekey):
-        # In case of the GEE tilekey is also the s2id
         return tilekey
 
     def _tileinfos(self) -> list[tuple[str, Path]]:
@@ -603,11 +556,143 @@ class AOISentinel2RayPipeline(_BasePipeline):
 
     def _load_tile(self, s2id: str) -> "xr.Dataset":
         from darts_acquisition.s2 import load_s2_from_gee
-
         tile = load_s2_from_gee(s2id, cache=self.input_cache)
         return tile
 
+    def _process_tile_ray(self, tilekey, outpath, models, timer):
+        """Wrapper for process_tile to be used with Ray."""
+        try:
+            return self._process_tile(tilekey, outpath, models, timer)
+        except Exception as e:
+            logger.error(f"Error processing tile {tilekey}: {str(e)}")
+            return {
+                "tile_id": self._get_tile_id(tilekey),
+                "output_path": str(outpath.resolve()),
+                "status": "failed",
+                "error": str(e)
+            }
+
     @staticmethod
     def cli(*, pipeline: "AOISentinel2RayPipeline"):
-        """Run the sequential pipeline for AOI Sentinel 2 data."""
-        pipeline.run()
+        """Run the parallel pipeline for AOI Sentinel 2 data using Ray."""
+        pipeline.run_parallel()
+
+    def run_parallel(self):
+        """Run the pipeline with parallel processing using Ray."""
+        if self.model_files is None or len(self.model_files) == 0:
+            raise ValueError("No model files provided. Please provide a list of model files.")
+        if len(self.export_bands) == 0:
+            raise ValueError("No export bands provided. Please provide a list of export bands.")
+
+        current_time = time.strftime("%Y-%m-%d_%H-%M-%S")
+        logger.info(f"Starting parallel pipeline at {current_time}.")
+
+        # Storing the configuration as JSON file
+        self.output_data_dir.mkdir(parents=True, exist_ok=True)
+        with open(self.output_data_dir / f"{current_time}.config.json", "w") as f:
+            config = asdict(self)
+            # Convert everything to json serializable
+            for key, value in config.items():
+                if isinstance(value, Path):
+                    config[key] = str(value.resolve())
+                elif isinstance(value, list):
+                    config[key] = [str(v.resolve()) if isinstance(v, Path) else v for v in value]
+            json.dump(config, f)
+
+        import ray
+        from stopuhr import Chronometer
+        import pandas as pd
+        import torch
+        import smart_geocubes
+        from darts_ensemble import EnsembleV1
+        from darts.utils.cuda import debug_info, decide_device
+        from darts.utils.earthengine import init_ee
+        from darts.utils.logging import LoggingManager
+
+        import torch
+        print(f"CUDA available: {torch.cuda.is_available()}")
+        print(f"Number of GPUs: {torch.cuda.device_count()}")
+        if torch.cuda.is_available():
+            print(f"Current device: {torch.cuda.current_device()}")
+            print(f"Device name: {torch.cuda.get_device_name(0)}")
+
+        # Initialize Ray
+        ray.init(
+            num_cpus=self.num_cpus,
+            num_gpus=torch.cuda.device_count() if torch.cuda.is_available() else 0,
+            ignore_reinit_error=True,
+            include_dashboard=False  # Disable dashboard to reduce overhead
+        )
+
+        timer = Chronometer(printer=logger.debug)
+        debug_info()
+        init_ee(self.ee_project, self.ee_use_highvolume)
+        self.device = decide_device(self.device)
+
+        # determine models to use
+        if isinstance(self.model_files, Path):
+            self.model_files = [self.model_files]
+            self.write_model_outputs = False
+        models = {model_file.stem: model_file for model_file in self.model_files}
+        self.ensemble = EnsembleV1(models, device=torch.device(self.device))
+
+        # Create the datacubes if they do not exist
+        LoggingManager.apply_logging_handlers("smart_geocubes")
+        arcticdem_resolution = self._arcticdem_resolution()
+        if arcticdem_resolution == 2:
+            accessor = smart_geocubes.ArcticDEM2m(self.arcticdem_dir)
+        elif arcticdem_resolution == 10:
+            accessor = smart_geocubes.ArcticDEM10m(self.arcticdem_dir)
+        if not accessor.created:
+            accessor.create(overwrite=False)
+        accessor = smart_geocubes.TCTrend(self.tcvis_dir)
+        if not accessor.created:
+            accessor.create(overwrite=False)
+
+        # Process all tiles in parallel
+        tileinfo = self._tileinfos()
+        logger.info(f"Found {len(tileinfo)} tiles to process.")
+
+        # Put models and timer in Ray object store
+        models_ref = ray.put(models)
+        timer_ref = ray.put(timer)
+
+        # Create remote function
+        @ray.remote(num_cpus=1, num_gpus=1 if torch.cuda.is_available() and torch.cuda.device_count() > 0 else 0)
+        def process_tile_remote(pipeline, tilekey, outpath, models, timer):
+            import torch
+            if torch.cuda.is_available():
+                torch.cuda.init()
+            return pipeline._process_tile_ray(tilekey, outpath, models, timer)
+
+        # Process tiles in parallel
+        futures = []
+        for tilekey, outpath in tileinfo:
+            futures.append(process_tile_remote.remote(self, tilekey, outpath, models_ref, timer_ref))
+
+        # Collect results as they complete
+        results = []
+        while futures:
+            done, futures = ray.wait(futures)
+            for result in ray.get(done):
+                results.append(result)
+                # Save intermediate results
+                pd.DataFrame(results).to_parquet(self.output_data_dir / f"{current_time}.results.parquet")
+                # timer.export().to_parquet(self.output_data_dir / f"{current_time}.stopuhr.parquet")
+
+                # Save timings only if they exist
+                if hasattr(timer, 'durations') and timer.durations:
+                    try:
+                        timer.export().to_parquet(self.output_data_dir / f"{current_time}.stopuhr.parquet")
+                    except ValueError as e:
+                        logger.warning(f"Could not export timings: {str(e)}")
+        # Calculate success count
+        n_tiles = sum(1 for r in results if r["status"] == "success")
+
+        logger.info(f"Processed {n_tiles} tiles to {self.output_data_dir.resolve()}.")
+        # Final timer summary only if there are durations
+        if hasattr(timer, 'durations') and timer.durations:
+            timer.summary()
+
+        # Shutdown Ray
+        ray.shutdown()
