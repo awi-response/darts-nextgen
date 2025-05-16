@@ -77,7 +77,6 @@ class EnsembleV1:
         if keep_inputs:
             for k, v in probabilities.items():
                 tile[f"probabilities-{k}"] = v
-
         return tile
 
     def segment_tile_batched(

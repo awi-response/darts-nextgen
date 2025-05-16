@@ -218,6 +218,7 @@ def load_s2_from_gee(
     ds_s2 = XarrayCacheManager(cache).get_or_create(
         identifier=f"gee-s2srh-{s2id}-{''.join(bands_mapping.keys())}.nc",
         creation_func=_get_tile,
+        force=False
     )
 
     ds_s2 = ds_s2.rename_vars(bands_mapping)
@@ -304,6 +305,7 @@ def load_s2_from_stac(
     ds_s2 = XarrayCacheManager(cache).get_or_create(
         identifier=f"stac-s2l2a-{s2id}-{''.join(bands_mapping.keys())}.nc",
         creation_func=_get_tile,
+        force=False
     )
 
     ds_s2 = ds_s2.rename_vars(bands_mapping)

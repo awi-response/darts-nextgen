@@ -91,8 +91,11 @@ class SMPSegmenter:
         bands = []
         # e.g. band.names: ["red", "green", "blue", "relative_elevation", ...]
         # tile.data_vars: ["red", "green", "blue", "relative_elevation", ...]
-
+        print(f"The tile is ")
+        print(tile)
         for band in self.config["bands"]:
+            print(f"Band is of type {type(band)}")
+            print(f"Band is : {band}")
             band_data = tile[band.name]
             # Normalize the band data to the range [0, 1]
             # Follows CF conventions for scaling and offsetting

@@ -123,8 +123,11 @@ class _BasePipeline(ABC):
                     resolution=self._arcticdem_resolution(),
                     buffer=ceil(self.tpi_outer_radius / 2 * sqrt(2)),
                 )
+                print(f"Loaded arctic dem")
+                print(arcticdem)
             with timer("Loading TCVis", log=False):
                 tcvis = load_tcvis(tile.odc.geobox, self.tcvis_dir)
+                print("Loaded tcvis")
             with timer("Preprocessing tile", log=False):
                 tile = preprocess_legacy_fast(
                     tile,
@@ -134,6 +137,8 @@ class _BasePipeline(ABC):
                     self.tpi_inner_radius,
                     self.device,
                 )
+                print(f"Preprocessed tile")
+                print(tile)
             with timer("Segmenting", log=False):
                 tile = self.ensemble.segment_tile(
                     tile,
@@ -143,6 +148,7 @@ class _BasePipeline(ABC):
                     reflection=self.reflection,
                     keep_inputs=self.write_model_outputs,
                 )
+                print("Segmented tile")
             with timer("Postprosessing", log=False):
                 tile = prepare_export(
                     tile,
@@ -660,6 +666,10 @@ class AOISentinel2RayPipeline(_BasePipeline):
         # Create remote function
         @ray.remote(num_cpus=1, num_gpus=1 if torch.cuda.is_available() and torch.cuda.device_count() > 0 else 0)
         def process_tile_remote(pipeline, tilekey, outpath, models, timer):
+
+            # Initialize Earth Engine
+            init_ee(pipeline.ee_project, pipeline.ee_use_highvolume)
+
             import torch
             if torch.cuda.is_available():
                 torch.cuda.init()
@@ -696,3 +706,10 @@ class AOISentinel2RayPipeline(_BasePipeline):
 
         # Shutdown Ray
         ray.shutdown()
+
+if __name__ == "__main__":
+    print("running main now")
+    new_pipeline = Sentinel2RayPipeline(
+
+    )
+
