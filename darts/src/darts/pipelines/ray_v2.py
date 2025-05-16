@@ -710,6 +710,28 @@ class AOISentinel2RayPipeline(_BasePipeline):
 if __name__ == "__main__":
     print("running main now")
     new_pipeline = Sentinel2RayPipeline(
-
+        model_files=[Path("/taiga/toddn/rts-files/models/s2-tcvis-final-large_2025-02-12.ckpt")],
+        output_data_dir = Path("/taiga/toddn/data/output"),
+        arcticdem_dir= Path("/taiga/toddn/data/download/arcticdem"),
+        tcvis_dir = Path("/taiga/toddn/data/download/tcvis"),
+        # device: Literal["cuda", "cpu", "auto"] | int | None = None,
+        ee_project="uiuc-ncsa-permafrost",
+        ee_use_highvolume= True,
+        tpi_outer_radius=100,
+        tpi_inner_radius=0,
+        patch_size= 1024,
+        overlap= 256,
+        batch_size=8,
+        reflection = 0,
+        binarization_threshold= 0.5,
+        mask_erosion_size= 10,
+        min_object_size= 32,
+        # quality_level: int | Literal["high_quality", "low_quality", "none"] = 1
+        # export_bands: list[str] = field(
+        #     default_factory=lambda: ["probabilities", "binarized", "polygonized", "extent", "thumbnail"]
+        # ),
+        write_model_outputs=False,
+        overwrite = True,
     )
+    print("got a new pipeline")
 
