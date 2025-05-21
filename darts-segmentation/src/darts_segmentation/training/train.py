@@ -51,7 +51,8 @@ def train_smp(
     # Device and Manager config
     random_seed: int = 42,
     num_workers: int = 0,
-    device: int | str = "auto",
+    # device: int | str = "auto",
+    device: list[int | str] = ["auto"],
     # Wandb config
     wandb_entity: str | None = None,
     wandb_project: str | None = None,
@@ -212,7 +213,7 @@ def train_smp(
         # Logging config
         f"{max_epochs=}\n\t{log_every_n_steps=}\n\t{check_val_every_n_epoch=}\n\t{early_stopping_patience=}\n\t{plot_every_n_val_epochs=}\n\t"
         # Run config
-        f"{num_workers=}\n\t{device=}\n\t{random_seed=}"
+        # f"{num_workers=}\n\t{device=}\n\t{random_seed=}"
     )
     if continue_from_checkpoint:
         logger.debug(f"Continuing from checkpoint '{continue_from_checkpoint.resolve()}'")
@@ -326,8 +327,9 @@ def train_smp(
         log_every_n_steps=log_every_n_steps,
         logger=trainer_loggers,
         check_val_every_n_epoch=check_val_every_n_epoch,
-        accelerator="gpu" if isinstance(device, int) else device,
-        devices=[device] if isinstance(device, int) else "auto",
+        accelerator="gpu" if isinstance(device, list) else device,
+        devices=device if isinstance(device[0], int) else "auto",
+        strategy="ddp_find_unused_parameters_true",
         deterministic=False,  # True does not work for some reason
         # profiler=profiler,
     )
