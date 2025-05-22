@@ -163,7 +163,7 @@ def train_smp(
         plot_every_n_val_epochs (int, optional): Plot validation samples every n epochs. Defaults to 5.
         random_seed (int, optional): Random seed for deterministic training. Defaults to 42.
         num_workers (int, optional): Number of Dataloader workers. Defaults to 0.
-        device (int | str, optional): The device to run the model on. Defaults to "auto".
+        device (list[int | str], optional): The device(s) to run the model on. Defaults to ["auto"].
         wandb_entity (str | None, optional): Weights and Biases Entity. Defaults to None.
         wandb_project (str | None, optional): Weights and Biases Project. Defaults to None.
 
