@@ -204,6 +204,7 @@ def train_smp(
         f"Starting training '{run_name}' ('{run_id}') with data from {train_data_dir.resolve()}."
         f" Artifacts will be saved to {(artifact_dir / f'{run_name}-{run_id}').resolve()}."
     )
+    device_str = ",".join(str(d) for d in device)  # make a string with device list
     logger.debug(
         f"Using config:\n\t"
         # Hyperparameters
@@ -213,7 +214,7 @@ def train_smp(
         # Logging config
         f"{max_epochs=}\n\t{log_every_n_steps=}\n\t{check_val_every_n_epoch=}\n\t{early_stopping_patience=}\n\t{plot_every_n_val_epochs=}\n\t"
         # Run config
-        # f"{num_workers=}\n\t{device=}\n\t{random_seed=}"
+        f"{num_workers=}\n\t{device_str=}\n\t{random_seed=}"
     )
     if continue_from_checkpoint:
         logger.debug(f"Continuing from checkpoint '{continue_from_checkpoint.resolve()}'")
