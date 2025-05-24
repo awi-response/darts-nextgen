@@ -168,7 +168,7 @@ class _BasePipeline(ABC):
                         tile.odc.geobox,
                         self.arcticdem_dir,
                         resolution=arcticdem_resolution,
-                        buffer=ceil(self.tpi_outer_radius / 2 * sqrt(2)),
+                        buffer=ceil(self.tpi_outer_radius / arcticdem_resolution * sqrt(2)),
                     )
                 with timer("Loading TCVis", log=False):
                     tcvis = load_tcvis(tile.odc.geobox, self.tcvis_dir)
