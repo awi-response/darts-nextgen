@@ -181,7 +181,7 @@ def train_smp(
     from lightning.pytorch.loggers import CSVLogger, WandbLogger
 
     from darts_segmentation.segment import SMPSegmenterConfig
-    from darts_segmentation.training.callbacks import BinarySegmentationMetrics
+    from darts_segmentation.training.callbacks import BinarySegmentationMetrics, BinarySegmentationPreview
     from darts_segmentation.training.data import DartsDataModule
     from darts_segmentation.training.module import LitSMP
     from darts_segmentation.utils import Bands
@@ -307,6 +307,11 @@ def train_smp(
             is_crossval=bool(cv_name),
             batch_size=batch_size,
             patch_size=data_config["patch_size"],
+        ),
+        BinarySegmentationPreview(
+            bands=bands,
+            val_set=f"val{fold}",
+            plot_every_n_val_epochs=plot_every_n_val_epochs,
         ),
         # ThroughputMonitor(batch_size_fn=lambda batch: batch[0].size(0), window_size=log_every_n_steps),
     ]

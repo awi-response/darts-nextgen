@@ -30,6 +30,7 @@ class Hyperparameters:
     focal_loss_alpha: float | None = None
     focal_loss_gamma: float = 2.0
     batch_size: int = 8
+    bands: list[str] | None = (None,)
 
 
 HP_NAMES = [field.name for field in Hyperparameters.__dataclass_fields__.values()]
