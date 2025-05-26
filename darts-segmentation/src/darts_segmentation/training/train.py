@@ -449,7 +449,6 @@ def test_smp(
 
     data_config = toml.load(train_data_dir / "config.toml")["darts"]
 
-    data_config = toml.load(train_data_dir / "config.toml")["darts"]
     all_bands = Bands.from_config(data_config)
     bands = all_bands.filter(bands) if bands else all_bands
 
