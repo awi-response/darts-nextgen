@@ -74,7 +74,7 @@ class _BasePipelineRefactored(ABC):
     def _load_tile(self, tileinfo: Any) -> "xr.Dataset":
         pass
 
-    def _process_tile(self, i, tilekey, outpath, tileinfo, models, timer, n_tiles, current_time, results):
+    def _process_tile(self, i, tilekey, outpath, tileinfo, models, timer, ensemble, n_tiles, current_time, results):
         """Process a single tile in the pipeline.
 
         Args:
@@ -145,7 +145,7 @@ class _BasePipelineRefactored(ABC):
                 print(f"Preprocessed tile")
                 print(tile)
             with timer("Segmenting", log=False):
-                tile = self.ensemble.segment_tile(
+                tile = ensemble.segment_tile(
                     tile,
                     patch_size=self.patch_size,
                     overlap=self.overlap,
@@ -168,6 +168,7 @@ class _BasePipelineRefactored(ABC):
                 print("Postprocessing")
                 print(tile)
             with timer("Exporting", log=False):
+                print("exporting to outpath", outpath)
                 export_tile(
                     tile,
                     outpath,
@@ -186,7 +187,6 @@ class _BasePipelineRefactored(ABC):
                 }
             )
             logger.info(f"Processed sample {i + 1} of {len(tileinfo)} '{tilekey}' ({tile_id=}).")
-            return results
         except KeyboardInterrupt:
             logger.warning("Keyboard interrupt detected.\nExiting...")
             raise
@@ -202,6 +202,9 @@ class _BasePipelineRefactored(ABC):
                 }
             )
         finally:
+            print("in finally part")
+            print(len(results))
+            print('the length of the results')
             if len(results) > 0:
                 pd.DataFrame(results).to_parquet(self.output_data_dir / f"{current_time}.results.parquet")
             if len(timer.durations) > 0:
@@ -294,7 +297,7 @@ class _BasePipelineRefactored(ABC):
 
         for i, (tilekey, outpath) in enumerate(tileinfo):
             print(f"Using new process tile method")
-            (results, n_tiles) = self._process_tile( i, tilekey, outpath, tileinfo, models, timer, n_tiles,current_time, results)
+            (results, n_tiles) = self._process_tile( i, tilekey, outpath, tileinfo, models, timer, ensemble, n_tiles,current_time, results)
             print('got new result')
             print(results)
             print(n_tiles)
