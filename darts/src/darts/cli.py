@@ -17,7 +17,7 @@ from darts_segmentation.training import (
 from darts_segmentation.training.tune import tune_mp_smp
 
 from darts import __version__
-from darts.pipelines import AOISentinel2Pipeline, PlanetPipeline, Sentinel2Pipeline, AOISentinel2RayPipeline
+from darts.pipelines import AOISentinel2Pipeline, PlanetPipeline, Sentinel2Pipeline, AOISentinel2RayPipeline, AOISentinel2PipelineRefactored
 from darts.training import (
     preprocess_planet_train_data,
 )
@@ -84,6 +84,8 @@ app.command(name="run-sequential-aoi-sentinel2-pipeline", group=pipeline_group)(
 app.command(name="run-sequential-sentinel2-pipeline", group=pipeline_group)(Sentinel2Pipeline.cli)
 app.command(name="run-sequential-planet-pipeline", group=pipeline_group)(PlanetPipeline.cli)
 app.command(name="run-ray-aoi-sentinel2-pipeline", group=pipeline_group)(AOISentinel2RayPipeline.cli)
+app.command(name="run-ray-aoi-sentinel2-pipeline-refactored", group=pipeline_group)(AOISentinel2PipelineRefactored.cli)
+
 
 app.command(group=train_group)(preprocess_planet_train_data)
 app.command(group=train_group)(train_smp)
@@ -121,3 +123,6 @@ def start_app():
         logger.info("Closing...")
     except Exception as e:
         logger.exception(e)
+
+if __name__ == "__main__":
+    start_app()

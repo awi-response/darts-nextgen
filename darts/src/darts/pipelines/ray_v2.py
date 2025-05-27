@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 
 @Parameter(name="*")
 @dataclass
-class _BasePipeline(ABC):
+class _BasePipelineNew(ABC):
     """Base class for all v2 pipelines.
 
     This class provides the run method which is the main entry point for all pipelines.
@@ -434,7 +434,7 @@ class _BasePipeline(ABC):
 
 
 @dataclass
-class Sentinel2RayPipeline(_BasePipeline):
+class Sentinel2RayPipeline(_BasePipelineNew):
     """Pipeline for Sentinel 2 data.
 
     Args:
@@ -527,10 +527,8 @@ class Sentinel2RayPipeline(_BasePipeline):
         """Run the sequential pipeline for Sentinel 2 data."""
         pipeline.run()
 
-
 @dataclass
-@dataclass
-class AOISentinel2RayPipeline(_BasePipeline):
+class AOISentinel2RayPipeline(_BasePipelineNew):
     """Pipeline for Sentinel 2 data based on an area of interest with Ray parallel processing."""
 
     aoi_shapefile: Path = None
@@ -707,31 +705,36 @@ class AOISentinel2RayPipeline(_BasePipeline):
         # Shutdown Ray
         ray.shutdown()
 
-if __name__ == "__main__":
-    print("running main now")
-    new_pipeline = Sentinel2RayPipeline(
-        model_files=[Path("/taiga/toddn/rts-files/models/s2-tcvis-final-large_2025-02-12.ckpt")],
-        output_data_dir = Path("/taiga/toddn/data/output"),
-        arcticdem_dir= Path("/taiga/toddn/data/download/arcticdem"),
-        tcvis_dir = Path("/taiga/toddn/data/download/tcvis"),
-        # device: Literal["cuda", "cpu", "auto"] | int | None = None,
-        ee_project="uiuc-ncsa-permafrost",
-        ee_use_highvolume= True,
-        tpi_outer_radius=100,
-        tpi_inner_radius=0,
-        patch_size= 1024,
-        overlap= 256,
-        batch_size=8,
-        reflection = 0,
-        binarization_threshold= 0.5,
-        mask_erosion_size= 10,
-        min_object_size= 32,
-        # quality_level: int | Literal["high_quality", "low_quality", "none"] = 1
-        # export_bands: list[str] = field(
-        #     default_factory=lambda: ["probabilities", "binarized", "polygonized", "extent", "thumbnail"]
-        # ),
-        write_model_outputs=False,
-        overwrite = True,
-    )
-    print("got a new pipeline")
+# if __name__ == "__main__":
+#     print("running main now")
+#     new_pipeline = AOISentinel2RayPipeline(
+#         aoi_shapefile=Path("/taiga/toddn/rts-files/tiles_nwt_2010_2016.geojson"),
+#         start_date="2024-07",
+#         end_date="2024-09",
+#         max_cloud_cover=10,
+#         model_files=[Path("/taiga/toddn/rts-files/models/s2-tcvis-final-large_2025-02-12.ckpt")],
+#         output_data_dir = Path("/taiga/toddn/data/output"),
+#         arcticdem_dir= Path("/taiga/toddn/data/download/arcticdem"),
+#         tcvis_dir = Path("/taiga/toddn/data/download/tcvis"),
+#         # device: Literal["cuda", "cpu", "auto"] | int | None = None,
+#         ee_project="uiuc-ncsa-permafrost",
+#         ee_use_highvolume= True,
+#         tpi_outer_radius=100,
+#         tpi_inner_radius=0,
+#         patch_size= 1024,
+#         overlap= 256,
+#         batch_size=8,
+#         reflection = 0,
+#         binarization_threshold= 0.5,
+#         mask_erosion_size= 10,
+#         min_object_size= 32,
+#         # quality_level: int | Literal["high_quality", "low_quality", "none"] = 1
+#         # export_bands: list[str] = field(
+#         #     default_factory=lambda: ["probabilities", "binarized", "polygonized", "extent", "thumbnail"]
+#         # ),
+#         write_model_outputs=False,
+#         overwrite = True,
+#     )
+#     print("got a new pipeline")
+#     new_pipeline.run()
 
