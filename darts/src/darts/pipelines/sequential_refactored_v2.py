@@ -74,6 +74,140 @@ class _BasePipelineRefactored(ABC):
     def _load_tile(self, tileinfo: Any) -> "xr.Dataset":
         pass
 
+    def _process_tile(self, i, tilekey, outpath, tileinfo, models, timer, n_tiles, current_time, results):
+        """Process a single tile in the pipeline.
+
+        Args:
+            tilekey: The tile identifier (could be path, ID, etc.)
+            outpath: Path where output should be saved
+            models: Dictionary of model names and paths
+            timer: Chronometer instance for timing operations
+
+        Returns:
+            Dictionary containing processing results for this tile
+        """
+        from darts_acquisition import load_arcticdem, load_tcvis
+        from darts_export import export_tile, missing_outputs
+        from darts_postprocessing import prepare_export
+        from darts_preprocessing import preprocess_legacy_fast
+        import pandas as pd
+
+        tile_id = self._get_tile_id(tilekey)
+        result = {
+            "tile_id": tile_id,
+            "output_path": str(outpath.resolve()),
+            "status": "failed",  # Default to failed, will update if successful
+            "error": None,
+        }
+        print(f"First result in process tile method")
+        print(result)
+        try:
+            if not self.overwrite:
+                mo = missing_outputs(outpath, bands=self.export_bands, ensemble_subsets=models.keys())
+                if mo == "none":
+                    logger.info(f"Tile {tile_id} already processed. Skipping...")
+                    result["status"] = "skipped"
+                    return result
+                if mo == "some":
+                    logger.warning(
+                        f"Tile {tile_id} already processed. Some outputs are missing."
+                        " Skipping because overwrite=False..."
+                    )
+                    result["status"] = "skipped_partial"
+                    return result
+
+            with timer("Loading optical data", log=False):
+                tile = self._load_tile(tilekey)
+                print("Loaded optical data")
+                print(tile)
+            with timer("Loading ArcticDEM", log=False):
+                arcticdem = load_arcticdem(
+                    tile.odc.geobox,
+                    self.arcticdem_dir,
+                    resolution=self._arcticdem_resolution(),
+                    buffer=ceil(self.tpi_outer_radius / 2 * sqrt(2)),
+                )
+                print(f"Loaded arctic dem")
+                print(arcticdem)
+            with timer("Loading TCVis", log=False):
+                tcvis = load_tcvis(tile.odc.geobox, self.tcvis_dir)
+                print("Loaded tcvis")
+                print(tcvis)
+            with timer("Preprocessing tile", log=False):
+                tile = preprocess_legacy_fast(
+                    tile,
+                    arcticdem,
+                    tcvis,
+                    self.tpi_outer_radius,
+                    self.tpi_inner_radius,
+                    self.device,
+                )
+                print(f"Preprocessed tile")
+                print(tile)
+            with timer("Segmenting", log=False):
+                tile = self.ensemble.segment_tile(
+                    tile,
+                    patch_size=self.patch_size,
+                    overlap=self.overlap,
+                    batch_size=self.batch_size,
+                    reflection=self.reflection,
+                    keep_inputs=self.write_model_outputs,
+                )
+                print("Segmented tile")
+                print(tile)
+            with timer("Postprosessing", log=False):
+                tile = prepare_export(
+                    tile,
+                    bin_threshold=self.binarization_threshold,
+                    mask_erosion_size=self.mask_erosion_size,
+                    min_object_size=self.min_object_size,
+                    quality_level=self.quality_level,
+                    ensemble_subsets=models.keys() if self.write_model_outputs else [],
+                    device=self.device,
+                )
+                print("Postprocessing")
+                print(tile)
+            with timer("Exporting", log=False):
+                export_tile(
+                    tile,
+                    outpath,
+                    bands=self.export_bands,
+                    ensemble_subsets=models.keys() if self.write_model_outputs else [],
+                )
+                print("exporting")
+                print(tile)
+            n_tiles += 1
+            results.append(
+                {
+                    "tile_id": tile_id,
+                    "output_path": str(outpath.resolve()),
+                    "status": "success",
+                    "error": None,
+                }
+            )
+            logger.info(f"Processed sample {i + 1} of {len(tileinfo)} '{tilekey}' ({tile_id=}).")
+            return results
+        except KeyboardInterrupt:
+            logger.warning("Keyboard interrupt detected.\nExiting...")
+            raise
+        except Exception as e:
+            logger.warning(f"Could not process '{tilekey}' ({tile_id=}).\nSkipping...")
+            logger.exception(e)
+            results.append(
+                {
+                    "tile_id": tile_id,
+                    "output_path": str(outpath.resolve()),
+                    "status": "failed",
+                    "error": str(e),
+                }
+            )
+        finally:
+            if len(results) > 0:
+                pd.DataFrame(results).to_parquet(self.output_data_dir / f"{current_time}.results.parquet")
+            if len(timer.durations) > 0:
+                timer.export().to_parquet(self.output_data_dir / f"{current_time}.stopuhr.parquet")
+            return (results, n_tiles)
+
     def run(self):  # noqa: C901
         if self.model_files is None or len(self.model_files) == 0:
             raise ValueError("No model files provided. Please provide a list of model files.")
@@ -152,106 +286,111 @@ class _BasePipelineRefactored(ABC):
         print('the tile key')
         n_tiles = 0
         logger.info(f"Found {len(tileinfo)} tiles to process.")
+        #     def _process_tile(self, i, tilekey, outpath, tileinfo, models, timer, n_tiles, current_time, results):
 
-        for i, (tilekey, output) in enumerate(tileinfo):
-            print("for loop", i)
-            print(i, tilekey, output)
-            time.sleep(5)
 
 
         results = []
+
         for i, (tilekey, outpath) in enumerate(tileinfo):
-            tile_id = self._get_tile_id(tilekey)
-            try:
-                if not self.overwrite:
-                    mo = missing_outputs(outpath, bands=self.export_bands, ensemble_subsets=models.keys())
-                    if mo == "none":
-                        logger.info(f"Tile {tile_id} already processed. Skipping...")
-                        continue
-                    if mo == "some":
-                        logger.warning(
-                            f"Tile {tile_id} already processed. Some outputs are missing."
-                            " Skipping because overwrite=False..."
-                        )
-                        continue
+            print(f"Using new process tile method")
+            (results, n_tiles) = self._process_tile( i, tilekey, outpath, tileinfo, models, timer, n_tiles,current_time, results)
+            print('got new result')
+            print(results)
+            print(n_tiles)
 
-                with timer("Loading optical data", log=False):
-                    tile = self._load_tile(tilekey)
-                with timer("Loading ArcticDEM", log=False):
-                    arcticdem = load_arcticdem(
-                        tile.odc.geobox,
-                        self.arcticdem_dir,
-                        resolution=arcticdem_resolution,
-                        buffer=ceil(self.tpi_outer_radius / 2 * sqrt(2)),
-                    )
-                with timer("Loading TCVis", log=False):
-                    tcvis = load_tcvis(tile.odc.geobox, self.tcvis_dir)
-                with timer("Preprocessing tile", log=False):
-                    tile = preprocess_legacy_fast(
-                        tile,
-                        arcticdem,
-                        tcvis,
-                        self.tpi_outer_radius,
-                        self.tpi_inner_radius,
-                        self.device,
-                    )
-                with timer("Segmenting", log=False):
-                    tile = ensemble.segment_tile(
-                        tile,
-                        patch_size=self.patch_size,
-                        overlap=self.overlap,
-                        batch_size=self.batch_size,
-                        reflection=self.reflection,
-                        keep_inputs=self.write_model_outputs,
-                    )
-                with timer("Postprosessing", log=False):
-                    tile = prepare_export(
-                        tile,
-                        bin_threshold=self.binarization_threshold,
-                        mask_erosion_size=self.mask_erosion_size,
-                        min_object_size=self.min_object_size,
-                        quality_level=self.quality_level,
-                        ensemble_subsets=models.keys() if self.write_model_outputs else [],
-                        device=self.device,
-                    )
-
-                with timer("Exporting", log=False):
-                    export_tile(
-                        tile,
-                        outpath,
-                        bands=self.export_bands,
-                        ensemble_subsets=models.keys() if self.write_model_outputs else [],
-                    )
-
-                n_tiles += 1
-                results.append(
-                    {
-                        "tile_id": tile_id,
-                        "output_path": str(outpath.resolve()),
-                        "status": "success",
-                        "error": None,
-                    }
-                )
-                logger.info(f"Processed sample {i + 1} of {len(tileinfo)} '{tilekey}' ({tile_id=}).")
-            except KeyboardInterrupt:
-                logger.warning("Keyboard interrupt detected.\nExiting...")
-                raise KeyboardInterrupt
-            except Exception as e:
-                logger.warning(f"Could not process '{tilekey}' ({tile_id=}).\nSkipping...")
-                logger.exception(e)
-                results.append(
-                    {
-                        "tile_id": tile_id,
-                        "output_path": str(outpath.resolve()),
-                        "status": "failed",
-                        "error": str(e),
-                    }
-                )
-            finally:
-                if len(results) > 0:
-                    pd.DataFrame(results).to_parquet(self.output_data_dir / f"{current_time}.results.parquet")
-                if len(timer.durations) > 0:
-                    timer.export().to_parquet(self.output_data_dir / f"{current_time}.stopuhr.parquet")
+        # for i, (tilekey, outpath) in enumerate(tileinfo):
+        #     tile_id = self._get_tile_id(tilekey)
+        #     try:
+        #         if not self.overwrite:
+        #             mo = missing_outputs(outpath, bands=self.export_bands, ensemble_subsets=models.keys())
+        #             if mo == "none":
+        #                 logger.info(f"Tile {tile_id} already processed. Skipping...")
+        #                 continue
+        #             if mo == "some":
+        #                 logger.warning(
+        #                     f"Tile {tile_id} already processed. Some outputs are missing."
+        #                     " Skipping because overwrite=False..."
+        #                 )
+        #                 continue
+        #
+        #         with timer("Loading optical data", log=False):
+        #             tile = self._load_tile(tilekey)
+        #         with timer("Loading ArcticDEM", log=False):
+        #             arcticdem = load_arcticdem(
+        #                 tile.odc.geobox,
+        #                 self.arcticdem_dir,
+        #                 resolution=arcticdem_resolution,
+        #                 buffer=ceil(self.tpi_outer_radius / 2 * sqrt(2)),
+        #             )
+        #         with timer("Loading TCVis", log=False):
+        #             tcvis = load_tcvis(tile.odc.geobox, self.tcvis_dir)
+        #         with timer("Preprocessing tile", log=False):
+        #             tile = preprocess_legacy_fast(
+        #                 tile,
+        #                 arcticdem,
+        #                 tcvis,
+        #                 self.tpi_outer_radius,
+        #                 self.tpi_inner_radius,
+        #                 self.device,
+        #             )
+        #         with timer("Segmenting", log=False):
+        #             tile = ensemble.segment_tile(
+        #                 tile,
+        #                 patch_size=self.patch_size,
+        #                 overlap=self.overlap,
+        #                 batch_size=self.batch_size,
+        #                 reflection=self.reflection,
+        #                 keep_inputs=self.write_model_outputs,
+        #             )
+        #         with timer("Postprosessing", log=False):
+        #             tile = prepare_export(
+        #                 tile,
+        #                 bin_threshold=self.binarization_threshold,
+        #                 mask_erosion_size=self.mask_erosion_size,
+        #                 min_object_size=self.min_object_size,
+        #                 quality_level=self.quality_level,
+        #                 ensemble_subsets=models.keys() if self.write_model_outputs else [],
+        #                 device=self.device,
+        #             )
+        #
+        #         with timer("Exporting", log=False):
+        #             export_tile(
+        #                 tile,
+        #                 outpath,
+        #                 bands=self.export_bands,
+        #                 ensemble_subsets=models.keys() if self.write_model_outputs else [],
+        #             )
+        #
+        #         n_tiles += 1
+        #         results.append(
+        #             {
+        #                 "tile_id": tile_id,
+        #                 "output_path": str(outpath.resolve()),
+        #                 "status": "success",
+        #                 "error": None,
+        #             }
+        #         )
+        #         logger.info(f"Processed sample {i + 1} of {len(tileinfo)} '{tilekey}' ({tile_id=}).")
+        #     except KeyboardInterrupt:
+        #         logger.warning("Keyboard interrupt detected.\nExiting...")
+        #         raise KeyboardInterrupt
+        #     except Exception as e:
+        #         logger.warning(f"Could not process '{tilekey}' ({tile_id=}).\nSkipping...")
+        #         logger.exception(e)
+        #         results.append(
+        #             {
+        #                 "tile_id": tile_id,
+        #                 "output_path": str(outpath.resolve()),
+        #                 "status": "failed",
+        #                 "error": str(e),
+        #             }
+        #         )
+        #     finally:
+        #         if len(results) > 0:
+        #             pd.DataFrame(results).to_parquet(self.output_data_dir / f"{current_time}.results.parquet")
+        #         if len(timer.durations) > 0:
+        #             timer.export().to_parquet(self.output_data_dir / f"{current_time}.stopuhr.parquet")
         else:
             logger.info(f"Processed {n_tiles} tiles to {self.output_data_dir.resolve()}.")
             timer.summary()
