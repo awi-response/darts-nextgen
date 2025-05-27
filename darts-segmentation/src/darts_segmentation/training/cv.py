@@ -213,6 +213,7 @@ def cross_validation_smp(
     artifact_dir = artifact_dir if tune_name else artifact_dir / "_cross_validations"
     cv_name = cv_name or generate_counted_name(artifact_dir)
     artifact_dir = artifact_dir / cv_name
+    artifact_dir.mkdir(parents=True, exist_ok=True)
 
     n_folds = n_folds or total_folds
 

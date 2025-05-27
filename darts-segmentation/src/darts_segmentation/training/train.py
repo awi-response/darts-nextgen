@@ -195,6 +195,7 @@ def train_smp(
     # Meaning for cv the artifact_dir of this function should be either
     # {artifact_dir}/_cross_validations/{cv_name} or {artifact_dir}/{tune_name}/{cv_name}
     artifact_dir = artifact_dir if cv_name else artifact_dir / "_runs"
+    artifact_dir.mkdir(parents=True, exist_ok=True)
 
     # Create unique run identification (name can be specified by user, id can be interpreded as a 'version')
     run_name = run_name or generate_counted_name(artifact_dir)
