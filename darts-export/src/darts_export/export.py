@@ -91,7 +91,9 @@ def export_tile(  # noqa: C901
 
     """
     out_dir.mkdir(parents=True, exist_ok=True)
-
+    print('in export tile')
+    print('outdir is')
+    print(out_dir)
     for band in bands:
         match band:
             case "polygonized":

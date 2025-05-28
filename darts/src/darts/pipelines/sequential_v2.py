@@ -234,6 +234,9 @@ class _BasePipeline(ABC):
                     }
                 )
             finally:
+                print(f"In the finally")
+                print(len(results))
+
                 if len(results) > 0:
                     pd.DataFrame(results).to_parquet(self.output_data_dir / f"{current_time}.results.parquet")
                 if len(timer.durations) > 0:
