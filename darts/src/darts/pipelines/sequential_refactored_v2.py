@@ -297,6 +297,7 @@ class _BasePipelineRefactored(ABC):
 
         results = []
 
+        # TODO fix this method
         for i, (tilekey, outpath) in enumerate(tileinfo):
             print(f"Using new process tile method")
             (results, n_tiles) = self._process_tile( i, tilekey, outpath, tileinfo, models, timer, ensemble, n_tiles,current_time, results)
