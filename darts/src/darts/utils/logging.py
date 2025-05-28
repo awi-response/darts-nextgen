@@ -97,7 +97,7 @@ class LoggingManagerSingleton:
         rich_fmt = (
             "%(message)s"
             if not verbose
-            else "%(name)s@%(processName)s(%(process)d)-%(threadName)s(%(thread)d):%(levelname)s - %(message)s"
+            else "%(name)s@%(processName)s(%(process)d)-%(threadName)s(%(thread)d) - %(message)s"
         )
         rich_handler.setFormatter(
             logging.Formatter(
