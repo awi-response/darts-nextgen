@@ -36,11 +36,12 @@ class EnsembleV1:
         )
         self.models = {k: SMPSegmenter(v, device=device) for k, v in model_paths.items()}
 
-    @stopwatch.f(
-        "Ensemble inference",
-        printer=logger.debug,
-        print_kwargs=["patch_size", "overlap", "batch_size", "reflection", "keep_inputs"],
-    )
+    # TODO removed decorator
+    # @stopwatch.f(
+    #     "Ensemble inference",
+    #     printer=logger.debug,
+    #     print_kwargs=["patch_size", "overlap", "batch_size", "reflection", "keep_inputs"],
+    # )
     def segment_tile(
         self,
         tile: xr.Dataset,
@@ -65,6 +66,8 @@ class EnsembleV1:
             Input tile augmented by a predicted `probabilities` layer with type float32 and range [0, 1].
 
         """
+        print("in segment tile, tile is")
+        print(tile)
         probabilities = {}
         for model_name, model in self.models.items():
             probabilities[model_name] = model.segment_tile(

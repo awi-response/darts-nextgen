@@ -127,11 +127,12 @@ class SMPSegmenter:
         # TODO: Test this
         return torch.stack(bands, dim=0).reshape(len(tiles), len(self.config["bands"]), *bands[0].shape)
 
-    @stopwatch.f(
-        "Segmenting tile",
-        logger.debug,
-        print_kwargs=["patch_size", "overlap", "batch_size", "reflection"],
-    )
+    # TODO removed
+    # @stopwatch.f(
+    #     "Segmenting tile",
+    #     logger.debug,
+    #     print_kwargs=["patch_size", "overlap", "batch_size", "reflection"],
+    # )
     def segment_tile(
         self, tile: xr.Dataset, patch_size: int = 1024, overlap: int = 16, batch_size: int = 8, reflection: int = 0
     ) -> xr.Dataset:

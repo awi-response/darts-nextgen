@@ -91,6 +91,7 @@ class _BasePipelineRefactored(ABC):
         from darts_postprocessing import prepare_export
         from darts_preprocessing import preprocess_legacy_fast
         import pandas as pd
+        # TODO create timer here
 
         tile_id = self._get_tile_id(tilekey)
         result = {
@@ -220,17 +221,18 @@ class _BasePipelineRefactored(ABC):
         current_time = time.strftime("%Y-%m-%d_%H-%M-%S")
         logger.info(f"Starting pipeline at {current_time}.")
 
+        # TODO commented out
         # Storing the configuration as JSON file
-        self.output_data_dir.mkdir(parents=True, exist_ok=True)
-        with open(self.output_data_dir / f"{current_time}.config.json", "w") as f:
-            config = asdict(self)
-            # Convert everything to json serializable
-            for key, value in config.items():
-                if isinstance(value, Path):
-                    config[key] = str(value.resolve())
-                elif isinstance(value, list):
-                    config[key] = [str(v.resolve()) if isinstance(v, Path) else v for v in value]
-            json.dump(config, f)
+        # self.output_data_dir.mkdir(parents=True, exist_ok=True)
+        # with open(self.output_data_dir / f"{current_time}.config.json", "w") as f:
+        #     config = asdict(self)
+        #     # Convert everything to json serializable
+        #     for key, value in config.items():
+        #         if isinstance(value, Path):
+        #             config[key] = str(value.resolve())
+        #         elif isinstance(value, list):
+        #             config[key] = [str(v.resolve()) if isinstance(v, Path) else v for v in value]
+        #     json.dump(config, f)
 
         from stopuhr import Chronometer
 
