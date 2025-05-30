@@ -61,3 +61,24 @@ Weights & Biases is optionally used for further tracking and logging.
 Wandb will create a run `run_id` named `{run_name}`, meaning the id can be used to directly access the run via link and the name can be used for searching a run.
 For cross-validation and tuning `cv_name` and `tune_name` are set as `job_type` and `group` to emulate sweeps.
 This is a workaround and could potentially fixed if wandb will update their client library to allow the manual creation of sweeps.
+
+## Distributed Strategies
+
+Training, CV & Tuning:
+
+    - `int`: A single training run on a single CUDA GPU (specify the GPU id)
+    - `"cpu"`: A single training run on a single CPU
+    - `"mpu"`: A single training run on the metal framework
+    - `"single"`: A single training run on a single GPU (uses GPUs auto)
+    - `"ddp_fork"`: A single training is distributed across multiple GPUs
+
+CV & Tuning:
+
+    - `"cv-parallel"`: The runs of a single cv are run in parallel, len(runs)%len(devices) should be 0 for best permformance
+
+Tuning only:
+
+    - `"tune-parallel"`: Multiple combs are run in parallel
+
+For `"ddp_fork"`, `"cv-parallel"` and `"tune-parallel"` the `devices` parameter can be used to specify the devices to use.
+Else the `devices` should be 0.

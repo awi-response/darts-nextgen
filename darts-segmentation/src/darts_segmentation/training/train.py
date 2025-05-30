@@ -2,10 +2,12 @@
 
 import logging
 import time
+from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal
 
+import cyclopts
 import toml
 
 from darts_segmentation.training.augmentations import Augmentation
@@ -14,6 +16,163 @@ if TYPE_CHECKING:
     import pytorch_lightning as pl
 
 logger = logging.getLogger(__name__.replace("darts_", "darts."))
+
+
+@cyclopts.Parameter(name="*")
+@dataclass(frozen=True)
+class DataParameters:
+    """Data related parameters for training.
+
+    Attributes:
+        train_data_dir (Path): The path (top-level) to the data to be used for training.
+            Expects a directory containing:
+            1. a zarr group called "data.zarr" containing a "x" and "y" array
+            2. a geoparquet file called "metadata.parquet" containing the metadata for the data.
+                This metadata should contain at least the following columns:
+                - "sample_id": The id of the sample
+                - "region": The region the sample belongs to
+                - "empty": Whether the image is empty
+                The index should refer to the index of the sample in the zarr data.
+            This directory should be created by a preprocessing script.
+        batch_size (int): Batch size for training and validation.
+        data_split_method (Literal["random", "region", "sample"] | None, optional):
+            The method to use for splitting the data into a train and a test set.
+            "random" will split the data randomly, the seed is always 42 and the test size can be specified
+            by providing a list with a single a float between 0 and 1 to data_split_by
+            This will be the fraction of the data to be used for testing.
+            E.g. [0.2] will use 20% of the data for testing.
+            "region" will split the data by one or multiple regions,
+            which can be specified by providing a str or list of str to data_split_by.
+            "sample" will split the data by sample ids, which can also be specified similar to "region".
+            If None, no split is done and the complete dataset is used for both training and testing.
+            The train split will further be split in the cross validation process.
+            Defaults to None.
+        data_split_by (list[str | float] | None, optional): Select by which regions/samples to split or
+            the size of test set. Defaults to None.
+        fold_method (Literal["kfold", "shuffle", "stratified", "region", "region-stratified"], optional):
+            Method for cross-validation split. Defaults to "kfold".
+        total_folds (int, optional): Total number of folds in cross-validation. Defaults to 5.
+        fold (int, optional): Index of the current fold. Defaults to 0.
+        bands (list[str] | None, optional): List of bands to use. Defaults to None.
+
+    """
+
+    train_data_dir: Path
+    data_split_method: Literal["random", "region", "sample"] | None = None
+    data_split_by: list[str | float] | None = None
+    fold_method: Literal["kfold", "shuffle", "stratified", "region", "region-stratified"] = "kfold"
+    total_folds: int = 5
+    fold: int = 0  # Only in train
+    bands: list[str] | None = None  # Maybe this should also be a hyperparameter?
+
+    def with_fold(self, fold: int) -> "DataParameters":
+        """Return a new instance with the specified fold.
+
+        Need to maintain the immutability of the dataclass.
+        Only the fold parameter is changed by other scripts, e.g. cross-validation or tuning.
+
+        Returns:
+            DataParameters: A new instance with the specified fold.
+
+        """
+        return DataParameters(
+            train_data_dir=self.train_data_dir,
+            data_split_method=self.data_split_method,
+            data_split_by=self.data_split_by,
+            fold_method=self.fold_method,
+            total_folds=self.total_folds,
+            fold=fold,
+            bands=self.bands,
+        )
+
+
+@cyclopts.Parameter(name="*")
+@dataclass(frozen=True)
+class TrainRunConfig:
+    """Run related parameters for training.
+
+    Attributes:
+        run_name (str | None, optional): Name of the run. If None is generated automatically. Defaults to None.
+        cv_name (str | None, optional): Name of the cross-validation.
+            Should only be specified by a cross-validation script.
+            Defaults to None.
+        tune_name (str | None, optional): Name of the tuning.
+            Should only be specified by a tuning script.
+            Defaults to None.
+        artifact_dir (Path, optional): Top-level path to the training output directory.
+            Will contain checkpoints and metrics. Defaults to Path("lightning_logs").
+        continue_from_checkpoint (Path | None, optional): Path to a checkpoint to continue training from.
+            Defaults to None.
+        max_epochs (int, optional): Maximum number of epochs to train. Defaults to 100.
+        random_seed (int, optional): Random seed for deterministic training. Defaults to 42.
+        num_workers (int, optional): Number of Dataloader workers. Defaults to 0.
+        device (list[int | str], optional): The device(s) to run the model on. Defaults to ["auto"].
+
+    """
+
+    run_name: str | None = None
+    cv_name: str | None = None
+    tune_name: str | None = None
+    artifact_dir: Path = Path("artifacts")
+    continue_from_checkpoint: Path | None = None
+    max_epochs: int = 100
+    random_seed: int = 42
+    num_workers: int = 0
+    # device: int | str = "auto"
+    device: list[int | str] = field(default_factory=lambda: ["auto"])
+
+
+@cyclopts.Parameter(name="*")
+@dataclass(frozen=True)
+class HyperParameters:
+    """Hyperparameters for Cyclopts CLI.
+
+    Attributes:
+        model_arch (str): Architecture of the model to use.
+        model_encoder (str): Encoder type for the model.
+        model_encoder_weights (str | None): Weights for the encoder, if any.
+        augment (list[Augmentation] | None): List of augmentations to apply.
+        learning_rate (float): Learning rate for training.
+        gamma (float): Decay factor for learning rate.
+        focal_loss_alpha (float | None): Alpha parameter for focal loss, if using.
+        focal_loss_gamma (float): Gamma parameter for focal loss.
+        batch_size (int): Batch size for training.
+
+    """
+
+    model_arch: str = "Unet"
+    model_encoder: str = "dpn107"
+    model_encoder_weights: str | None = None
+    augment: list[Augmentation] | None = None
+    learning_rate: float = 1e-3
+    gamma: float = 0.9
+    focal_loss_alpha: float | None = None
+    focal_loss_gamma: float = 2.0
+    batch_size: int = 8
+
+
+@cyclopts.Parameter(name="*")
+@dataclass(frozen=True)
+class LoggingConfig:
+    """Logging related parameters for training.
+
+    Attributes:
+        log_every_n_steps (int, optional): Log every n steps. Defaults to 10.
+        check_val_every_n_epoch (int, optional): Check validation every n epochs. Defaults to 3.
+        early_stopping_patience (int, optional): Number of epochs to wait for improvement before stopping.
+            Defaults to 5.
+        plot_every_n_val_epochs (int, optional): Plot validation samples every n epochs. Defaults to 5.
+        wandb_entity (str | None, optional): Weights and Biases Entity. Defaults to None.
+        wandb_project (str | None, optional): Weights and Biases Project. Defaults to None.
+
+    """
+
+    log_every_n_steps: int = 10
+    check_val_every_n_epoch: int = 3
+    early_stopping_patience: int = 5
+    plot_every_n_val_epochs: int = 5
+    wandb_entity: str | None = None
+    wandb_project: str | None = None
 
 
 def train_smp(
