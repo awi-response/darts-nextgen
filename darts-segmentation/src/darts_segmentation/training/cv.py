@@ -3,67 +3,154 @@
 import logging
 import random
 import time
-from pathlib import Path
+from dataclasses import dataclass, field
+from multiprocessing import Queue
 from typing import TYPE_CHECKING, Literal
 
-from darts_segmentation.training.augmentations import Augmentation
+import cyclopts
+
+from darts_segmentation.training.hparams import Hyperparameters
+from darts_segmentation.training.train import DataConfig, DeviceConfig, LoggingConfig, TrainingConfig, TrainRunConfig
 
 if TYPE_CHECKING:
     pass
 
 logger = logging.getLogger(__name__.replace("darts_", "darts."))
 
+available_devices = Queue()
 
-def _gen_seed(n_randoms: int) -> list[int]:
-    # Custom generator for deterministic seeds
-    rng = random.Random(42)
-    seeds = [42, 21, 69]  # First three seeds should be known
-    if n_randoms > 3:
-        seeds += rng.sample(range(9999), n_randoms - 3)
-    elif n_randoms < 3:
-        seeds = seeds[:n_randoms]
-    return seeds
+
+@cyclopts.Parameter(name="*")
+@dataclass(frozen=True)
+class CrossValidationConfig:
+    """Configuration for cross-validation.
+
+    This is used to configure the cross-validation process.
+    It is used by the `cross_validation_smp` function.
+
+    Attributes:
+        n_folds (int | None, optional): Number of folds to perform in cross-validation.
+            If None, all folds (total_folds) will be used. Defaults to None.
+        n_randoms (int, optional): Number of random seeds to perform in cross-validation.
+            First three seeds are always 42, 21, 69, further seeds are deterministic generated.
+            Defaults to 3.
+        tune_name (str | None, optional): Name of the tuning. Should only be specified by a tuning script.
+            Defaults to None.
+        scoring_metric (list[str]): Metric(s) to use for scoring. Defaults to ["val/JaccardIndex", "val/Recall"].
+        multi_score_strategy (Literal["harmonic", "arithmetic", "geometric", "min"], optional):
+            Strategy for combining multiple metrics. Defaults to "harmonic".
+
+    """
+
+    n_folds: int | None = None
+    n_randoms: int = 3
+    tune_name: str | None = None
+    scoring_metric: list[str] = field(default_factory=lambda: ["val/JaccardIndex", "val/Recall"])
+    multi_score_strategy: Literal["harmonic", "arithmetic", "geometric", "min"] = "harmonic"
+
+    @property
+    def rng_seeds(self) -> list[int]:
+        """Generate a list of seeds for cross-validation.
+
+        Returns:
+            list[int]: A list of seeds for cross-validation.
+            The first three seeds are always 42, 21, 69, further seeds are deterministically generated.
+
+        """
+        # Custom generator for deterministic seeds
+        rng = random.Random(42)
+        seeds = [42, 21, 69]  # First three seeds should be known
+        if self.n_randoms > 3:
+            seeds += rng.sample(range(9999), self.n_randoms - 3)
+        elif self.n_randoms < 3:
+            seeds = seeds[: self.n_randoms]
+        return seeds
+
+
+@dataclass
+class _ProcessInputs:
+    current: int
+    total: int
+    seed: int
+    fold: int
+    cv: CrossValidationConfig
+    run: TrainRunConfig
+    training_config: TrainingConfig
+    logging_config: LoggingConfig
+    data_config: DataConfig
+    device_config: DeviceConfig
+    hparams: Hyperparameters
+
+
+@dataclass
+class _ProcessOutputs:
+    run_info: dict
+
+
+def _run_training(inp: _ProcessInputs):
+    # Wrapper function for handling parallel multiprocessing training runs.
+    import torch
+
+    from darts_segmentation.training.scoring import check_score_is_unstable
+    from darts_segmentation.training.train import train_smp
+
+    # Setup device configuration: If strategy is "cv-parallel" expect a mp scenario:
+    # Wait for a device to become available.
+    # Otherwise, expect a serial scenario, where the devices and strategy are set by the user.
+    is_parallel = inp.device_config.strategy == "cv-parallel"
+    if is_parallel:
+        device = available_devices.get()
+        device_config = inp.device_config.in_parallel(device)
+        logger.debug(f"Starting run {inp.run.name} ({inp.current}/{inp.total}) on device {device}.")
+    else:
+        device = None
+        device_config = inp.device_config
+        logger.debug(f"Starting run {inp.run.name} ({inp.current}/{inp.total}).")
+
+    try:
+        tick_rstart = time.time()
+        trainer = train_smp(
+            run=inp.run,
+            training_config=inp.training_config,
+            data_config=inp.data_config,
+            device_config=device_config,
+            hparams=inp.hparams,
+            logging_config=inp.logging_config,
+        )
+        tick_rend = time.time()
+
+        run_info = {
+            "run_name": inp.run.name,
+            "run_id": trainer.lightning_module.hparams["run_id"],
+            "seed": inp.seed,
+            "fold": inp.fold,
+            "duration": tick_rend - tick_rstart,
+        }
+        for metric, value in trainer.logged_metrics.items():
+            run_info[metric] = value.item() if isinstance(value, torch.Tensor) else value
+        if trainer.checkpoint_callback:
+            run_info["checkpoint"] = trainer.checkpoint_callback.best_model_path
+        run_info["is_unstable"] = check_score_is_unstable(run_info, inp.cv.scoring_metric)
+
+        logger.debug(f"{run_info=}")
+        output = _ProcessOutputs(run_info=run_info)
+    finally:
+        # If we are in parallel mode, we need to return the device to the queue.
+        if is_parallel:
+            logger.debug(f"Free device {device} for cv {inp.run.name}")
+            available_devices.put(device)
+    return output
 
 
 def cross_validation_smp(
-    # Data
-    train_data_dir: Path,
-    data_split_method: Literal["random", "region", "sample"] | None = None,
-    data_split_by: list[str | float] | None = None,
-    fold_method: Literal["kfold", "shuffle", "stratified", "region", "region-stratified"] = "kfold",
-    total_folds: int = 5,
-    bands: list[str] | None = None,
-    # CV config
-    n_folds: int | None = None,
-    n_randoms: int = 3,
-    cv_name: str | None = None,
-    tune_name: str | None = None,
-    artifact_dir: Path = Path("artifacts"),
-    # Hyperparameters
-    model_arch: str = "Unet",
-    model_encoder: str = "dpn107",
-    model_encoder_weights: str | None = None,
-    augment: list[Augmentation] | None = None,
-    learning_rate: float = 1e-3,
-    gamma: float = 0.9,
-    focal_loss_alpha: float | None = None,
-    focal_loss_gamma: float = 2.0,
-    batch_size: int = 8,
-    # Scoring
-    scoring_metric: list[str] = ["val/JaccardIndex", "val/Recall"],
-    multi_score_strategy: Literal["harmonic", "arithmetic", "geometric", "min"] = "harmonic",
-    # Epoch and Logging config
-    max_epochs: int = 100,
-    log_every_n_steps: int = 10,
-    check_val_every_n_epoch: int = 3,
-    early_stopping_patience: int = 5,
-    plot_every_n_val_epochs: int = 5,
-    # Device and Manager config
-    num_workers: int = 0,
-    device: int | str = "auto",
-    # Wandb config
-    wandb_entity: str | None = None,
-    wandb_project: str | None = None,
+    *,
+    name: str | None = None,
+    cv: CrossValidationConfig = CrossValidationConfig(),
+    training_config: TrainingConfig = TrainingConfig(),
+    data_config: DataConfig = DataConfig(),
+    device_config: DeviceConfig = DeviceConfig(),
+    hparams: Hyperparameters = Hyperparameters(),
+    logging_config: LoggingConfig = LoggingConfig(),
 ):
     """Perform cross-validation for a model with given hyperparameters.
 
@@ -127,73 +214,14 @@ def cross_validation_smp(
     ```
 
     Args:
-        train_data_dir (Path): The path (top-level) to the data to be used for training.
-            Expects a directory containing:
-            1. a zarr group called "data.zarr" containing a "x" and "y" array
-            2. a geoparquet file called "metadata.parquet" containing the metadata for the data.
-                This metadata should contain at least the following columns:
-                - "sample_id": The id of the sample
-                - "region": The region the sample belongs to
-                - "empty": Whether the image is empty
-                The index should refer to the index of the sample in the zarr data.
-            This directory should be created by a preprocessing script.
-        batch_size (int): Batch size for training and validation.
-        data_split_method (Literal["random", "region", "sample"] | None, optional):
-            The method to use for splitting the data into a train and a test set.
-            "random" will split the data randomly, the seed is always 42 and the test size can be specified
-            by providing a list with a single a float between 0 and 1 to data_split_by
-            This will be the fraction of the data to be used for testing.
-            E.g. [0.2] will use 20% of the data for testing.
-            "region" will split the data by one or multiple regions,
-            which can be specified by providing a str or list of str to data_split_by.
-            "sample" will split the data by sample ids, which can also be specified similar to "region".
-            If None, no split is done and the complete dataset is used for both training and testing.
-            The train split will further be split in the cross validation process.
+        name (str | None, optional): Name of the cross-validation. If None, a name is generated automatically.
             Defaults to None.
-        data_split_by (list[str | float] | None, optional): Select by which regions/samples to split or
-            the size of test set. Defaults to None.
-        fold_method (Literal["kfold", "shuffle", "stratified", "region", "region-stratified"], optional):
-            Method for cross-validation split. Defaults to "kfold".
-        total_folds (int, optional): Total number of folds in cross-validation. Defaults to 5.
-        bands (list[str] | None, optional): List of bands to use. Defaults to None.
-        n_folds (int | None, optional): Number of folds to perform in cross-validation.
-            If None, all folds (total_folds) will be used.
-            Defaults to None.
-        n_randoms (int, optional): Number of random seeds to perform in cross-validation.
-            First three seeds are always 42, 21, 69, further seeds are deterministic generated.
-            Defaults to 3.
-        cv_name (str | None, optional): Name of the cross-validation.
-            If None, a name is generated automatically.
-            Defaults to None.
-        tune_name (str | None, optional): Name of the tuning.
-            Should only be specified by a tuning script.
-            Defaults to None.
-        artifact_dir (Path, optional): Top-level path to the training output directory.
-            Will contain checkpoints and metrics. Defaults to Path("lightning_logs").
-        model_arch (str, optional): Model architecture to use. Defaults to "Unet".
-        model_encoder (str, optional): Encoder to use. Defaults to "dpn107".
-        model_encoder_weights (str | None, optional): Path to the encoder weights. Defaults to None.
-        augment (bool, optional): Weather to apply augments or not. Defaults to True.
-        learning_rate (float, optional): Learning Rate. Defaults to 1e-3.
-        gamma (float, optional): Multiplicative factor of learning rate decay. Defaults to 0.9.
-        focal_loss_alpha (float, optional): Weight factor to balance positive and negative samples.
-            Alpha must be in [0...1] range, high values will give more weight to positive class.
-            None will not weight samples. Defaults to None.
-        focal_loss_gamma (float, optional): Focal loss power factor. Defaults to 2.0.
-        batch_size (int, optional): Batch Size. Defaults to 8.
-        scoring_metric (list[str]): Metric(s) to use for scoring.
-        multi_score_strategy (Literal["harmonic", "arithmetic", "geometric", "min"], optional):
-            Strategy for combining multiple metrics. Defaults to "harmonic".
-        max_epochs (int, optional): Maximum number of epochs to train. Defaults to 100.
-        log_every_n_steps (int, optional): Log every n steps. Defaults to 10.
-        check_val_every_n_epoch (int, optional): Check validation every n epochs. Defaults to 3.
-        early_stopping_patience (int, optional): Number of epochs to wait for improvement before stopping.
-            Defaults to 5.
-        plot_every_n_val_epochs (int, optional): Plot validation samples every n epochs. Defaults to 5.
-        num_workers (int, optional): Number of Dataloader workers. Defaults to 0.
-        device (int | str, optional): The device to run the model on. Defaults to "auto".
-        wandb_entity (str | None, optional): Weights and Biases Entity. Defaults to None.
-        wandb_project (str | None, optional): Weights and Biases Project. Defaults to None.
+        cv (CrossValidationConfig): Configuration for cross-validation.
+        training_config (TrainingConfig): Configuration for the training.
+        data_config (DataConfig): Configuration for the data.
+        device_config (DeviceConfig): Configuration for the devices to use.
+        hparams (Hyperparameters): Hyperparameters for the training.
+        logging_config (LoggingConfig): Logging configuration.
 
     Returns:
         tuple[float, bool, pd.DataFrame]: A single score, a boolean indicating if the score is unstable,
@@ -201,97 +229,70 @@ def cross_validation_smp(
 
     """
     import pandas as pd
-    import torch
     from darts_utils.namegen import generate_counted_name
 
-    from darts_segmentation.training.scoring import check_score_is_unstable, score_from_runs
-    from darts_segmentation.training.train import train_smp
+    from darts_segmentation.training.adp import _adp
+    from darts_segmentation.training.scoring import score_from_runs
 
     tick_fstart = time.perf_counter()
 
-    # Expects artifact_dir to be already nested by tune, similar to train
-    artifact_dir = artifact_dir if tune_name else artifact_dir / "_cross_validations"
-    cv_name = cv_name or generate_counted_name(artifact_dir)
+    artifact_dir = logging_config.artifact_dir_at_cv(cv.tune_name)
+    cv_name = name or generate_counted_name(artifact_dir)
     artifact_dir = artifact_dir / cv_name
     artifact_dir.mkdir(parents=True, exist_ok=True)
 
-    n_folds = n_folds or total_folds
+    n_folds = cv.n_folds or data_config.total_folds
 
     logger.info(
-        f"Starting cross-validation '{cv_name}' with data from {train_data_dir.resolve()}."
+        f"Starting cross-validation '{cv_name}' with data from {data_config.train_data_dir.resolve()}."
         f" Artifacts will be saved to {artifact_dir.resolve()}."
-        f" Will run n_randoms*n_folds = {n_randoms}*{n_folds} = {n_randoms * n_folds} experiments."
+        f" Will run n_randoms*n_folds = {cv.n_randoms}*{n_folds} = {cv.n_randoms * n_folds} experiments."
     )
 
-    seeds = _gen_seed(n_randoms)
+    seeds = cv.rng_seeds
     logger.debug(f"Using seeds: {seeds}")
 
-    run_infos = []
+    # Plan which runs to perform. These are later consumed based on the parallelization strategy.
+    process_inputs: list[_ProcessInputs] = []
     for i, seed in enumerate(seeds):
         for fold in range(n_folds):
-            tick_rstart = time.time()
-            run_name = f"{cv_name}-run-f{fold}s{seed}"
             current = i * len(seeds) + fold
-            logger.debug(f"Starting run {run_name} ({current}/{n_folds * len(seeds)})")
-            trainer = train_smp(
-                # Data
-                train_data_dir=train_data_dir,
-                data_split_method=data_split_method,
-                data_split_by=data_split_by,
-                fold_method=fold_method,
-                total_folds=total_folds,
-                fold=fold,
-                bands=bands,
-                # Run config
-                run_name=run_name,
+            total = n_folds * len(seeds)
+            run = TrainRunConfig(
+                name=f"{cv_name}-run-f{fold}s{seed}",
                 cv_name=cv_name,
-                tune_name=tune_name,
-                artifact_dir=artifact_dir,
-                continue_from_checkpoint=None,  # ?: Support later?
-                # Hyperparameters
-                model_arch=model_arch,
-                model_encoder=model_encoder,
-                model_encoder_weights=model_encoder_weights,
-                augment=augment,
-                learning_rate=learning_rate,
-                gamma=gamma,
-                focal_loss_alpha=focal_loss_alpha,
-                focal_loss_gamma=focal_loss_gamma,
-                batch_size=batch_size,
-                # Epoch and log config
-                max_epochs=max_epochs,
-                log_every_n_steps=log_every_n_steps,
-                check_val_every_n_epoch=check_val_every_n_epoch,
-                early_stopping_patience=early_stopping_patience,
-                plot_every_n_val_epochs=plot_every_n_val_epochs,
-                # Device and Manager config
+                tune_name=cv.tune_name,
+                fold=fold,
                 random_seed=seed,
-                num_workers=num_workers,
-                device=device,
-                # Wandb
-                wandb_entity=wandb_entity,
-                wandb_project=wandb_project,
             )
-            tick_rend = time.time()
+            process_inputs.append(
+                _ProcessInputs(
+                    current=current,
+                    total=total,
+                    seed=seed,
+                    fold=fold,
+                    cv=cv,
+                    run=run,
+                    training_config=training_config,
+                    logging_config=logging_config,
+                    data_config=data_config,
+                    device_config=device_config,
+                    hparams=hparams,
+                )
+            )
 
-            run_info = {
-                "run_name": run_name,
-                "run_id": trainer.lightning_module.hparams["run_id"],
-                "seed": seed,
-                "fold": fold,
-                "duration": tick_rend - tick_rstart,
-            }
-            for metric, value in trainer.logged_metrics.items():
-                run_info[metric] = value.item() if isinstance(value, torch.Tensor) else value
-            if trainer.checkpoint_callback:
-                run_info["checkpoint"] = trainer.checkpoint_callback.best_model_path
-            run_info["is_unstable"] = check_score_is_unstable(run_info, scoring_metric)
-
-            logger.debug(f"{run_info=}")
-            run_infos.append(run_info)
+    run_infos = []
+    # This function abstracts away common logic for running multiprocessing
+    for inp, output in _adp(
+        process_inputs=process_inputs,
+        device_config=device_config,
+        available_devices=available_devices,
+        _run=_run_training,
+    ):
+        run_infos.append(output.run_info)
 
     logger.debug(f"{run_infos=}")
-    score = score_from_runs(run_infos, scoring_metric, multi_score_strategy)
+    score = score_from_runs(run_infos, cv.scoring_metric, cv.multi_score_strategy)
 
     run_infos = pd.DataFrame(run_infos)
     run_infos["score"] = score

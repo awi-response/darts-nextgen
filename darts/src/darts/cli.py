@@ -1,6 +1,5 @@
 """Entrypoint for the darts-pipeline CLI."""
 
-import inspect
 import logging
 import sys
 from pathlib import Path
@@ -15,7 +14,6 @@ from darts_segmentation.training import (
     train_smp,
     tune_smp,
 )
-from darts_segmentation.training.tune import tune_mp_smp
 
 from darts import __version__
 from darts.pipelines import AOISentinel2Pipeline, PlanetPipeline, Sentinel2Pipeline
@@ -44,7 +42,7 @@ train_group = cyclopts.Group.create_ordered("Training Commands")
 
 
 @app.command
-def hello(name: str, n: int = 1):
+def hello(name: str, *, n: int = 1):
     """Say hello to someone.
 
     Args:
@@ -93,7 +91,6 @@ app.command(group=train_group)(test_smp)
 app.command(group=train_group)(convert_lightning_checkpoint)
 app.command(group=train_group)(cross_validation_smp)
 app.command(group=train_group)(tune_smp)
-app.command(group=train_group)(tune_mp_smp)
 
 
 # Intercept the logging behavior to add a file handler
@@ -105,12 +102,17 @@ def launcher(  # noqa: D103
     verbose: bool = False,
     tracebacks_show_locals: bool = False,
 ):
-    command, bound, _ = app.parse_args(tokens, verbose=verbose)
+    command, bound, ignored = app.parse_args(tokens, verbose=verbose)
     LoggingManager.add_logging_handlers(command.__name__, log_dir, verbose, tracebacks_show_locals)
-    logger.debug(f"{command.__name__}: {bound.args=} {bound.kwargs=} {tokens=}")
-    logger.debug(f"{type(command)=} {command=} {inspect.signature(command)=}")
     logger.debug(f"Running on Python version {sys.version} from {__name__} ({root_file})")
-    return command(*bound.args, **bound.kwargs)
+    additional_args = {}
+    if "config_file" in ignored:
+        additional_args["config_file"] = config_file
+    if "log_dir" in ignored:
+        additional_args["log_dir"] = log_dir
+    if "verbose" in ignored:
+        additional_args["verbose"] = verbose
+    return command(*bound.args, **bound.kwargs, **additional_args)
 
 
 def start_app():

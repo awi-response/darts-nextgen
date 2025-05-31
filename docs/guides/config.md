@@ -71,8 +71,8 @@ The `numbers` key is ignored by the CLI, hence `n` will be add to the command as
 
 !!! warning
 
-    The only parameters not passed from the config file are the `--config-file` and `--log-dir` parameters.
-    The `--log-dir` parameter is evaluated before the config file is parsed, hence it is not possible to specify the logging directory via the config file.
+    The only parameters not passed from the config file are the `--config-file`, `--verbose`, `--tracebacks-show-locals` and `--log-dir` parameters.
+    These parameters are evaluated before the config file is parsed, hence it is not possible to specify the logging directory via the config file.
 
 ## Real world example with Sentinel 2 processing
 

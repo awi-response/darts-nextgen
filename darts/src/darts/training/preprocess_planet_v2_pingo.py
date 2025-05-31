@@ -13,7 +13,7 @@ if TYPE_CHECKING:
 
 
 def _path_gen(data_dir: Path):
-    return {fpath.parent.name: fpath.parent for fpath in data_dir.rglob(f"*_SR.tif")}
+    return {fpath.parent.name: fpath.parent for fpath in data_dir.rglob("*_SR.tif")}
     # return next(data_dir.rglob(f"{image_id}*_SR.tif")).parent
 
 
