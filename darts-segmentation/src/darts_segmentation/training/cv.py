@@ -34,8 +34,6 @@ class CrossValidationConfig:
         n_randoms (int, optional): Number of random seeds to perform in cross-validation.
             First three seeds are always 42, 21, 69, further seeds are deterministic generated.
             Defaults to 3.
-        tune_name (str | None, optional): Name of the tuning. Should only be specified by a tuning script.
-            Defaults to None.
         scoring_metric (list[str]): Metric(s) to use for scoring. Defaults to ["val/JaccardIndex", "val/Recall"].
         multi_score_strategy (Literal["harmonic", "arithmetic", "geometric", "min"], optional):
             Strategy for combining multiple metrics. Defaults to "harmonic".
@@ -44,7 +42,6 @@ class CrossValidationConfig:
 
     n_folds: int | None = None
     n_randoms: int = 3
-    tune_name: str | None = None
     scoring_metric: list[str] = field(default_factory=lambda: ["val/JaccardIndex", "val/Recall"])
     multi_score_strategy: Literal["harmonic", "arithmetic", "geometric", "min"] = "harmonic"
 
@@ -101,11 +98,11 @@ def _run_training(inp: _ProcessInputs):
     if is_parallel:
         device = available_devices.get()
         device_config = inp.device_config.in_parallel(device)
-        logger.debug(f"Starting run {inp.run.name} ({inp.current}/{inp.total}) on device {device}.")
+        logger.debug(f"Starting run {inp.run.name} ({inp.current + 1}/{inp.total}) on device {device}.")
     else:
         device = None
-        device_config = inp.device_config
-        logger.debug(f"Starting run {inp.run.name} ({inp.current}/{inp.total}).")
+        device_config = inp.device_config.in_parallel()
+        logger.debug(f"Starting run {inp.run.name} ({inp.current + 1}/{inp.total}).")
 
     try:
         tick_rstart = time.time()
@@ -145,6 +142,7 @@ def _run_training(inp: _ProcessInputs):
 def cross_validation_smp(
     *,
     name: str | None = None,
+    tune_name: str | None = None,
     cv: CrossValidationConfig = CrossValidationConfig(),
     training_config: TrainingConfig = TrainingConfig(),
     data_config: DataConfig = DataConfig(),
@@ -216,6 +214,8 @@ def cross_validation_smp(
     Args:
         name (str | None, optional): Name of the cross-validation. If None, a name is generated automatically.
             Defaults to None.
+        tune_name (str | None, optional): Name of the tuning. Should only be specified by a tuning script.
+            Defaults to None.
         cv (CrossValidationConfig): Configuration for cross-validation.
         training_config (TrainingConfig): Configuration for the training.
         data_config (DataConfig): Configuration for the data.
@@ -227,6 +227,9 @@ def cross_validation_smp(
         tuple[float, bool, pd.DataFrame]: A single score, a boolean indicating if the score is unstable,
             and a DataFrame containing run info (seed, fold, metrics, duration, checkpoint)
 
+    Raises:
+        ValueError: If no runs were performed, meaning the configuration is invalid or no data was found.
+
     """
     import pandas as pd
     from darts_utils.namegen import generate_counted_name
@@ -236,7 +239,7 @@ def cross_validation_smp(
 
     tick_fstart = time.perf_counter()
 
-    artifact_dir = logging_config.artifact_dir_at_cv(cv.tune_name)
+    artifact_dir = logging_config.artifact_dir_at_cv(tune_name)
     cv_name = name or generate_counted_name(artifact_dir)
     artifact_dir = artifact_dir / cv_name
     artifact_dir.mkdir(parents=True, exist_ok=True)
@@ -261,7 +264,7 @@ def cross_validation_smp(
             run = TrainRunConfig(
                 name=f"{cv_name}-run-f{fold}s{seed}",
                 cv_name=cv_name,
-                tune_name=cv.tune_name,
+                tune_name=tune_name,
                 fold=fold,
                 random_seed=seed,
             )
@@ -285,11 +288,18 @@ def cross_validation_smp(
     # This function abstracts away common logic for running multiprocessing
     for inp, output in _adp(
         process_inputs=process_inputs,
-        device_config=device_config,
+        is_parallel=device_config.strategy == "cv-parallel",
+        devices=device_config.devices,
         available_devices=available_devices,
         _run=_run_training,
     ):
         run_infos.append(output.run_info)
+
+    if len(run_infos) == 0:
+        raise ValueError(
+            "No runs were performed. Please check your configuration and data."
+            " If you are using a tuning script, make sure to specify the correct parameters."
+        )
 
     logger.debug(f"{run_infos=}")
     score = score_from_runs(run_infos, cv.scoring_metric, cv.multi_score_strategy)

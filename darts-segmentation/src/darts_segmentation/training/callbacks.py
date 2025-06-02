@@ -2,6 +2,7 @@
 
 import copy
 import logging
+from collections import defaultdict
 from pathlib import Path
 from typing import Literal
 
@@ -201,12 +202,12 @@ class BinarySegmentationMetrics(Callback):
             }
         )
 
-        added_metrics: list[str] = []
+        added_metrics: defaultdict[str] = defaultdict(list)
 
         # Train metrics only for the fit stage
         if stage == "fit":
             pl_module.train_metrics = metrics.clone(prefix="train/")
-            added_metrics += list(pl_module.train_metrics.keys())
+            added_metrics["train"] += list(pl_module.train_metrics.keys(keep_base=True))
         # Validation metrics and visualizations for the fit and validate stages
         if stage == "fit" or stage == "validate":
             pl_module.val_metrics = metrics.clone(prefix=f"{self._val_prefix}/")
@@ -219,12 +220,12 @@ class BinarySegmentationMetrics(Callback):
             pl_module.val_roc = ROC(thresholds=20, **metric_kwargs)
             pl_module.val_prc = PrecisionRecallCurve(thresholds=20, **metric_kwargs)
             pl_module.val_cmx = ConfusionMatrix(normalize="true", **metric_kwargs)
-            added_metrics += list(pl_module.val_metrics.keys())
-            added_metrics += [f"{self._val_prefix}/{m}" for m in ["roc", "prc", "cmx"]]
+            added_metrics[self._val_prefix] += list(pl_module.val_metrics.keys(keep_base=True))
+            added_metrics[self._val_prefix] += ["roc", "prc", "cmx"]
 
         # Test metrics and visualizations for the test stage
         if stage == "test":
-            pl_module.test_metrics = metrics.clone(prefix=f"{pl_module.test_set}/")
+            pl_module.test_metrics = metrics.clone(prefix=f"{self.test_set}/")
             pl_module.test_metrics.add_metrics(
                 {
                     "AUROC": AUROC(thresholds=20, **metric_kwargs),
@@ -255,12 +256,12 @@ class BinarySegmentationMetrics(Callback):
             pl_module.test_instance_prc = BinaryInstancePrecisionRecallCurve(thresholds=20, **instance_metric_kwargs)
             pl_module.test_instance_cmx = BinaryInstanceConfusionMatrix(normalize=True, **instance_metric_kwargs)
 
-            added_metrics += list(pl_module.test_metrics.keys())
-            added_metrics += [f"{self.test_set}/{m}" for m in ["roc", "prc", "cmx", "instance_prc", "instance_cmx"]]
+            added_metrics[self.test_set] += list(pl_module.test_metrics.keys(keep_base=True))
+            added_metrics[self.test_set] += ["roc", "prc", "cmx", "instance_prc", "instance_cmx"]
 
         # Log the added metrics
-        sep = "\n\t- "
-        logger.debug(f"Added metrics:{sep + sep.join(added_metrics)}")
+        added_metrics = {k: str(sorted(v)) for k, v in added_metrics.items()}
+        logger.debug(f"Added metrics:{added_metrics}")
 
     def teardown(self, trainer: Trainer, pl_module: LightningModule, stage: Stage):  # noqa: D102
         # Delete the references to the trainer and pl_module

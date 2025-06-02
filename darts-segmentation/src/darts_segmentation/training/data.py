@@ -208,6 +208,7 @@ class DartsDataModule(L.LightningDataModule):
         fold_method: Literal["kfold", "shuffle", "stratified", "region", "region-stratified"] | None = "kfold",
         total_folds: int = 5,
         fold: int = 0,
+        subsample: int | None = None,
         bands: Bands | list[str] | None = None,
         augment: list[Augmentation] | None = None,  # Not used for val or test
         num_workers: int = 0,
@@ -282,6 +283,8 @@ class DartsDataModule(L.LightningDataModule):
                 Method for cross-validation split. Defaults to "kfold".
             total_folds (int, optional): Total number of folds in cross-validation. Defaults to 5.
             fold (int, optional): Index of the current fold. Defaults to 0.
+            subsample (int | None, optional): If set, will subsample the dataset to this number of samples.
+                This is useful for debugging and testing. Defaults to None.
             bands (Bands | list[str] | None, optional): List of bands to use.
                 Expects the data_dir to contain a config.toml with a "darts.bands" key,
                 with which the indices of the bands will be mapped to.
@@ -303,6 +306,7 @@ class DartsDataModule(L.LightningDataModule):
         self.fold_method = fold_method
         self.total_folds = total_folds
 
+        self.subsample = subsample
         self.augment = augment
         self.num_workers = num_workers
         self.in_memory = in_memory
@@ -322,12 +326,15 @@ class DartsDataModule(L.LightningDataModule):
         assert zdir.exists(), f"Data directory {zdir} not found!"
         zroot = zarr.group(store=LocalStore(data_dir / "data.zarr"))
         self.nsamples = zroot["x"].shape[0]
+        logger.debug(f"Data directory {zdir} found with {self.nsamples} samples.")
 
     def setup(self, stage: Literal["fit", "validate", "test", "predict"] | None = None):
         if stage == "predict" or stage is None:
             return
 
         metadata = gpd.read_parquet(self.data_dir / "metadata.parquet")
+        if self.subsample is not None:
+            metadata = metadata.sample(n=self.subsample, random_state=42)
         train_metadata, test_metadata = _split_metadata(metadata, self.data_split_method, self.data_split_by)
 
         _log_stats(train_metadata, "train-split")

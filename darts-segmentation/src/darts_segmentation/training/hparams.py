@@ -36,6 +36,8 @@ class Hyperparameters:
 
     """
 
+    # ! Only, single values or lists are supported here.
+    # Other values, e.g. dicts would mess with the tuning script, since it appends the hparams to a dataframe.
     model_arch: str = "Unet"
     model_encoder: str = "dpn107"
     model_encoder_weights: str | None = None

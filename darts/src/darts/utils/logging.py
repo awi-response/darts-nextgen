@@ -87,7 +87,8 @@ class LoggingManagerSingleton:
         # Configure the rich console handler
         traceback_suppress = [cyclopts, torch, torch.utils.data, xr, distributed, pd]
         if L:
-            traceback_suppress.append(L)
+            pass
+        #    traceback_suppress.append(L)
         rich_handler = RichHandler(
             console=rich.get_console(),
             rich_tracebacks=True,

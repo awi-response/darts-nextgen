@@ -52,6 +52,8 @@ class _ProcessOutputs:
 
 def _run_cv(inp: _ProcessInputs):
     # Wrapper function for handling parallel multiprocessing training runs.
+    import pandas as pd
+
     from darts_segmentation.training.cv import cross_validation_smp
 
     cv_name = f"{inp.tune_name}-cv{inp.current}"
@@ -63,15 +65,16 @@ def _run_cv(inp: _ProcessInputs):
     if is_parallel:
         device = available_devices.get()
         device_config = inp.device_config.in_parallel(device)
-        logger.debug(f"Starting cv {cv_name} ({inp.current}/{inp.total}) on device {device}.")
+        logger.info(f"Starting cv '{cv_name}' ({inp.current + 1}/{inp.total}) on device {device}.")
     else:
         device = None
-        device_config = inp.device_config
-        logger.debug(f"Starting cv {cv_name} ({inp.current}/{inp.total}).")
+        device_config = inp.device_config.in_parallel()
+        logger.info(f"Starting cv '{cv_name}' ({inp.current + 1}/{inp.total}).")
 
     try:
         score, is_unstable, cv_run_infos = cross_validation_smp(
             name=cv_name,
+            tune_name=inp.tune_name,
             cv=inp.cv,
             training_config=inp.training_config,
             data_config=inp.data_config,
@@ -81,7 +84,8 @@ def _run_cv(inp: _ProcessInputs):
         )
 
         for key, value in asdict(inp.hparams).items():
-            cv_run_infos[key] = value
+            cv_run_infos[key] = value if not isinstance(value, list) else pd.Series([value] * len(cv_run_infos))
+
         cv_run_infos["cv_name"] = cv_name
         output = _ProcessOutputs(
             run_infos=cv_run_infos,
@@ -91,7 +95,7 @@ def _run_cv(inp: _ProcessInputs):
     finally:
         # If we are in parallel mode, we need to return the device to the queue.
         if is_parallel:
-            logger.debug(f"Free device {device} for cv {inp.cv.name}")
+            logger.debug(f"Free device {device} for cv {cv_name}")
             available_devices.put(device)
     return output
 
@@ -100,7 +104,7 @@ def tune_smp(
     *,
     name: str | None = None,
     n_trials: int | Literal["grid"] = 100,
-    retrain_and_test: bool = True,
+    retrain_and_test: bool = False,
     cv_config: CrossValidationConfig = CrossValidationConfig(),
     training_config: TrainingConfig = TrainingConfig(),
     data_config: DataConfig = DataConfig(),
@@ -178,7 +182,7 @@ def tune_smp(
             In a grid search, only constant or choice hyperparameters are allowed.
             Defaults to 100.
         retrain_and_test (bool, optional): Whether to retrain the model with the best hyperparameters and test it.
-            Defaults to True.
+            Defaults to False.
         cv_config (CrossValidationConfig, optional): Configuration for cross-validation.
             Defaults to CrossValidationConfig().
         training_config (TrainingConfig, optional): Configuration for training.
@@ -218,6 +222,7 @@ def tune_smp(
 
     # Check if the artifact directory is empty
     assert not artifact_dir.exists(), f"{artifact_dir} already exists."
+    artifact_dir.mkdir(parents=True, exist_ok=True)
 
     hpconfig = hpconfig or config_file
     if hpconfig is None:
@@ -225,6 +230,7 @@ def tune_smp(
             "No hyperparameter configuration file provided. Please provide a valid file via the `--hpconfig` flag."
         )
     param_grid = parse_hyperparameters(hpconfig)
+    logger.debug(f"Parsed hyperparameter grid: {param_grid}")
     param_list = sample_hyperparameters(param_grid, n_trials)
 
     logger.info(
@@ -258,7 +264,8 @@ def tune_smp(
     # This function abstracts away common logic for running multiprocessing
     for inp, output in _adp(
         process_inputs=process_inputs,
-        device_config=device_config,
+        is_parallel=device_config.strategy == "tune-parallel",
+        devices=device_config.devices,
         available_devices=available_devices,
         _run=_run_cv,
     ):
@@ -278,6 +285,13 @@ def tune_smp(
     run_infos = pd.concat(run_infos).reset_index(drop=True)
 
     tick_fend = time.perf_counter()
+
+    if best_hp is None:
+        logger.warning(
+            f"Tuning completed in {tick_fend - tick_fstart:.2f}s."
+            " No hyperparameters resulted in a valid score. Please check the logs for more information."
+        )
+        return 0, run_infos
     logger.info(
         f"Tuning completed in {tick_fend - tick_fstart:.2f}s. The best score was {best_score:.4f} with {best_hp}."
     )
@@ -287,10 +301,6 @@ def tune_smp(
     # =====================
 
     if not retrain_and_test:
-        return 0, run_infos
-
-    if best_hp is None:
-        logger.error("No hyperparameters resulted in a valid score. Please check the logs for more information.")
         return 0, run_infos
 
     logger.info("Starting retraining with the best hyperparameters.")

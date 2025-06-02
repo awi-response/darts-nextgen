@@ -2,7 +2,7 @@
 
 import logging
 import time
-from dataclasses import asdict, dataclass, field
+from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal
@@ -62,6 +62,8 @@ class DataConfig:
         fold_method (Literal["kfold", "shuffle", "stratified", "region", "region-stratified"], optional):
             Method for cross-validation split. Defaults to "kfold".
         total_folds (int, optional): Total number of folds in cross-validation. Defaults to 5.
+        subsample (int | None, optional): If set, will subsample the dataset to this number of samples.
+            This is useful for debugging and testing. Defaults to None.
 
     """
 
@@ -70,6 +72,7 @@ class DataConfig:
     data_split_by: list[str | float] | None = None
     fold_method: Literal["kfold", "shuffle", "stratified", "region", "region-stratified"] = "kfold"
     total_folds: int = 5
+    subsample: int | None = None
     # fold is only used in the training function, and fulfills a similar purpose as the random seed in terms of cv.
     # Hence it is moves to the run config.
 
@@ -201,7 +204,7 @@ class LoggingConfig:
             Path: The nested artifact directory path for cross-validation runs.
 
         """
-        artifact_dir = self.artifact_dir / tune_name if self.tune_name else self.artifact_dir / "_cross_validations"
+        artifact_dir = self.artifact_dir / tune_name if tune_name else self.artifact_dir / "_cross_validations"
         artifact_dir.mkdir(parents=True, exist_ok=True)
         return artifact_dir
 
@@ -212,42 +215,47 @@ class DeviceConfig:
     """Device and Distributed Strategy related parameters.
 
     Attributes:
-        accelerator (Literal["auto", "cpu", "gpu", "cuda", "mps", "tpu"], optional): Accelerator to use.
+        accelerator (Literal["auto", "cpu", "gpu", "mps", "tpu"], optional): Accelerator to use.
             Defaults to "auto".
-        strategy (Literal["auto", "single_device", "ddp", "ddp_fork", "ddp_notebook", "fsdp", "cv-parallel", "tune-parallel"], optional):
+        strategy (Literal["auto", "ddp", "ddp_fork", "ddp_notebook", "fsdp", "cv-parallel", "tune-parallel", "cv-parallel", "tune-parallel"], optional):
             Distributed strategy to use. Defaults to "auto".
         devices (list[int | str], optional): List of devices to use. Defaults to ["auto"].
         num_nodes (int): Number of nodes to use for distributed training. Defaults to 1.
 
     """  # noqa: E501
 
-    accelerator: Literal["auto", "cpu", "gpu", "cuda", "mps", "tpu"] = "auto"
-    strategy: Literal["auto", "single_device", "ddp", "ddp_fork", "ddp_notebook", "fsdp"] = "auto"
+    accelerator: Literal["auto", "cpu", "gpu", "mps", "tpu"] = "auto"
+    strategy: Literal["auto", "ddp", "ddp_fork", "ddp_notebook", "fsdp", "cv-parallel", "tune-parallel"] = "auto"
     devices: list[int | str] = field(default_factory=lambda: ["auto"])
     num_nodes: int = 1
 
-    def in_parallel(self, device: int | str | None) -> "DeviceConfig":
+    def in_parallel(self, device: int | str | None = None) -> "DeviceConfig":
         """Turn the current configuration into a suitable configuration for parallel training.
+
+        Args:
+            device (int | str | None, optional): The device to use for parallel training.
+                If None, assumes non-multiprocessing parallel training and propagate all devices.
+                Defaults to None.
 
         Returns:
             DeviceConfig: A new DeviceConfig instance that is suitable for parallel training.
 
         """
         # In case of parallel training via multiprocessing, only few strategies are allowed.
-        if self.strategy == "ddp":
+        if self.strategy in ["ddp", "ddp_fork", "ddp_notebook", "fsdp"]:
             logger.warning("Using 'ddp_fork' instead of 'ddp' for multiprocessing.")
             return DeviceConfig(
                 accelerator=self.accelerator,
                 strategy="ddp_fork",  # Fork is the only supported strategy for multiprocessing
-                devices=[device] if device else self.devices,
+                devices=self.devices,
                 num_nodes=self.num_nodes,
             )
-        elif self.strategy == "auto" or device is not None:
+        elif device is not None:
             return DeviceConfig(
                 accelerator=self.accelerator,
-                strategy="single_device",
+                strategy=self.strategy,
                 # If a device is specified, we assume that we want to run on a single device
-                devices=[device] if device else self.devices,
+                devices=[device],
                 num_nodes=1,
             )
         else:
@@ -263,7 +271,22 @@ class DeviceConfig:
         """
         # custom strategy for cross-validation and tuning - disabling intra-training parallelism
         if self.strategy == "cv-parallel" or self.strategy == "tune-parallel":
-            return "single_device"
+            return "auto"
+        # print warning if ddp
+        if self.strategy == "ddp":
+            logger.warning(
+                "Using 'ddp' strategy can have unknown side effects, since it will call the CLI multiple times."
+                " Use 'ddp_fork' for slower, but more reliable multiprocessing."
+            )
+        # print warning about untested fsdp strategy
+        if self.strategy == "fsdp":
+            logger.warning(
+                "Using 'fsdp' strategy is untested and may not work as expected. "
+                "Please report any issues to the DARTS team."
+            )
+        # Add find unused parameters to the strategy for ddp and fsdp
+        if self.strategy in ["ddp", "ddp_fork", "ddp_notebook", "fsdp"]:
+            return f"{self.strategy}_find_unused_parameters_true"
         return self.strategy
 
 
@@ -363,7 +386,10 @@ def train_smp(
         f"Starting training '{run_name}' ('{run_id}') with data from {data_config.train_data_dir.resolve()}."
         f" Artifacts will be saved to {(artifact_dir / f'{run_name}-{run_id}').resolve()}."
     )
-    logger.debug(f"Using config:\n\t{run}\n\t{training_config}\n\t{data_config}\n\t{logging_config}\n\t{hparams}")
+    logger.debug(
+        f"Using config:\n\t{run}\n\t{training_config}\n\t{data_config}\n\t{logging_config}\n\t"
+        f"{device_config}\n\t{hparams}"
+    )
     if training_config.continue_from_checkpoint:
         logger.debug(f"Continuing from checkpoint '{training_config.continue_from_checkpoint.resolve()}'")
 
@@ -388,7 +414,17 @@ def train_smp(
 
     # Data and model
     datamodule = DartsDataModule(
-        bands=hparams.bands, augment=hparams.augment, num_workers=training_config.num_workers, **asdict(data_config)
+        data_dir=data_config.train_data_dir,
+        batch_size=hparams.batch_size,
+        data_split_method=data_config.data_split_method,
+        data_split_by=data_config.data_split_by,
+        fold_method=data_config.fold_method,
+        total_folds=data_config.total_folds,
+        fold=run.fold,
+        subsample=data_config.subsample,
+        bands=hparams.bands,
+        augment=hparams.augment,
+        num_workers=training_config.num_workers,
     )
     model = LitSMP(
         config=config,
@@ -439,7 +475,7 @@ def train_smp(
         RichProgressBar(),
         BinarySegmentationMetrics(
             bands=bands,
-            val_set=f"val{data_config.fold}",
+            val_set=f"val{run.fold}",
             plot_every_n_val_epochs=logging_config.plot_every_n_val_epochs,
             is_crossval=bool(run.cv_name),
             batch_size=hparams.batch_size,
@@ -447,9 +483,10 @@ def train_smp(
         ),
         BinarySegmentationPreview(
             bands=bands,
-            val_set=f"val{data_config.fold}",
+            val_set=f"val{run.fold}",
             plot_every_n_val_epochs=logging_config.plot_every_n_val_epochs,
         ),
+        # Something does not work well here...
         # ThroughputMonitor(batch_size_fn=lambda batch: batch[0].size(0), window_size=log_every_n_steps),
     ]
     if training_config.early_stopping_patience:
@@ -466,7 +503,7 @@ def train_smp(
     # logger.debug(f"Using profiler with output to {profiler.dirpath.resolve()}")
 
     logger.debug(
-        f"Creating lightningtrainer on {device_config.accelerator} with devices {device_config.devices}"
+        f"Creating lightning-trainer on {device_config.accelerator} with devices {device_config.devices}"
         f" and strategy '{device_config.lightning_strategy}'"
     )
     # Train
@@ -477,7 +514,7 @@ def train_smp(
         logger=trainer_loggers,
         check_val_every_n_epoch=logging_config.check_val_every_n_epoch,
         accelerator=device_config.accelerator,
-        devices=device_config.devices,
+        devices=device_config.devices if device_config.devices[0] != "auto" else "auto",
         strategy=device_config.lightning_strategy,
         num_nodes=device_config.num_nodes,
         deterministic=False,  # True does not work for some reason
