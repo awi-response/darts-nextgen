@@ -17,7 +17,13 @@ from darts_segmentation.training import (
 from darts_segmentation.training.tune import tune_mp_smp
 
 from darts import __version__
-from darts.pipelines import AOISentinel2Pipeline, PlanetPipeline, Sentinel2Pipeline, AOISentinel2RayPipeline, AOISentinel2PipelineRefactored
+from darts.pipelines import (
+    AOISentinel2Pipeline,
+    AOISentinel2PipelineRefactored,
+    AOISentinel2RayPipeline,
+    PlanetPipeline,
+    Sentinel2Pipeline,
+)
 from darts.training import (
     preprocess_planet_train_data,
 )
@@ -112,6 +118,7 @@ def launcher(  # noqa: D103
 
 
 def start_app():
+    print("we are starting the app!")
     """Wrapp to start the app."""
     try:
         # First time initialization of the logging manager
@@ -124,5 +131,10 @@ def start_app():
     except Exception as e:
         logger.exception(e)
 
+
 if __name__ == "__main__":
+    import sys
+
+    args = sys.argv[1:]
+    print(args)
     start_app()

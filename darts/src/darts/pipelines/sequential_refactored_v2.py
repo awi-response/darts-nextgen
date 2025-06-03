@@ -118,66 +118,93 @@ class _BasePipelineRefactored(ABC):
                     return result
 
             with timer("Loading optical data", log=False):
-                tile = self._load_tile(tilekey)
-                print("Loaded optical data")
-                print(tile)
+                try:
+                    tile = self._load_tile(tilekey)
+                    print("Loaded optical data")
+                except Exception as e:
+                    print("failed loading optical data")
+                    print(e)
+                    time.sleep(10)
             with timer("Loading ArcticDEM", log=False):
-                arcticdem = load_arcticdem(
-                    tile.odc.geobox,
-                    self.arcticdem_dir,
-                    resolution=self._arcticdem_resolution(),
-                    buffer=ceil(self.tpi_outer_radius / 2 * sqrt(2)),
-                )
-                print(f"Loaded arctic dem")
-                print(arcticdem)
+                try:
+                    arcticdem = load_arcticdem(
+                        tile.odc.geobox,
+                        self.arcticdem_dir,
+                        resolution=self._arcticdem_resolution(),
+                        buffer=ceil(self.tpi_outer_radius / 2 * sqrt(2)),
+                    )
+                    print(f"Loaded arcticDEM")
+                except Exception as e:
+                    print("Failed loading arcticDEM")
+                    print(e)
+                    time.sleep(10)
             with timer("Loading TCVis", log=False):
-                tcvis = load_tcvis(tile.odc.geobox, self.tcvis_dir)
-                print("Loaded tcvis")
-                print(tcvis)
+                try:
+                    tcvis = load_tcvis(tile.odc.geobox, self.tcvis_dir)
+                    print("Loaded TCVis")
+                except Exception as e:
+                    print("failed loading TCVis")
+                    print(e)
+                    time.sleep(10)
             with timer("Preprocessing tile", log=False):
-                tile = preprocess_legacy_fast(
-                    tile,
-                    arcticdem,
-                    tcvis,
-                    self.tpi_outer_radius,
-                    self.tpi_inner_radius,
-                    self.device,
-                )
-                print(f"Preprocessed tile")
-                print(tile)
+                try:
+                    tile = preprocess_legacy_fast(
+                        tile,
+                        arcticdem,
+                        tcvis,
+                        self.tpi_outer_radius,
+                        self.tpi_inner_radius,
+                        self.device,
+                    )
+                    print(f"Preprocessed tile")
+                except Exception as e:
+                    print("failed Preprocessing TCVis")
+                    print(e)
+                    time.sleep(10)
             with timer("Segmenting", log=False):
-                tile = ensemble.segment_tile(
-                    tile,
-                    patch_size=self.patch_size,
-                    overlap=self.overlap,
-                    batch_size=self.batch_size,
-                    reflection=self.reflection,
-                    keep_inputs=self.write_model_outputs,
-                )
-                print("Segmented tile")
-                print(tile)
+                try:
+                    tile = ensemble.segment_tile(
+                        tile,
+                        patch_size=self.patch_size,
+                        overlap=self.overlap,
+                        batch_size=self.batch_size,
+                        reflection=self.reflection,
+                        keep_inputs=self.write_model_outputs,
+                    )
+                    print("Segmented tile")
+                except Exception as e:
+                    print("Failed Segmenting")
+                    print(e)
+                    time.sleep(10)
             with timer("Postprosessing", log=False):
-                tile = prepare_export(
-                    tile,
-                    bin_threshold=self.binarization_threshold,
-                    mask_erosion_size=self.mask_erosion_size,
-                    min_object_size=self.min_object_size,
-                    quality_level=self.quality_level,
-                    ensemble_subsets=models.keys() if self.write_model_outputs else [],
-                    device=self.device,
-                )
-                print("Postprocessing")
-                print(tile)
+                try:
+                    tile = prepare_export(
+                        tile,
+                        bin_threshold=self.binarization_threshold,
+                        mask_erosion_size=self.mask_erosion_size,
+                        min_object_size=self.min_object_size,
+                        quality_level=self.quality_level,
+                        ensemble_subsets=models.keys() if self.write_model_outputs else [],
+                        device=self.device,
+                    )
+                    print("Postprocessing")
+                except Exception as e:
+                    print("Failed postprocessing")
+                    print(e)
+                    time.sleep(10)
             with timer("Exporting", log=False):
-                print("exporting to outpath", outpath)
-                export_tile(
-                    tile,
-                    outpath,
-                    bands=self.export_bands,
-                    ensemble_subsets=models.keys() if self.write_model_outputs else [],
-                )
-                print("exporting")
-                print(tile)
+                try:
+                    export_tile(
+                        tile,
+                        outpath,
+                        bands=self.export_bands,
+                        ensemble_subsets=models.keys() if self.write_model_outputs else [],
+                    )
+                    print("done exporting")
+                except Exception as e:
+                    print("Error in exporting")
+                    print(e)
+                    time.sleep(10)
             n_tiles += 1
             results.append(
                 {
