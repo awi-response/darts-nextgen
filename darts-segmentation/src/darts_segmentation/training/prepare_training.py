@@ -1,8 +1,6 @@
 """Functions to prepare the training data for the segmentation model training."""
 
 import logging
-from collections import defaultdict
-from collections.abc import Generator
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
@@ -15,7 +13,6 @@ import xarray as xr
 import zarr
 
 # TODO: move erode_mask to darts_utils, since uasge is not limited to prepare_export
-from darts_postprocessing.postprocess import erode_mask
 from geocube.api.core import make_geocube
 from zarr.codecs import BloscCodec
 from zarr.storage import LocalStore
@@ -57,11 +54,7 @@ class PatchCoords:
         )
 
 
-# TODO: Redo the "create_patches" functionality so that it works with numpy, xarray and torch.
-# Make is more useful and generic, trying to also keep the coordinate information as long as possible.
-
-
-def create_training_patches(  # noqa: C901
+def create_training_patches(
     tile: xr.Dataset,
     labels: gpd.GeoDataFrame,
     bands: Bands,
@@ -71,7 +64,7 @@ def create_training_patches(  # noqa: C901
     exclude_nan: bool,
     device: Literal["cuda", "cpu"] | int,
     mask_erosion_size: int,
-) -> Generator[tuple[torch.tensor, torch.tensor, PatchCoords]]:
+) -> tuple[torch.tensor, torch.tensor, list[PatchCoords]]:
     """Create training patches from a tile and labels.
 
     Args:
@@ -85,8 +78,8 @@ def create_training_patches(  # noqa: C901
         device (Literal["cuda", "cpu"] | int): The device to use for the erosion.
         mask_erosion_size (int): The size of the disk to use for erosion.
 
-    Yields:
-        Generator[tuple[torch.tensor, torch.tensor]]: A tuple containing the input and the labels as pytorch tensors.
+    Returns:
+        tuple[torch.tensor, torch.tensor, list[PatchCoords]]: A tuple containing the input, the labels and the coords.
             The input has the format (C, H, W), the labels (H, W).
 
     Raises:
@@ -104,14 +97,13 @@ def create_training_patches(  # noqa: C901
         labels_rasterized = xr.zeros_like(tile["quality_data_mask"])
 
     # Filter out the nodata values (class 2 -> invalid data)
-    quality_mask = erode_mask(tile["quality_data_mask"] == 2, mask_erosion_size, device)
-    labels_rasterized = xr.where(quality_mask, labels_rasterized, 2)
+    # quality_mask = erode_mask(tile["quality_data_mask"] == 2, mask_erosion_size, device)
+    # labels_rasterized = xr.where(quality_mask, labels_rasterized, 2)
 
     # Transpose to (H, W)
     tile = tile.transpose("y", "x")
-
     n_bands = len(bands)
-    tensor_labels = torch.tensor(labels_rasterized.values).float()
+    tensor_labels = torch.tensor(labels_rasterized.values, device=device).float()
     tensor_tile = torch.zeros((n_bands, tile.dims["y"], tile.dims["x"]), device=device)
     invalid_mask = (tile["quality_data_mask"] == 0).values
     # This will also order the data into the correct order of bands
@@ -137,50 +129,31 @@ def create_training_patches(  # noqa: C901
         tensor_labels.unsqueeze(0).unsqueeze(0), patch_size, overlap, return_coords=True
     )
     tensor_labels = tensor_labels.reshape(-1, patch_size, patch_size)
-    tensor_coords = tensor_coords.reshape(-1, 5)
+    tensor_coords = tensor_coords.reshape(-1, 5).to(device=device)
 
-    # Turn the patches into a list of tuples
-    n_patches = tensor_patches.shape[0]
-    n_skipped = defaultdict(int)
-    for i in range(n_patches):
-        x = tensor_patches[i]
-        y = tensor_labels[i]
-        coords = PatchCoords.from_tensor(tensor_coords[i], patch_size)
-
-        if exclude_nopositive and not (y == 1).any():
-            n_skipped["nopositive"] += 1
-            continue
-
-        if exclude_nan and torch.isnan(x).any():
-            n_skipped["nan"] += 1
-            continue
-
-        # Skip where there are less than 10% visible pixel
-        if ((y != 2).sum() / y.numel()) < 0.1:
-            n_skipped["visible"] += 1
-            continue
-
-        # Skip patches where everything is nan
-        if torch.isnan(x).all():
-            n_skipped["allnan"] += 1
-            continue
-
-        # Convert all nan values to 0
-        x[torch.isnan(x)] = 0
-
-        xlvly = lovely_tensors.lovely(x, color=False)
-        ylvly = lovely_tensors.lovely(y, color=False)
-        logger.debug(f"Yielding patch {i} with\n\tx={xlvly}\n\ty={ylvly}")
-        yield x.cpu(), y.cpu(), coords
-
+    # Filter out patches based on settings
+    few_visible = ((tensor_labels != 2).sum(dim=(1, 2)) / tensor_labels[0].numel()) < 0.1
+    logger.debug(f"Excluding {few_visible.sum().item()} patches with less than 10% visible pixels")
+    all_nans = torch.isnan(tensor_patches).all(dim=(2, 3)).any(dim=1)
+    logger.debug(f"Excluding {all_nans.sum().item()} patches where everything is nan")
+    filter_mask = few_visible | all_nans
     if exclude_nopositive:
-        logger.debug(f"Skipped {n_skipped['nopositive']} patches with no positive labels")
+        nopositives = (tensor_labels == 1).any(dim=(1, 2))
+        logger.debug(f"Excluding {nopositives.sum().item()} patches with no positive labels")
+        filter_mask |= ~nopositives
     if exclude_nan:
-        logger.debug(f"Skipped {n_skipped['nan']} patches with nan values")
-    logger.debug(f"Skipped {n_skipped['visible']} patches with less than 10% visible pixels")
-    logger.debug(f"Skipped {n_skipped['allnan']} patches where everything is nan")
-    logger.debug(f"Yielded {n_patches - sum(n_skipped.values())} patches")
-    logger.debug(f"Total patches: {n_patches}")
+        has_nans = torch.isnan(tensor_patches).any(dim=(1, 2, 3))
+        logger.debug(f"Excluding {has_nans.sum().item()} patches with nan values")
+        filter_mask |= has_nans
+
+    n_patches = tensor_patches.shape[0]
+    logger.debug(f"Using {n_patches - filter_mask.sum().item()} patches out of {n_patches} total patches")
+
+    tensor_patches = tensor_patches[~filter_mask].cpu()
+    tensor_labels = tensor_labels[~filter_mask].cpu()
+    tensor_coords = tensor_coords[~filter_mask].cpu()
+    coords = [PatchCoords.from_tensor(tensor_coords[i], patch_size) for i in range(tensor_coords.shape[0])]
+    return tensor_patches, tensor_labels, coords
 
 
 @dataclass
@@ -195,6 +168,7 @@ class TrainDatasetBuilder:
     exclude_nan: bool
     mask_erosion_size: int
     device: Literal["cuda", "cpu"] | int
+    append: bool = False
 
     def __post_init__(self):
         """Initialize the TrainDatasetBuilder class based on provided dataclass params.
@@ -208,28 +182,31 @@ class TrainDatasetBuilder:
         lovely_tensors.monkey_patch()
         lovely_tensors.set_config(color=False)
         self._metadata = []
+        if self.append and (self.train_data_dir / "metadata.parquet").exists():
+            self._metadata = gpd.read_parquet(self.train_data_dir / "metadata.parquet").to_dict(orient="records")
 
         self.train_data_dir.mkdir(exist_ok=True, parents=True)
 
-        self._zroot = zarr.group(store=LocalStore(self.train_data_dir / "data.zarr"), overwrite=True)
+        self._zroot = zarr.group(store=LocalStore(self.train_data_dir / "data.zarr"), overwrite=not self.append)
         # We need do declare the number of patches to 0, because we can't know the final number of patches
 
-        self._zroot.create(
-            name="x",
-            shape=(0, len(self.bands), self.patch_size, self.patch_size),
-            # shards=(100, len(bands), patch_size, patch_size),
-            chunks=(1, 1, self.patch_size, self.patch_size),
-            dtype="float32",
-            compressors=BloscCodec(cname="lz4", clevel=9),
-        )
-        self._zroot.create(
-            name="y",
-            shape=(0, self.patch_size, self.patch_size),
-            # shards=(100, patch_size, patch_size),
-            chunks=(1, self.patch_size, self.patch_size),
-            dtype="uint8",
-            compressors=BloscCodec(cname="lz4", clevel=9),
-        )
+        if not self.append:
+            self._zroot.create(
+                name="x",
+                shape=(0, len(self.bands), self.patch_size, self.patch_size),
+                # shards=(100, len(bands), patch_size, patch_size),
+                chunks=(1, 1, self.patch_size, self.patch_size),
+                dtype="float32",
+                compressors=BloscCodec(cname="lz4", clevel=9),
+            )
+            self._zroot.create(
+                name="y",
+                shape=(0, self.patch_size, self.patch_size),
+                # shards=(100, patch_size, patch_size),
+                chunks=(1, self.patch_size, self.patch_size),
+                dtype="uint8",
+                compressors=BloscCodec(cname="lz4", clevel=9),
+            )
 
     def add_tile(
         self,
@@ -253,7 +230,8 @@ class TrainDatasetBuilder:
         metadata = metadata or {}
         # Convert all paths of metadata to strings
         metadata = {k: str(v) if isinstance(v, Path) else v for k, v in metadata.items()}
-        gen = create_training_patches(
+
+        x, y, stacked_coords = create_training_patches(
             tile=tile,
             labels=labels,
             bands=self.bands,
@@ -265,11 +243,10 @@ class TrainDatasetBuilder:
             mask_erosion_size=self.mask_erosion_size,
         )
 
-        zx = self._zroot["x"]
-        zy = self._zroot["y"]
-        for patch_id, (x, y, coords) in enumerate(gen):
-            zx.append(x.unsqueeze(0).numpy().astype("float32"))
-            zy.append(y.unsqueeze(0).numpy().astype("uint8"))
+        self._zroot["x"].append(x.numpy().astype("float32"))
+        self._zroot["y"].append(y.numpy().astype("uint8"))
+
+        for patch_id, coords in enumerate(stacked_coords):
             geometry = tile.isel(x=coords.x, y=coords.y).odc.geobox.geographic_extent.geom
             self._metadata.append(
                 {

@@ -49,7 +49,8 @@ logger = logging.getLogger(__name__) # don't replace __name__
 
 ### Supressing Arrays
 
-When printing or logging large numpy arrays a lot of numbers get truncated, however the array still takes a lot of space. Using `lovely_numpy` and `lovely_tensor` can help here:
+When printing or logging large numpy arrays a lot of numbers get truncated, however the array still takes a lot of space.
+Using `lovely_numpy` and `lovely_tensor` can help here:
 
 ```py
 import numyp as np
@@ -70,4 +71,23 @@ t = torch.tensor(a)
 logger.warning(la)
 logger.warning(da)
 logger.warning(t)
+```
+
+## Dev Guide
+
+This section should cover best practices developing inside the darts package.
+
+- Fail fast
+- Logging exceptions to debug
+
+### Exceptions
+
+When logging exceptions from within an component, the complete exception should be logged with the traceback by setting `exc_info=True` to debug and then re-raised:
+
+```python
+try:
+    # some code
+except Exception as e:
+    logger.debug(e, exc_info=True)
+    raise
 ```

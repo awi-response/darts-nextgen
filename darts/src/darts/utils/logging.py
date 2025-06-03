@@ -67,6 +67,7 @@ class LoggingManagerSingleton:
 
         """
         import distributed
+        import pandas as pd
         import torch
         import torch.utils.data
         import xarray as xr
@@ -84,18 +85,24 @@ class LoggingManagerSingleton:
         current_time = time.strftime("%Y-%m-%d_%H-%M-%S")
 
         # Configure the rich console handler
-        traceback_suppress = [cyclopts, torch, torch.utils.data, xr, distributed]
+        traceback_suppress = [cyclopts, torch, torch.utils.data, xr, distributed, pd]
         if L:
-            traceback_suppress.append(L)
+            pass
+        #    traceback_suppress.append(L)
         rich_handler = RichHandler(
             console=rich.get_console(),
             rich_tracebacks=True,
             tracebacks_suppress=traceback_suppress,
             tracebacks_show_locals=tracebacks_show_locals,
         )
+        rich_fmt = (
+            "%(message)s"
+            if not verbose
+            else "%(name)s@%(processName)s(%(process)d)-%(threadName)s(%(thread)d) - %(message)s"
+        )
         rich_handler.setFormatter(
             logging.Formatter(
-                "%(message)s",
+                rich_fmt,
                 datefmt="[%Y-%m-%d %H:%M:%S]",
             )
         )
@@ -103,9 +110,10 @@ class LoggingManagerSingleton:
 
         # Configure the file handler (no fancy)
         file_handler = logging.FileHandler(log_dir / f"darts_{command}_{current_time}.log")
+        file_fmt = "%(name)s@%(processName)s(%(process)d)-%(threadName)s(%(thread)d):%(levelname)s - %(message)s (in %(filename)s:%(lineno)d)"  # noqa: E501
         file_handler.setFormatter(
             logging.Formatter(
-                "%(asctime)s %(name)s@%(processName)s(%(process)d)-%(threadName)s(%(thread)d):%(levelname)s - %(message)s",  # noqa: E501
+                file_fmt,
                 datefmt="[%Y-%m-%d %H:%M:%S]",
             )
         )

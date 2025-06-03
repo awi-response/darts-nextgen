@@ -61,3 +61,38 @@ Weights & Biases is optionally used for further tracking and logging.
 Wandb will create a run `run_id` named `{run_name}`, meaning the id can be used to directly access the run via link and the name can be used for searching a run.
 For cross-validation and tuning `cv_name` and `tune_name` are set as `job_type` and `group` to emulate sweeps.
 This is a workaround and could potentially fixed if wandb will update their client library to allow the manual creation of sweeps.
+
+## Specifying the devices
+
+PyTorch Lightning supports different strategies for training on different devices and accelerators.
+These can be specified by the `--accelerator`, `--strategy`, `--devices` and `--num_nodes` parameters which are forwarded by the training scripts to the Lightning Trainer.
+The default values for these parameters are all `"auto"`, except for `--num_nodes`, which defaults to `1`.
+This means, that if no values are provided, Lightning will automatically detect the available devices and use one of them for training.
+**Because of the limitation of the CLI regarding unions of lists and int/str, devices must always be a list.**
+
+Here are some configurations for common scenarios:
+
+| Szenario                  | `accelerator` | `strategy`         | `devices`            | `num_nodes`   |
+| ------------------------- | ------------- | ------------------ | -------------------- | ------------- |
+| Single GPU                | `"gpu"`       | `"auto"` (default) | `["auto"]` (default) | `1` (default) |
+| Single GPU on Mac         | `"mpu"`       | `"auto"` (default) | `["auto"]` (default) | `1` (default) |
+| DDP with 4 specified GPUs | `"gpu"`       | `"ddp_fork"`       | `[0, 2, 5, 6]`       | `1` (default) |
+
+Please refer to the documentation of PyTorch Lightning:
+
+- [Trainer API](https://lightning.ai/docs/pytorch/stable/api/lightning.pytorch.trainer.trainer.Trainer.html#lightning.pytorch.trainer.trainer.Trainer)
+- [Strategies](https://lightning.ai/docs/pytorch/stable/extensions/strategy.html)
+- [DDP Example](https://lightning.ai/docs/pytorch/stable/accelerators/gpu_intermediate.html#distributed-data-parallel)
+
+For the cross-validation and tuning script, two other `--strategy` options apart from the ones provided by PyTorch Lightning can be specified, which defines how _training runs_ are executed in parallel.
+In this scenario, instead of running a single training run on multiple devices, multiple training runs are executed in parallel across multiple devices.
+Note that it is not possible to use any distribbuted strategy like DDP in this case.
+
+- `"cv-parallel"`: This strategy will run the training runs of a cross-validation in parallel.
+- `"tune-parallel"`: This strategy will run the cross-validations of a tune in parallel. In this scenario, the training runs of a cross-validation will be executed in series.
+
+!!! Warning "DDP with parallel tuning or cross-validation"
+
+    When running multiple processes in parallel, normal Distributed Data Parallel (DDP) can not be used, since it will call the complete script multiple times.
+    Thus, e.g. for tuning, multiple tunes would be created, which is not intended.
+    Hence, the cross-validation and tuning script disable the DDP strategy by default and use instead the `"ddp_fork"` strategy if more than one `"num_nodes"` or `"devices"` is specified.

@@ -13,6 +13,7 @@ Augmentation = Literal[
     "Blur",
     "RandomBrightnessContrast",
     "MultiplicativeNoise",
+    "Posterize",
 ]
 
 
@@ -58,6 +59,14 @@ def get_augmentation(augment: list[Augmentation] | None) -> "A.Compose | None":
                 transforms.append(A.RandomBrightnessContrast())
             case "MultiplicativeNoise":
                 transforms.append(A.MultiplicativeNoise(per_channel=True, elementwise=True))
+            case "Posterize":
+                # First convert to uint8, then apply posterization, then convert back to float32
+                # * Note: This does only work for float32 images.
+                transforms += [
+                    A.FromFloat(dtype="uint8"),
+                    A.Posterize(num_bits=6, p=1.0),
+                    A.ToFloat(),
+                ]
             case _:
                 raise ValueError(f"Unknown augmentation: {aug}")
     return A.Compose(transforms)
