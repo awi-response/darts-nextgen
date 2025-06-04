@@ -2,42 +2,32 @@
 
 import logging
 from pathlib import Path
-import time
+
 import xarray as xr
 from stopuhr import stopwatch
-import os
+
 from darts_export import miniviz, vectorization
 
 logger = logging.getLogger(__name__.replace("darts_", "darts."))
 
 
 def _export_raster(tile: xr.Dataset, name: str, out_dir: Path, fname: str | None = None):
-    try:
-        if fname is None:
-            fname = name
-        fpath = out_dir / f"{fname}.tif"
-        # with stopwatch(f"Exporting {name} to {fpath.resolve()}", logger.debug):
+    if fname is None:
+        fname = name
+    fpath = out_dir / f"{fname}.tif"
+    with stopwatch(f"Exporting {name} to {fpath.resolve()}", printer=logger.debug):
         tile[name].rio.to_raster(fpath, driver="GTiff", compress="LZW")
-        print('exported raster')
-    except Exception as e:
-        print(f"Failed export raster")
-        print(e)
 
 
 def _export_vector(tile: xr.Dataset, name: str, out_dir: Path, fname: str | None = None):
-    try:
-        if fname is None:
-            fname = name
-        fpath_gpkg = out_dir / f"{fname}.gpkg"
-        fpath_parquet = out_dir / f"{fname}.parquet"
-        # with stopwatch(f"Exporting {name} to {fpath_gpkg.resolve()} and {fpath_parquet.resolve()}", logger.debug):
+    if fname is None:
+        fname = name
+    fpath_gpkg = out_dir / f"{fname}.gpkg"
+    fpath_parquet = out_dir / f"{fname}.parquet"
+    with stopwatch(f"Exporting {name} to {fpath_gpkg.resolve()} and {fpath_parquet.resolve()}", printer=logger.debug):
         polygon_gdf = vectorization.vectorize(tile, name)
         polygon_gdf.to_file(fpath_gpkg, layer=f"{fname}")
         polygon_gdf.to_parquet(fpath_parquet)
-        print('Success export vector')
-    except Exception as e:
-        print(f"Failed export vector")
-        print(e)
 
 
 def _export_polygonized(tile: xr.Dataset, out_dir: Path, ensemble_subsets: list[str] = []):
@@ -49,54 +39,39 @@ def _export_polygonized(tile: xr.Dataset, out_dir: Path, ensemble_subsets: list[
             out_dir,
             fname=f"prediction_segments-{ensemble_subset}",
         )
-    print('done export polygonized')
 
 
 def _export_binarized(tile: xr.Dataset, out_dir: Path, ensemble_subsets: list[str] = []):
-    try:
-        _export_raster(tile, "binarized_segmentation", out_dir, fname="binarized")
-        for ensemble_subset in ensemble_subsets:
-            _export_raster(
-                tile,
-                f"binarized_segmentation-{ensemble_subset}",
-                out_dir,
-                fname=f"binarized-{ensemble_subset}",
-            )
-        print('Success export binarized')
-    except Exception as e:
-        print(f"Failed export binarized")
-        print(e)
+    _export_raster(tile, "binarized_segmentation", out_dir, fname="binarized")
+    for ensemble_subset in ensemble_subsets:
+        _export_raster(
+            tile,
+            f"binarized_segmentation-{ensemble_subset}",
+            out_dir,
+            fname=f"binarized-{ensemble_subset}",
+        )
+
 
 def _export_probabilities(tile: xr.Dataset, out_dir: Path, ensemble_subsets: list[str] = []):
-    try:
-        _export_raster(tile, "probabilities", out_dir, fname="probabilities")
-        for ensemble_subset in ensemble_subsets:
-            _export_raster(
-                tile,
-                f"probabilities-{ensemble_subset}",
-                out_dir,
-                fname=f"probabilities-{ensemble_subset}",
-            )
-        print(f"Success export probabilities")
-    except Exception as e:
-        print(f"Failed export probabilities")
-        print(e)
+    _export_raster(tile, "probabilities", out_dir, fname="probabilities")
+    for ensemble_subset in ensemble_subsets:
+        _export_raster(
+            tile,
+            f"probabilities-{ensemble_subset}",
+            out_dir,
+            fname=f"probabilities-{ensemble_subset}",
+        )
 
 
 def _export_thumbnail(tile: xr.Dataset, out_dir: Path):
-    try:
-        fpath = out_dir / "thumbnail.jpg"
-        # with stopwatch(f"Exporting thumbnail to {fpath}", logger.debug):
+    fpath = out_dir / "thumbnail.jpg"
+    with stopwatch(f"Exporting thumbnail to {fpath}", printer=logger.debug):
         fig = miniviz.thumbnail(tile)
         fig.savefig(fpath)
         fig.clear()
-        print(f"Success export thumbnail")
-    except Exception as e:
-        print("Failed export thumbnail")
-        print(e)
 
 
-# @stopwatch.f("Exporting tile", logger.debug, print_kwargs=["bands", "ensemble_subsets"])
+@stopwatch.f("Exporting tile", printer=logger.debug, print_kwargs=["bands", "ensemble_subsets"])
 def export_tile(  # noqa: C901
     tile: xr.Dataset,
     out_dir: Path,
@@ -116,8 +91,8 @@ def export_tile(  # noqa: C901
 
     """
     out_dir.mkdir(parents=True, exist_ok=True)
+
     for band in bands:
-        print(f"Exporting band {band}")
         match band:
             case "polygonized":
                 _export_polygonized(tile, out_dir, ensemble_subsets)

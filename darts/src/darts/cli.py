@@ -130,11 +130,3 @@ def start_app():
         logger.info("Closing...")
     except Exception as e:
         logger.exception(e)
-
-
-if __name__ == "__main__":
-    import sys
-
-    args = sys.argv[1:]
-    print(args)
-    start_app()
