@@ -45,3 +45,7 @@ configs/
 
 # Custom local scripts
 scripts-local/
+
+# pixi environments
+.pixi
+*.egg-info

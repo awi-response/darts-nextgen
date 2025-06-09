@@ -59,7 +59,7 @@ dependencies = [
     "filelock>=3.18.0",
 ]
 readme = "README.md"
-requires-python = ">= 3.11"
+requires-python = ">= 3.11, < 3.13"
 authors = [
     { name = "Ingmar Nitze", email = "ingmar.nitze@awi.de" },
     { name = "Konrad Heidler", email = "k.heidler@tum.de" },
@@ -246,6 +246,54 @@ explicit = true
 
 [tool.uv.workspace]
 members = ["darts-*"]
+
+# ==============================================================================
+# Pixi Configuration
+# ==============================================================================
+
+# Currently this does not work!
+# Pixi is not meant to be used alongside uv, instead it expects to be used as the main tool
+# which uses uv under the hood.
+# Hence, stuff like uv-workspaces or uv-extras and uv-groups do not work as one would expect.
+# Until things are changed, use the pixi.toml file instead of this section.
+# [tool.pixi.workspace]
+# channels = ["conda-forge"]
+# platforms = ["linux-64", "osx-arm64", "osx-64", "win-64"]
+#
+# [tool.pixi.dependencies]
+# google-cloud-sdk = ">=525.0.0,<526" # Is not available for windows...
+# uv = ">=0.7.12,<0.8"
+#
+# [tool.pixi.pypi-dependencies]
+# darts-nextgen = { path = ".", editable = true }
+#
+# [tool.pixi.feature.cuda118]
+# channels = ["nvidia", "conda-forge"]
+# platforms = ["linux-64", "win-64"]
+# dependencies = { cuda = {version = "11.8.*", channel = "nvidia"} }
+#
+# [tool.pixi.feature.cuda121]
+# channels = ["nvidia", "conda-forge"]
+# platforms = ["linux-64", "win-64"]
+# dependencies = { cuda = {version = "12.1.*", channel = "nvidia"} }
+#
+# [tool.pixi.feature.cuda126]
+# channels = ["nvidia", "conda-forge"]
+# platforms = ["linux-64", "win-64"]
+# dependencies = { cuda = {version = "12.6.*", channel = "nvidia"} }
+#
+# [tool.pixi.environments]
+# default = { solve-group = "default" }
+# cpu = { features = ["cpu"], solve-group = "default" }
+# cuda118 = { features = ["cuda118"], solve-group = "cuda118" }
+# cuda121 = { features = ["cuda121"], solve-group = "cuda121" }
+# cuda126 = { features = ["cuda126"], solve-group = "cuda126" }
+# dev = { features = ["dev"], solve-group = "default" }
+# docs = { features = ["docs"], solve-group = "default" }
+# training = { features = ["training"], solve-group = "default" }
+#
+# [tool.pixi.tasks]
+# darts = { cmd = "uv run darts" }
 
 # ==============================================================================
 # Ruff Configuration

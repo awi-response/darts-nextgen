@@ -11,7 +11,7 @@ This is te successor of the thaw-slump-segmentation (pipeline), with which the f
 ## Documentation
 
 The documentation is available at [https://awi-response.github.io/darts-nextgen/](https://awi-response.github.io/darts-nextgen/).
-It is recommended to read the [getting started guide](https://awi-response.github.io/darts-nextgen/getting_started) before working with the project.
+It is recommended to read the [overview](https://awi-response.github.io/darts-nextgen/latest/overview) before working with the project.
 
 ## Quick Start
 
@@ -28,6 +28,8 @@ It is recommended to read the [getting started guide](https://awi-response.githu
     uv sync --extra cuda126 --extra training
     ```
 
+    > For other installation options, e.g. using conda, see the [installation guide](https://awi-response.github.io/darts-nextgen/latest/guides/installation/).
+
 3. Run the Sentinel 2 based pipeline on an area of interest:
 
     ```sh
@@ -40,4 +42,4 @@ It is recommended to read the [getting started guide](https://awi-response.githu
 
 ## Contribute
 
-Before contributing please contact one of the authors and make sure to read the [Contribution Guidelines](docs/contribute.md).
+Before contributing please contact one of the authors and make sure to read the [Contribution Guidelines](https://awi-response.github.io/darts-nextgen/latest/contribute).

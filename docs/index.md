@@ -47,7 +47,7 @@ This is te successor of the thaw-slump-segmentation (pipeline), with which the f
 
     ---
 
-    View detailed instructions on how to install the project for different environments and setup, e.g. with CUDA.
+    View detailed instructions on how to install the project for different environments and setup, e.g. with CUDA or conda.
 
     [:octicons-arrow-right-24: Install](guides/installation.md)
 
