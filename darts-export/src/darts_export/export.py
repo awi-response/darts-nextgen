@@ -71,7 +71,7 @@ def _export_thumbnail(tile: xr.Dataset, out_dir: Path):
         fig.clear()
 
 
-@stopwatch.f("Exporting tile", logger.debug, print_kwargs=["bands", "ensemble_subsets"])
+@stopwatch.f("Exporting tile", printer=logger.debug, print_kwargs=["bands", "ensemble_subsets"])
 def export_tile(  # noqa: C901
     tile: xr.Dataset,
     out_dir: Path,

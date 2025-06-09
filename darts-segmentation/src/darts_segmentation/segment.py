@@ -126,7 +126,7 @@ class SMPSegmenter:
 
     @stopwatch.f(
         "Segmenting tile",
-        logger.debug,
+        printer=logger.debug,
         print_kwargs=["patch_size", "overlap", "batch_size", "reflection"],
     )
     def segment_tile(
@@ -170,7 +170,7 @@ class SMPSegmenter:
 
     @stopwatch.f(
         "Segmenting tiles",
-        logger.debug,
+        printer=logger.debug,
         print_kwargs=["patch_size", "overlap", "batch_size", "reflection"],
     )
     def segment_tile_batched(
