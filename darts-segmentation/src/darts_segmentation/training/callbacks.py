@@ -2,6 +2,7 @@
 
 import copy
 import logging
+from collections import defaultdict
 from pathlib import Path
 from typing import Literal
 
@@ -201,12 +202,12 @@ class BinarySegmentationMetrics(Callback):
             }
         )
 
-        added_metrics: list[str] = []
+        added_metrics: defaultdict[str] = defaultdict(list)
 
         # Train metrics only for the fit stage
         if stage == "fit":
             pl_module.train_metrics = metrics.clone(prefix="train/")
-            added_metrics += list(pl_module.train_metrics.keys())
+            added_metrics["train"] += list(pl_module.train_metrics.keys(keep_base=True))
         # Validation metrics and visualizations for the fit and validate stages
         if stage == "fit" or stage == "validate":
             pl_module.val_metrics = metrics.clone(prefix=f"{self._val_prefix}/")
@@ -219,16 +220,12 @@ class BinarySegmentationMetrics(Callback):
             pl_module.val_roc = ROC(thresholds=20, **metric_kwargs)
             pl_module.val_prc = PrecisionRecallCurve(thresholds=20, **metric_kwargs)
             pl_module.val_cmx = ConfusionMatrix(normalize="true", **metric_kwargs)
-            added_metrics += list(pl_module.val_metrics.keys())
-            added_metrics += [f"{self._val_prefix}/{m}" for m in ["roc", "prc", "cmx"]]
-
-            # Internal state to track how many visualizations have been generated in an epoch
-            self._val_pos_visualizations = 0
-            self._val_neg_visualizations = 0
+            added_metrics[self._val_prefix] += list(pl_module.val_metrics.keys(keep_base=True))
+            added_metrics[self._val_prefix] += ["roc", "prc", "cmx"]
 
         # Test metrics and visualizations for the test stage
         if stage == "test":
-            pl_module.test_metrics = metrics.clone(prefix=f"{pl_module.test_set}/")
+            pl_module.test_metrics = metrics.clone(prefix=f"{self.test_set}/")
             pl_module.test_metrics.add_metrics(
                 {
                     "AUROC": AUROC(thresholds=20, **metric_kwargs),
@@ -259,16 +256,12 @@ class BinarySegmentationMetrics(Callback):
             pl_module.test_instance_prc = BinaryInstancePrecisionRecallCurve(thresholds=20, **instance_metric_kwargs)
             pl_module.test_instance_cmx = BinaryInstanceConfusionMatrix(normalize=True, **instance_metric_kwargs)
 
-            added_metrics += list(pl_module.test_metrics.keys())
-            added_metrics += [f"{self.test_set}/{m}" for m in ["roc", "prc", "cmx", "instance_prc", "instance_cmx"]]
-
-            # Internal state to track how many visualizations have been generated in an epoch
-            self._test_pos_visualizations = 0
-            self._test_neg_visualizations = 0
+            added_metrics[self.test_set] += list(pl_module.test_metrics.keys(keep_base=True))
+            added_metrics[self.test_set] += ["roc", "prc", "cmx", "instance_prc", "instance_cmx"]
 
         # Log the added metrics
-        sep = "\n\t- "
-        logger.debug(f"Added metrics:{sep + sep.join(added_metrics)}")
+        added_metrics = {k: str(sorted(v)) for k, v in added_metrics.items()}
+        logger.debug(f"Added metrics:{added_metrics}")
 
     def teardown(self, trainer: Trainer, pl_module: LightningModule, stage: Stage):  # noqa: D102
         # Delete the references to the trainer and pl_module
@@ -316,7 +309,7 @@ class BinarySegmentationMetrics(Callback):
         self, trainer: Trainer, pl_module: LightningModule, outputs, batch, batch_idx, dataloader_idx=0
     ):
         pl_module.log(f"{self._val_prefix}/loss", outputs["loss"])
-        x, y = batch
+        _x, y = batch
         # Expect the output to has a tensor called "y_hat"
         assert "y_hat" in outputs, (
             "Output does not contain 'y_hat' tensor."
@@ -330,44 +323,6 @@ class BinarySegmentationMetrics(Callback):
         pl_module.val_roc.update(y_hat, y)
         pl_module.val_prc.update(y_hat, y)
         pl_module.val_cmx.update(y_hat, y)
-
-        # Create figures for the samples (plot at maximum 30)
-        # We want to plot at max 20 POSITIVE samples and 10 NEGATIVE samples in a single epoch
-        # These should also be the same over all epochs
-        for i in range(x.shape[0]):
-            if self._val_pos_visualizations >= 20 and self._val_neg_visualizations >= 10:
-                break
-
-            # Don't plot in sanity check
-            if trainer.state.stage != "sanity_check":
-                break
-
-            # Plot positive sample
-            is_postive = (y[i] == 1).sum() > 0
-            if is_postive and self._val_pos_visualizations < 20:
-                fig, _ = plot_sample(x[i], y[i], y_hat[i], self.band_names)
-                self._val_pos_visualizations += 1
-            # Plot negative sample
-            elif not is_postive and self._val_neg_visualizations < 10:
-                fig, _ = plot_sample(x[i], y[i], y_hat[i], self.band_names)
-                self._val_neg_visualizations += 1
-            # Either the number of positive or negative samples is already full
-            else:
-                continue
-
-            for pllogger in pl_module.loggers:
-                if isinstance(pllogger, CSVLogger):
-                    fig_dir = Path(pllogger.log_dir) / "figures" / f"{self.val_set}-samples"
-                    fig_dir.mkdir(exist_ok=True, parents=True)
-                    fig.savefig(fig_dir / f"sample_{pl_module.global_step}_{batch_idx}_{i}.png")
-                if isinstance(pllogger, WandbLogger):
-                    wandb_run: Run = pllogger.experiment
-                    # We don't commit the log yet, so that the step is increased with the next lightning log
-                    # Which happens at the end of the validation epoch
-                    img_name = f"{self.val_set}-samples/sample_{batch_idx}_{i}"
-                    wandb_run.log({img_name: wandb.Image(fig)}, commit=False)
-            fig.clear()
-            plt.close(fig)
 
     def on_validation_epoch_end(self, trainer: Trainer, pl_module: LightningModule):  # noqa: D102
         # Only do this every self.plot_every_n_val_epochs epochs
@@ -409,14 +364,11 @@ class BinarySegmentationMetrics(Callback):
         pl_module.val_prc.reset()
         pl_module.val_cmx.reset()
 
-        self._val_pos_visualizations = 0
-        self._val_neg_visualizations = 0
-
     def on_test_batch_end(  # noqa: D102
         self, trainer: Trainer, pl_module: LightningModule, outputs, batch, batch_idx, dataloader_idx=0
     ):
         pl_module.log(f"{self.test_set}/loss", outputs["loss"])
-        x, y = batch
+        _x, y = batch
         assert "y_hat" in outputs, (
             "Output does not contain 'y_hat' tensor."
             " Please make sure the 'test_step' method returns a dict with 'y_hat' and 'loss' keys."
@@ -431,39 +383,6 @@ class BinarySegmentationMetrics(Callback):
         pl_module.test_cmx.update(y_hat, y)
         pl_module.test_instance_prc.update(y_hat, y)
         pl_module.test_instance_cmx.update(y_hat, y)
-
-        # Create figures for the samples (plot at maximum 30)
-        # We want to plot at max 20 POSITIVE samples and 10 NEGATIVE samples in a single epoch
-        # These should also be the same over all epochs
-        for i in range(x.shape[0]):
-            if self._test_pos_visualizations >= 20 and self._test_neg_visualizations >= 10:
-                break
-
-            # Plot positive sample
-            if y[i].sum() > 0 and self._test_pos_visualizations < 20:
-                fig, _ = plot_sample(x[i], y[i], y_hat[i], self.band_names)
-                self._test_pos_visualizations += 1
-            # Plot negative sample
-            elif y[i].sum() == 0 and self._test_neg_visualizations < 10:
-                fig, _ = plot_sample(x[i], y[i], y_hat[i], self.band_names)
-                self._test_neg_visualizations += 1
-            # Either the number of positive or negative samples is already full
-            else:
-                continue
-
-            for pllogger in pl_module.loggers:
-                if isinstance(pllogger, CSVLogger):
-                    fig_dir = Path(pllogger.log_dir) / "figures" / f"{self.test_set}-samples"
-                    fig_dir.mkdir(exist_ok=True, parents=True)
-                    fig.savefig(fig_dir / f"sample_{pl_module.global_step}_{batch_idx}_{i}.png")
-                if isinstance(pllogger, WandbLogger):
-                    wandb_run: Run = pllogger.experiment
-                    # We don't commit the log yet, so that the step is increased with the next lightning log
-                    # Which happens at the end of the validation epoch
-                    img_name = f"{self.test_set}-samples/sample_{batch_idx}_{i}"
-                    wandb_run.log({img_name: wandb.Image(fig)}, commit=False)
-            fig.clear()
-            plt.close(fig)
 
     def on_test_epoch_end(self, trainer: Trainer, pl_module: LightningModule):  # noqa: D102
         pl_module.test_cmx.compute()
@@ -514,5 +433,193 @@ class BinarySegmentationMetrics(Callback):
         pl_module.test_instance_prc.reset()
         pl_module.test_instance_cmx.reset()
 
+
+class BinarySegmentationPreview(Callback):
+    """Callback for validation metrics and visualizations."""
+
+    trainer: Trainer
+    pl_module: LightningModule
+    stage: Stage
+
+    def __init__(
+        self,
+        *,
+        bands: Bands,
+        val_set: str = "val",
+        test_set: str = "test",
+        plot_every_n_val_epochs: int = 5,
+    ):
+        """Initialize the ValidationCallback.
+
+        Args:
+            bands (Bands): List of bands to combine for the visualization.
+            val_set (str, optional): Name of the validation set. Only used for naming the validation metrics.
+                Defaults to "val".
+            test_set (str, optional): Name of the test set. Only used for naming the test metrics. Defaults to "test".
+            plot_every_n_val_epochs (int, optional): Plot validation samples every n epochs. Defaults to 5.
+
+        """
+        assert "/" not in val_set, "val_set must not contain '/'"
+        assert "/" not in test_set, "test_set must not contain '/'"
+        self.val_set = val_set
+        self.test_set = test_set
+        self.plot_every_n_val_epochs = plot_every_n_val_epochs
+        self.band_names = bands.names
+
+    def is_val_plot_epoch(self, current_epoch: int, check_val_every_n_epoch: int | None) -> bool:
+        """Check if the current epoch is an epoch where validation samples should be plotted.
+
+        Args:
+            current_epoch (int): The current epoch.
+            check_val_every_n_epoch (int | None): The number of epochs to check for plotting.
+                If None, no plotting is done.
+
+        Returns:
+            bool: True if the current epoch is a plot epoch, False otherwise.
+
+        """
+        if check_val_every_n_epoch is None:
+            return False
+
+        n = self.plot_every_n_val_epochs * check_val_every_n_epoch
+        return ((current_epoch + 1) % n) == 0 or current_epoch == 0
+
+    def setup(self, trainer: Trainer, pl_module: LightningModule, stage: Stage):
+        """Setups the callback.
+
+        Args:
+            trainer (Trainer): The lightning trainer.
+            pl_module (LightningModule): The lightning module.
+            stage (Literal["fit", "validate", "test", "predict"]): The current stage.
+                One of: "fit", "validate", "test", "predict".
+
+        """
+        # We don't want to use memory in the predict stage
+        if stage == "predict":
+            return
+
+        # Validation metrics and visualizations for the fit and validate stages
+        if stage == "fit" or stage == "validate":
+            # Internal state to track how many visualizations have been generated in an epoch
+            self._val_pos_visualizations = 0
+            self._val_neg_visualizations = 0
+
+        # Test metrics and visualizations for the test stage
+        if stage == "test":
+            # Internal state to track how many visualizations have been generated in an epoch
+            self._test_pos_visualizations = 0
+            self._test_neg_visualizations = 0
+
+    def on_validation_batch_end(  # noqa: D102
+        self, trainer: Trainer, pl_module: LightningModule, outputs, batch, batch_idx, dataloader_idx=0
+    ):
+        # Only do this every self.plot_every_n_val_epochs epochs
+        is_val_plot_epoch = self.is_val_plot_epoch(pl_module.current_epoch, trainer.check_val_every_n_epoch)
+        if not is_val_plot_epoch:
+            return
+
+        x, y = batch
+        # Expect the output to has a tensor called "y_hat"
+        assert "y_hat" in outputs, (
+            "Output does not contain 'y_hat' tensor."
+            " Please make sure the 'validation_step' method returns a dict with 'y_hat' and 'loss' keys."
+            " The 'y_hat' should be the model's prediction (a pytorch tensor of shape [B, C, H, W])."
+            " The 'loss' should be the loss value (a scalar tensor).",
+        )
+        y_hat = outputs["y_hat"]
+
+        # Create figures for the samples (plot at maximum 30)
+        # We want to plot at max 20 POSITIVE samples and 10 NEGATIVE samples in a single epoch
+        # These should also be the same over all epochs
+        for i in range(x.shape[0]):
+            if self._val_pos_visualizations >= 20 and self._val_neg_visualizations >= 10:
+                break
+
+            # Don't plot in sanity check
+            if trainer.state.stage == "sanity_check":
+                break
+
+            # Plot positive sample
+            is_postive = (y[i] == 1).sum() > 0
+            if is_postive and self._val_pos_visualizations < 20:
+                fig, _ = plot_sample(x[i], y[i], y_hat[i], self.band_names)
+                self._val_pos_visualizations += 1
+            # Plot negative sample
+            elif not is_postive and self._val_neg_visualizations < 10:
+                fig, _ = plot_sample(x[i], y[i], y_hat[i], self.band_names)
+                self._val_neg_visualizations += 1
+            # Either the number of positive or negative samples is already full
+            else:
+                continue
+
+            for pllogger in pl_module.loggers:
+                if isinstance(pllogger, CSVLogger):
+                    fig_dir = Path(pllogger.log_dir) / "figures" / f"{self.val_set}-samples"
+                    fig_dir.mkdir(exist_ok=True, parents=True)
+                    fig.savefig(fig_dir / f"sample_{pl_module.global_step}_{batch_idx}_{i}.png")
+                if isinstance(pllogger, WandbLogger):
+                    wandb_run: Run = pllogger.experiment
+                    # We don't commit the log yet, so that the step is increased with the next lightning log
+                    # Which happens at the end of the validation epoch
+                    img_name = f"{self.val_set}-samples/sample_{batch_idx}_{i}"
+                    wandb_run.log({img_name: wandb.Image(fig)}, commit=False)
+            fig.clear()
+            plt.close(fig)
+
+    def on_validation_epoch_end(self, trainer: Trainer, pl_module: LightningModule):  # noqa: D102
+        self._val_pos_visualizations = 0
+        self._val_neg_visualizations = 0
+
+    def on_test_batch_end(  # noqa: D102
+        self, trainer: Trainer, pl_module: LightningModule, outputs, batch, batch_idx, dataloader_idx=0
+    ):
+        # Only do this every self.plot_every_n_val_epochs epochs
+        is_val_plot_epoch = self.is_val_plot_epoch(pl_module.current_epoch, trainer.check_val_every_n_epoch)
+        if not is_val_plot_epoch:
+            return
+
+        x, y = batch
+        assert "y_hat" in outputs, (
+            "Output does not contain 'y_hat' tensor."
+            " Please make sure the 'test_step' method returns a dict with 'y_hat' and 'loss' keys."
+            " The 'y_hat' should be the model's prediction (a pytorch tensor of shape [B, C, H, W])."
+            " The 'loss' should be the loss value (a scalar tensor).",
+        )
+        y_hat = outputs["y_hat"]
+
+        # Create figures for the samples (plot at maximum 30)
+        # We want to plot at max 20 POSITIVE samples and 10 NEGATIVE samples in a single epoch
+        # These should also be the same over all epochs
+        for i in range(x.shape[0]):
+            if self._test_pos_visualizations >= 20 and self._test_neg_visualizations >= 10:
+                break
+
+            # Plot positive sample
+            if y[i].sum() > 0 and self._test_pos_visualizations < 20:
+                fig, _ = plot_sample(x[i], y[i], y_hat[i], self.band_names)
+                self._test_pos_visualizations += 1
+            # Plot negative sample
+            elif y[i].sum() == 0 and self._test_neg_visualizations < 10:
+                fig, _ = plot_sample(x[i], y[i], y_hat[i], self.band_names)
+                self._test_neg_visualizations += 1
+            # Either the number of positive or negative samples is already full
+            else:
+                continue
+
+            for pllogger in pl_module.loggers:
+                if isinstance(pllogger, CSVLogger):
+                    fig_dir = Path(pllogger.log_dir) / "figures" / f"{self.test_set}-samples"
+                    fig_dir.mkdir(exist_ok=True, parents=True)
+                    fig.savefig(fig_dir / f"sample_{pl_module.global_step}_{batch_idx}_{i}.png")
+                if isinstance(pllogger, WandbLogger):
+                    wandb_run: Run = pllogger.experiment
+                    # We don't commit the log yet, so that the step is increased with the next lightning log
+                    # Which happens at the end of the validation epoch
+                    img_name = f"{self.test_set}-samples/sample_{batch_idx}_{i}"
+                    wandb_run.log({img_name: wandb.Image(fig)}, commit=False)
+            fig.clear()
+            plt.close(fig)
+
+    def on_test_epoch_end(self, trainer: Trainer, pl_module: LightningModule):  # noqa: D102
         self._test_pos_visualizations = 0
         self._test_neg_visualizations = 0

@@ -9,18 +9,20 @@
 
 import logging
 import time
-from concurrent.futures import ProcessPoolExecutor, as_completed
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass
 from multiprocessing import Queue
 from pathlib import Path
-from typing import TYPE_CHECKING, Literal, TypedDict
+from typing import TYPE_CHECKING, Annotated, Literal
 
+import cyclopts
+
+from darts_segmentation.training.cv import CrossValidationConfig
+from darts_segmentation.training.hparams import Hyperparameters
 from darts_segmentation.training.scoring import check_score_is_unstable
+from darts_segmentation.training.train import DataConfig, DeviceConfig, LoggingConfig, TrainingConfig, TrainRunConfig
 
 if TYPE_CHECKING:
     import pandas as pd
-
-    from darts_segmentation.training.hparams import Hyperparameter
 
 
 logger = logging.getLogger(__name__.replace("darts_", "darts."))
@@ -28,52 +30,17 @@ logger = logging.getLogger(__name__.replace("darts_", "darts."))
 available_devices = Queue()
 
 
-class _CVInputs(TypedDict):
-    # Data
-    train_data_dir: Path
-    data_split_method: Literal["random", "region", "sample"] | None = None
-    data_split_by: list[str | float] | None = None
-    fold_method: Literal["kfold", "shuffle", "stratified", "region", "region-stratified"] = "kfold"
-    total_folds: int = 5
-    bands: list[str] | None = None
-    # CV config
-    n_folds: int | None = None
-    n_randoms: int = 3
-    tune_name: str | None = None
-    artifact_dir: Path = Path("artifacts")
-    # Hyperparameters
-    model_arch: str = "Unet"
-    model_encoder: str = "dpn107"
-    model_encoder_weights: str | None = None
-    augment: bool = True
-    learning_rate: float = 1e-3
-    gamma: float = 0.9
-    focal_loss_alpha: float | None = None
-    focal_loss_gamma: float = 2.0
-    batch_size: int = 8
-    # Scoring
-    scoring_metric: list[str] = field(default_factory=lambda: ["val/JaccardIndex", "val/Recall"])
-    multi_score_strategy: Literal["harmonic", "arithmetic", "geometric", "min"] = "harmonic"
-    # Epoch and Logging config
-    max_epochs: int = 100
-    log_every_n_steps: int = 10
-    check_val_every_n_epoch: int = 3
-    early_stopping_patience: int = 5
-    plot_every_n_val_epochs: int = 5
-    # Device and Manager config
-    num_workers: int = 0
-    # Wandb config
-    wandb_entity: str | None = None
-    wandb_project: str | None = None
-
-
 @dataclass
 class _ProcessInputs:
-    i: int
+    current: int
     total: int
     tune_name: str
-    cv_inputs: _CVInputs
-    hp: "Hyperparameter"
+    cv: CrossValidationConfig
+    training_config: TrainingConfig
+    logging_config: LoggingConfig
+    data_config: DataConfig
+    device_config: DeviceConfig
+    hparams: Hyperparameters
 
 
 @dataclass
@@ -83,19 +50,42 @@ class _ProcessOutputs:
     is_unstable: bool
 
 
-def _run_cv_in_process(inp: _ProcessInputs):
+def _run_cv(inp: _ProcessInputs):
+    # Wrapper function for handling parallel multiprocessing training runs.
+    import pandas as pd
+
     from darts_segmentation.training.cv import cross_validation_smp
 
-    device = available_devices.get()
-    logger.debug(f"Got device {device} for cv {inp.tune_name}-cv{inp.i}")
-    try:
-        cv_name = f"{inp.tune_name}-cv{inp.i}"
-        logger.debug(f"Starting cv {cv_name} ({inp.i}/{inp.total})")
-        score, is_unstable, cv_run_infos = cross_validation_smp(**inp.cv_inputs, cv_name=cv_name, device=device)
+    cv_name = f"{inp.tune_name}-cv{inp.current}"
 
-        hpd = asdict(inp.hp)
-        for key, value in hpd.items():
-            cv_run_infos[key] = value
+    # Setup device configuration: If strategy is "tune-parallel" expect a mp scenario:
+    # Wait for a device to become available.
+    # Otherwise, expect a serial scenario, where the devices and strategy are set by the user.
+    is_parallel = inp.device_config.strategy == "tune-parallel"
+    if is_parallel:
+        device = available_devices.get()
+        device_config = inp.device_config.in_parallel(device)
+        logger.info(f"Starting cv '{cv_name}' ({inp.current + 1}/{inp.total}) on device {device}.")
+    else:
+        device = None
+        device_config = inp.device_config.in_parallel()
+        logger.info(f"Starting cv '{cv_name}' ({inp.current + 1}/{inp.total}).")
+
+    try:
+        score, is_unstable, cv_run_infos = cross_validation_smp(
+            name=cv_name,
+            tune_name=inp.tune_name,
+            cv=inp.cv,
+            training_config=inp.training_config,
+            data_config=inp.data_config,
+            logging_config=inp.logging_config,
+            hparams=inp.hparams,
+            device_config=device_config,
+        )
+
+        for key, value in asdict(inp.hparams).items():
+            cv_run_infos[key] = value if not isinstance(value, list) else pd.Series([value] * len(cv_run_infos))
+
         cv_run_infos["cv_name"] = cv_name
         output = _ProcessOutputs(
             run_infos=cv_run_infos,
@@ -103,184 +93,25 @@ def _run_cv_in_process(inp: _ProcessInputs):
             is_unstable=is_unstable,
         )
     finally:
-        logger.debug(f"Free device {device} for cv {inp.tune_name}-cv{inp.i}")
-        available_devices.put(device)
+        # If we are in parallel mode, we need to return the device to the queue.
+        if is_parallel:
+            logger.debug(f"Free device {device} for cv {cv_name}")
+            available_devices.put(device)
     return output
 
 
-def tune_mp_smp(
-    hpconfig: Path,
-    # Data
-    train_data_dir: Path,
-    data_split_method: Literal["random", "region", "sample"] | None = None,
-    data_split_by: list[str | float] | None = None,
-    fold_method: Literal["kfold", "shuffle", "stratified", "region", "region-stratified"] = "kfold",
-    total_folds: int = 5,
-    bands: list[str] | None = None,
-    # Tune config
-    n_folds: int | None = None,
-    n_randoms: int = 3,
-    n_trials: int | Literal["grid"] = 100,
-    retrain_and_test: bool = True,
-    tune_name: str | None = None,
-    artifact_dir: Path = Path("artifacts"),
-    # Scoring
-    scoring_metric: list[str] = ["val/JaccardIndex", "val/Recall"],
-    multi_score_strategy: Literal["harmonic", "arithmetic", "geometric", "min"] = "harmonic",
-    # Epoch and Logging config
-    max_epochs: int = 100,
-    log_every_n_steps: int = 10,
-    check_val_every_n_epoch: int = 3,
-    early_stopping_patience: int = 5,
-    plot_every_n_val_epochs: int = 5,
-    # Device and Manager config
-    num_workers: int = 0,
-    devices: list[int] | None = None,
-    # Wandb config
-    wandb_entity: str | None = None,
-    wandb_project: str | None = None,
-):
-    import pandas as pd
-    from darts_utils.namegen import generate_counted_name
-
-    from darts_segmentation.training.hparams import parse_hyperparameters, sample_hyperparameters
-
-    tick_fstart = time.perf_counter()
-
-    tune_name = tune_name or generate_counted_name(artifact_dir)
-    artifact_dir = artifact_dir / tune_name
-    run_infos_file = artifact_dir / f"{tune_name}.parquet"
-
-    # Check if the artifact directory is empty
-    assert not artifact_dir.exists(), f"{artifact_dir} already exists."
-
-    param_grid = parse_hyperparameters(hpconfig)
-    param_list = sample_hyperparameters(param_grid, n_trials)
-
-    logger.info(
-        f"Starting tune '{tune_name}' with data from {train_data_dir.resolve()}."
-        f" Artifacts will be saved to {artifact_dir.resolve()}."
-        f" Will run n_trials*n_randoms*n_folds ="
-        f" {len(param_list)}*{n_randoms}*{n_folds} = {len(param_list) * n_randoms * n_folds} experiments."
-    )
-
-    run_infos: list[pd.DataFrame] = []
-    best_score = 0
-    best_hp = None
-
-    devices = devices or ["auto"]
-    for device in devices:
-        available_devices.put(device)
-    with ProcessPoolExecutor(max_workers=len(devices)) as executor:
-        process_inputs = [
-            _ProcessInputs(
-                i=i,
-                total=len(param_list),
-                tune_name=tune_name,
-                cv_inputs=_CVInputs(
-                    # Data
-                    train_data_dir=train_data_dir,
-                    data_split_method=data_split_method,
-                    data_split_by=data_split_by,
-                    fold_method=fold_method,
-                    total_folds=total_folds,
-                    bands=bands,
-                    # CV config
-                    n_folds=n_folds,
-                    n_randoms=n_randoms,
-                    tune_name=tune_name,
-                    artifact_dir=artifact_dir,
-                    # Hyperparameters
-                    model_arch=hp.model_arch,
-                    model_encoder=hp.model_encoder,
-                    model_encoder_weights=hp.model_encoder_weights,
-                    augment=hp.augment,
-                    learning_rate=hp.learning_rate,
-                    gamma=hp.gamma,
-                    focal_loss_alpha=hp.focal_loss_alpha,
-                    focal_loss_gamma=hp.focal_loss_gamma,
-                    batch_size=hp.batch_size,
-                    # Scoring
-                    scoring_metric=scoring_metric,
-                    multi_score_strategy=multi_score_strategy,
-                    # Epoch and Logging config
-                    max_epochs=max_epochs,
-                    log_every_n_steps=log_every_n_steps,
-                    check_val_every_n_epoch=check_val_every_n_epoch,
-                    early_stopping_patience=early_stopping_patience,
-                    plot_every_n_val_epochs=plot_every_n_val_epochs,
-                    # Device and Manager config
-                    num_workers=num_workers,
-                    # Wandb config
-                    wandb_entity=wandb_entity,
-                    wandb_project=wandb_project,
-                ),
-                hp=hp,
-            )
-            for i, hp in enumerate(param_list)
-        ]
-        futures = {executor.submit(_run_cv_in_process, inp): inp for inp in process_inputs}
-
-        for future in as_completed(futures):
-            inp = futures[future]
-            try:
-                output = future.result()
-            except Exception as e:
-                logger.error(f"Error in cv {inp.tune_name}-cv{inp.i}: {e}", exc_info=True)
-                continue
-
-            run_infos.append(output.run_infos)
-            if not output.is_unstable and output.score > best_score:
-                best_score = output.score
-                best_hp = inp.hp
-
-            # Save already here to prevent data loss if something goes wrong
-            pd.concat(run_infos).reset_index(drop=True).to_parquet(run_infos_file)
-            logger.debug(f"Saved run infos to {run_infos_file}")
-
-    if len(run_infos) == 0:
-        logger.error("No hyperparameters resulted in a valid score. Please check the logs for more information.")
-        return 0, run_infos
-
-    run_infos = pd.concat(run_infos).reset_index(drop=True)
-
-    tick_fend = time.perf_counter()
-    logger.info(
-        f"Tuning completed in {tick_fend - tick_fstart:.2f}s. The best score was {best_score:.4f} with {best_hp}."
-    )
-
-
 def tune_smp(
-    hpconfig: Path,
-    # Data
-    train_data_dir: Path,
-    data_split_method: Literal["random", "region", "sample"] | None = None,
-    data_split_by: list[str | float] | None = None,
-    fold_method: Literal["kfold", "shuffle", "stratified", "region", "region-stratified"] = "kfold",
-    total_folds: int = 5,
-    bands: list[str] | None = None,
-    # Tune config
-    n_folds: int | None = None,
-    n_randoms: int = 3,
+    *,
+    name: str | None = None,
     n_trials: int | Literal["grid"] = 100,
-    retrain_and_test: bool = True,
-    tune_name: str | None = None,
-    artifact_dir: Path = Path("artifacts"),
-    # Scoring
-    scoring_metric: list[str] = ["val/JaccardIndex", "val/Recall"],
-    multi_score_strategy: Literal["harmonic", "arithmetic", "geometric", "min"] = "harmonic",
-    # Epoch and Logging config
-    max_epochs: int = 100,
-    log_every_n_steps: int = 10,
-    check_val_every_n_epoch: int = 3,
-    early_stopping_patience: int = 5,
-    plot_every_n_val_epochs: int = 5,
-    # Device and Manager config
-    num_workers: int = 0,
-    device: int | str = "auto",
-    # Wandb config
-    wandb_entity: str | None = None,
-    wandb_project: str | None = None,
+    retrain_and_test: bool = False,
+    cv_config: CrossValidationConfig = CrossValidationConfig(),
+    training_config: TrainingConfig = TrainingConfig(),
+    data_config: DataConfig = DataConfig(),
+    device_config: DeviceConfig = DeviceConfig(),
+    logging_config: LoggingConfig = LoggingConfig(),
+    hpconfig: Path | None = None,
+    config_file: Annotated[Path | None, cyclopts.Parameter(parse=False)] = None,
 ):
     """Tune the hyper-parameters of the model using cross-validation and random states.
 
@@ -343,233 +174,182 @@ def tune_smp(
     ```
 
     Args:
-        hpconfig (Path): The path to the hyperparameter configuration file.
-            Please see the documentation of `hyperparameters` for more information.
-        train_data_dir (Path): The path (top-level) to the data to be used for training.
-            Expects a directory containing:
-            1. a zarr group called "data.zarr" containing a "x" and "y" array
-            2. a geoparquet file called "metadata.parquet" containing the metadata for the data.
-                This metadata should contain at least the following columns:
-                - "sample_id": The id of the sample
-                - "region": The region the sample belongs to
-                - "empty": Whether the image is empty
-                The index should refer to the index of the sample in the zarr data.
-            This directory should be created by a preprocessing script.
-        data_split_method (Literal["random", "region", "sample"] | None, optional):
-            The method to use for splitting the data into a train and a test set.
-            "random" will split the data randomly, the seed is always 42 and the test size can be specified
-            by providing a list with a single a float between 0 and 1 to data_split_by
-            This will be the fraction of the data to be used for testing.
-            E.g. [0.2] will use 20% of the data for testing.
-            "region" will split the data by one or multiple regions,
-            which can be specified by providing a str or list of str to data_split_by.
-            "sample" will split the data by sample ids, which can also be specified similar to "region".
-            If None, no split is done and the complete dataset is used for both training and testing.
-            The train split will further be split in the cross validation process.
+        name (str | None, optional): Name of the tuning run.
+            Will be generated based on the number of existing directories in the artifact directory if None.
             Defaults to None.
-        data_split_by (list[str | float] | None, optional): Select by which regions/samples to split or
-            the size of test set. Defaults to None.
-        fold_method (Literal["kfold", "shuffle", "stratified", "region", "region-stratified"], optional):
-            Method for cross-validation split. Defaults to "kfold".
-        total_folds (int, optional): Total number of folds in cross-validation. Defaults to 5.
-        bands (list[str] | None, optional): List of bands to use. Defaults to None.
-        n_folds (int | None, optional): Number of folds to perform in cross-validation.
-            If None, all folds (total_folds) will be used.
-            Defaults to None.
-        n_randoms (int, optional): Number of random seeds to perform in cross-validation.
-            First three seeds are always 42, 21, 69, further seeds are deterministic generated.
-            Defaults to 3.
         n_trials (int | Literal["grid"], optional): Number of trials to perform in hyperparameter tuning.
             If "grid", span a grid search over all configured hyperparameters.
             In a grid search, only constant or choice hyperparameters are allowed.
             Defaults to 100.
         retrain_and_test (bool, optional): Whether to retrain the model with the best hyperparameters and test it.
-            Defaults to True.
-        tune_name (str | None, optional): Name of the tuning run.
-            Will be generated based on the number of existing directories in the artifact directory if None.
+            Defaults to False.
+        cv_config (CrossValidationConfig, optional): Configuration for cross-validation.
+            Defaults to CrossValidationConfig().
+        training_config (TrainingConfig, optional): Configuration for training.
+            Defaults to TrainingConfig().
+        data_config (DataConfig, optional): Configuration for data.
+            Defaults to DataConfig().
+        device_config (DeviceConfig, optional): Configuration for device.
+            Defaults to DeviceConfig().
+        logging_config (LoggingConfig, optional): Configuration for logging.
+            Defaults to LoggingConfig().
+        hpconfig (Path | None, optional): Path to the hyperparameter configuration file.
+            Please see the documentation of `hyperparameters` for more information.
             Defaults to None.
-        artifact_dir (Path, optional): Top-level path to the training output directory.
-            Will contain checkpoints and metrics. Defaults to Path("lightning_logs").
-        scoring_metric (list[str]): Metric(s) to use for scoring.
-        multi_score_strategy (Literal["harmonic", "arithmetic", "geometric", "min"], optional):
-            Strategy for combining multiple metrics. Defaults to "harmonic".
-        max_epochs (int, optional): Maximum number of epochs to train. Defaults to 100.
-        log_every_n_steps (int, optional): Log every n steps. Defaults to 10.
-        check_val_every_n_epoch (int, optional): Check validation every n epochs. Defaults to 3.
-        early_stopping_patience (int, optional): Number of epochs to wait for improvement before stopping.
-            Defaults to 5.
-        plot_every_n_val_epochs (int, optional): Plot validation samples every n epochs. Defaults to 5.
-        num_workers (int, optional): Number of Dataloader workers. Defaults to 0.
-        device (int | str, optional): The device to run the model on. Defaults to "auto".
-        wandb_entity (str | None, optional): Weights and Biases Entity. Defaults to None.
-        wandb_project (str | None, optional): Weights and Biases Project. Defaults to None.
+        config_file (Path | None, optional): Path to the configuration file. If provided,
+            it will be used instead of `hpconfig` if `hpconfig` is None. Defaults to None.
 
     Returns:
         tuple[float, pd.DataFrame]: The best score (if retrained and tested) and the run infos of all runs.
+
+    Raises:
+        ValueError: If no hyperparameter configuration file is provided.
 
     """
     import pandas as pd
     from darts_utils.namegen import generate_counted_name
 
-    from darts_segmentation.training.cv import cross_validation_smp
+    from darts_segmentation.training.adp import _adp
     from darts_segmentation.training.hparams import parse_hyperparameters, sample_hyperparameters
     from darts_segmentation.training.scoring import score_from_single_run
     from darts_segmentation.training.train import test_smp, train_smp
 
     tick_fstart = time.perf_counter()
 
-    tune_name = tune_name or generate_counted_name(artifact_dir)
-    artifact_dir = artifact_dir / tune_name
+    tune_name = name or generate_counted_name(logging_config.artifact_dir)
+    artifact_dir = logging_config.artifact_dir / tune_name
     run_infos_file = artifact_dir / f"{tune_name}.parquet"
 
     # Check if the artifact directory is empty
     assert not artifact_dir.exists(), f"{artifact_dir} already exists."
+    artifact_dir.mkdir(parents=True, exist_ok=True)
 
+    hpconfig = hpconfig or config_file
+    if hpconfig is None:
+        raise ValueError(
+            "No hyperparameter configuration file provided. Please provide a valid file via the `--hpconfig` flag."
+        )
     param_grid = parse_hyperparameters(hpconfig)
+    logger.debug(f"Parsed hyperparameter grid: {param_grid}")
     param_list = sample_hyperparameters(param_grid, n_trials)
 
     logger.info(
-        f"Starting tune '{tune_name}' with data from {train_data_dir.resolve()}."
+        f"Starting tune '{tune_name}' with data from {data_config.train_data_dir.resolve()}."
         f" Artifacts will be saved to {artifact_dir.resolve()}."
         f" Will run n_trials*n_randoms*n_folds ="
-        f" {len(param_list)}*{n_randoms}*{n_folds} = {len(param_list) * n_randoms * n_folds} experiments."
+        f" {len(param_list)}*{cv_config.n_randoms}*{cv_config.n_folds} ="
+        f" {len(param_list) * cv_config.n_randoms * cv_config.n_folds} experiments."
     )
+
+    # Plan which runs to perform. These are later consumed based on the parallelization strategy.
+    process_inputs = [
+        _ProcessInputs(
+            current=i,
+            total=len(param_list),
+            tune_name=tune_name,
+            cv=cv_config,
+            training_config=training_config,
+            logging_config=logging_config,
+            data_config=data_config,
+            device_config=device_config,
+            hparams=hparams,
+        )
+        for i, hparams in enumerate(param_list)
+    ]
 
     run_infos: list[pd.DataFrame] = []
     best_score = 0
     best_hp = None
-    for i, hp in enumerate(param_list):
-        cv_name = f"{tune_name}-cv{i}"
-        logger.debug(f"Starting cv {cv_name} ({i}/{len(param_list)})")
-        score, is_unstable, cv_run_infos = cross_validation_smp(
-            # Data
-            train_data_dir=train_data_dir,
-            data_split_method=data_split_method,
-            data_split_by=data_split_by,
-            fold_method=fold_method,
-            total_folds=total_folds,
-            bands=bands,
-            # CV config
-            n_folds=n_folds,
-            n_randoms=n_randoms,
-            cv_name=cv_name,
-            tune_name=tune_name,
-            artifact_dir=artifact_dir,
-            # Hyperparameters
-            model_arch=hp.model_arch,
-            model_encoder=hp.model_encoder,
-            model_encoder_weights=hp.model_encoder_weights,
-            augment=hp.augment,
-            learning_rate=hp.learning_rate,
-            gamma=hp.gamma,
-            focal_loss_alpha=hp.focal_loss_alpha,
-            focal_loss_gamma=hp.focal_loss_gamma,
-            batch_size=hp.batch_size,
-            # Scoring
-            scoring_metric=scoring_metric,
-            multi_score_strategy=multi_score_strategy,
-            # Epoch and Logging config
-            max_epochs=max_epochs,
-            log_every_n_steps=log_every_n_steps,
-            check_val_every_n_epoch=check_val_every_n_epoch,
-            early_stopping_patience=early_stopping_patience,
-            plot_every_n_val_epochs=plot_every_n_val_epochs,
-            # Device and Manager config
-            num_workers=num_workers,
-            device=device,
-            # Wandb config
-            wandb_entity=wandb_entity,
-            wandb_project=wandb_project,
-        )
 
-        if not is_unstable and score > best_score:
-            best_score = score
-            best_hp = hp
-
-        hpd = asdict(hp)
-        for key, value in hpd.items():
-            cv_run_infos[key] = value
-        cv_run_infos["cv_name"] = cv_name
-        run_infos.append(cv_run_infos)
+    # This function abstracts away common logic for running multiprocessing
+    for inp, output in _adp(
+        process_inputs=process_inputs,
+        is_parallel=device_config.strategy == "tune-parallel",
+        devices=device_config.devices,
+        available_devices=available_devices,
+        _run=_run_cv,
+    ):
+        run_infos.append(output.run_infos)
+        if not output.is_unstable and output.score > best_score:
+            best_score = output.score
+            best_hp = inp.hparams
 
         # Save already here to prevent data loss if something goes wrong
         pd.concat(run_infos).reset_index(drop=True).to_parquet(run_infos_file)
         logger.debug(f"Saved run infos to {run_infos_file}")
 
+    if len(run_infos) == 0:
+        logger.error("No hyperparameters resulted in a valid score. Please check the logs for more information.")
+        return 0, run_infos
+
     run_infos = pd.concat(run_infos).reset_index(drop=True)
 
     tick_fend = time.perf_counter()
+
+    if best_hp is None:
+        logger.warning(
+            f"Tuning completed in {tick_fend - tick_fstart:.2f}s."
+            " No hyperparameters resulted in a valid score. Please check the logs for more information."
+        )
+        return 0, run_infos
     logger.info(
         f"Tuning completed in {tick_fend - tick_fstart:.2f}s. The best score was {best_score:.4f} with {best_hp}."
     )
 
-    if not retrain_and_test:
-        return 0, run_infos
+    # =====================
+    # === End of tuning ===
+    # =====================
 
-    if best_hp is None:
-        logger.error("No hyperparameters resulted in a valid score. Please check the logs for more information.")
+    if not retrain_and_test:
         return 0, run_infos
 
     logger.info("Starting retraining with the best hyperparameters.")
 
     tick_fstart = time.perf_counter()
     trainer = train_smp(
-        # Data
-        train_data_dir=train_data_dir,
-        data_split_method=data_split_method,
-        data_split_by=data_split_by,
-        fold_method=None,
-        # Run config
-        run_name=f"{tune_name}-retrain",
-        artifact_dir=artifact_dir,
-        # Hyperparameters
-        model_arch=best_hp.model_arch,
-        model_encoder=best_hp.model_encoder,
-        model_encoder_weights=best_hp.model_encoder_weights,
-        augment=best_hp.augment,
-        learning_rate=best_hp.learning_rate,
-        gamma=best_hp.gamma,
-        focal_loss_alpha=best_hp.focal_loss_alpha,
-        focal_loss_gamma=best_hp.focal_loss_gamma,
-        batch_size=best_hp.batch_size,
-        # Epoch and log config
-        max_epochs=max_epochs,
-        log_every_n_steps=log_every_n_steps,
-        check_val_every_n_epoch=check_val_every_n_epoch,
-        early_stopping_patience=early_stopping_patience,
-        plot_every_n_val_epochs=plot_every_n_val_epochs,
-        # Device and Manager config
-        random_seed=42,
-        num_workers=num_workers,
-        device=device,
-        # Wandb
-        wandb_entity=wandb_entity,
-        wandb_project=wandb_project,
+        run=TrainRunConfig(name=f"{tune_name}-retrain"),
+        training_config=training_config,  # TODO: device and strategy
+        data_config=DataConfig(
+            train_data_dir=data_config.train_data_dir,
+            data_split_method=data_config.data_split_method,
+            data_split_by=data_config.data_split_by,
+            fold_method=None,  # No fold method for retraining
+            total_folds=None,  # No folds for retraining
+        ),
+        logging_config=LoggingConfig(
+            artifact_dir=artifact_dir,
+            log_every_n_steps=logging_config.log_every_n_steps,
+            check_val_every_n_epoch=logging_config.check_val_every_n_epoch,
+            plot_every_n_val_epochs=logging_config.plot_every_n_val_epochs,
+            wandb_entity=logging_config.wandb_entity,
+            wandb_project=logging_config.wandb_project,
+        ),
+        hparams=best_hp,
     )
     run_id = trainer.lightning_module.hparams["run_id"]
     trainer = test_smp(
-        train_data_dir=train_data_dir,
+        train_data_dir=data_config.train_data_dir,
         run_id=run_id,
         run_name=f"{tune_name}-retrain",
         model_ckp=trainer.checkpoint_callback.best_model_path,
         batch_size=best_hp.batch_size,
-        data_split_method=data_split_method,
-        data_split_by=data_split_by,
+        data_split_method=data_config.data_split_method,
+        data_split_by=data_config.data_split_by,
         artifact_dir=artifact_dir,
-        num_workers=num_workers,
-        device=device,
-        wandb_entity=wandb_entity,
-        wandb_project=wandb_project,
+        num_workers=training_config.num_workers,
+        device_config=device_config,
+        wandb_entity=logging_config.wandb_entity,
+        wandb_project=logging_config.wandb_project,
     )
 
     run_info = {k: v.item() for k, v in trainer.callback_metrics.items()}
     test_scoring_metric = (
-        scoring_metric.replace("val/", "test/")
-        if isinstance(scoring_metric, str)
-        else [sm.replace("val/", "test/") for sm in scoring_metric]
+        cv_config.scoring_metric.replace("val/", "test/")
+        if isinstance(cv_config.scoring_metric, str)
+        else [sm.replace("val/", "test/") for sm in cv_config.scoring_metric]
     )
-    score = score_from_single_run(run_info, test_scoring_metric, multi_score_strategy)
-    is_unstable = check_score_is_unstable(run_info, scoring_metric)
+    score = score_from_single_run(run_info, test_scoring_metric, cv_config.multi_score_strategy)
+    is_unstable = check_score_is_unstable(run_info, cv_config.scoring_metric)
     tick_fend = time.perf_counter()
     logger.info(
         f"Retraining and testing completed successfully in {tick_fend - tick_fstart:.2f}s"

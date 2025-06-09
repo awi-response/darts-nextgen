@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal
 
+import cyclopts
 import toml
 import yaml
 
@@ -16,20 +17,37 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__.replace("darts_", "darts."))
 
 
-@dataclass
+@cyclopts.Parameter(name="*")
+@dataclass(frozen=True)
 class Hyperparameters:
-    """Hyperparameters for training."""
+    """Hyperparameters for Cyclopts CLI.
 
-    # ! These should be equal to the (default) hyperparameters from train.py
+    Attributes:
+        model_arch (str): Architecture of the model to use.
+        model_encoder (str): Encoder type for the model.
+        model_encoder_weights (str | None): Weights for the encoder, if any.
+        augment (list[Augmentation] | None): List of augmentations to apply.
+        learning_rate (float): Learning rate for training.
+        gamma (float): Decay factor for learning rate.
+        focal_loss_alpha (float | None): Alpha parameter for focal loss, if using.
+        focal_loss_gamma (float): Gamma parameter for focal loss.
+        batch_size (int): Batch size for training.
+        bands (list[str] | None, optional): List of bands to use. Defaults to None.
+
+    """
+
+    # ! Only, single values or lists are supported here.
+    # Other values, e.g. dicts would mess with the tuning script, since it appends the hparams to a dataframe.
     model_arch: str = "Unet"
     model_encoder: str = "dpn107"
     model_encoder_weights: str | None = None
-    augment: list[Augmentation] | None = (None,)
+    augment: list[Augmentation] | None = None
     learning_rate: float = 1e-3
     gamma: float = 0.9
     focal_loss_alpha: float | None = None
     focal_loss_gamma: float = 2.0
     batch_size: int = 8
+    bands: list[str] | None = None  # Maybe this should also be a hyperparameter?
 
 
 HP_NAMES = [field.name for field in Hyperparameters.__dataclass_fields__.values()]

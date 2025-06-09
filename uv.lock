@@ -843,7 +843,7 @@ wheels = [
 
 [[package]]
 name = "cyclopts"
-version = "3.11.2"
+version = "3.16.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "attrs" },
@@ -851,9 +851,9 @@ dependencies = [
     { name = "rich" },
     { name = "rich-rst" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/6c/9d/0bd69065ecd56e0d367fd5ba1a43ab63ef3cd18a91128d1de9d016ea50b8/cyclopts-3.11.2.tar.gz", hash = "sha256:9aa85743a70247e0e862bb0e0e92794f53beea0ec632d1a37d561276547f4012", size = 69275 }
+sdist = { url = "https://files.pythonhosted.org/packages/07/88/286782d783ee2c6614babbecf7db00622e7c270f49cd2f59ee01b3435668/cyclopts-3.16.2.tar.gz", hash = "sha256:2e570336b6b1b1e10747af478f675b7cd7f66e3138a7d9bbd0aa10adf437b0d5", size = 72082 }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/79/39/37f1f613a906ebd2d24fc073d3d0bd025bcc796140cbf247face1e46b663/cyclopts-3.11.2-py3-none-any.whl", hash = "sha256:5ad22d84617944388e6f95bb01e8100ebc7f3355da064c62471a3fbf3fc8688c", size = 78977 },
+    { url = "https://files.pythonhosted.org/packages/da/a5/5286a2f354dc64a5afbbb6eef49c52b73b4d984fb919b47a06bdc653e086/cyclopts-3.16.2-py3-none-any.whl", hash = "sha256:3d93cb66af31617343861bc51aa16e5a021ad7590dbd7a6f0634d5e3a1ef8e3b", size = 81926 },
 ]
 
 [[package]]
@@ -1076,7 +1076,7 @@ requires-dist = [
     { name = "setuptools", specifier = ">=75.5.0" },
     { name = "shapely", specifier = ">=2.0.0" },
     { name = "smart-geocubes", extras = ["gee", "stac"], specifier = ">=0.0.8" },
-    { name = "stopuhr", specifier = ">=0.0.6" },
+    { name = "stopuhr", specifier = ">=0.0.8" },
     { name = "timm", marker = "extra == 'cpu'", specifier = ">=1.0.13" },
     { name = "timm", marker = "extra == 'cuda118'", specifier = ">=1.0.13" },
     { name = "timm", marker = "extra == 'cuda121'", specifier = ">=1.0.13" },
@@ -1096,7 +1096,7 @@ requires-dist = [
     { name = "xarray-spatial", specifier = ">=0.4.0" },
     { name = "xee", specifier = ">=0.0.20" },
     { name = "xpystac", specifier = ">=0.1.3" },
-    { name = "zarr", specifier = ">=3.0.4" },
+    { name = "zarr", specifier = ">=3.0.8" },
 ]
 provides-extras = ["cpu", "cuda118", "cuda121", "cuda126", "training"]
 
@@ -5422,11 +5422,11 @@ wheels = [
 
 [[package]]
 name = "stopuhr"
-version = "0.0.6"
+version = "0.0.8"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/8e/fd/5aa15cbcefcd992264af54367971815d567f597857041d46f5551c255625/stopuhr-0.0.6.tar.gz", hash = "sha256:8b4b42edc5991d5183f7452602fd619c11ff71746c3a0d34bee26d9b2b8528b5", size = 113833 }
+sdist = { url = "https://files.pythonhosted.org/packages/5a/07/250d7476cfb4ed5f2f8367a2eac509ebe1324fb1e6bcddf579d8a363eff1/stopuhr-0.0.8.tar.gz", hash = "sha256:d73ca58ffb80756f59ebeabda0627414b8b812944b06f3c6b5028e7fa8ab216e", size = 114460 }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/ae/b9/21b96656ab711b1f394fb82c5df99e595024c44f339e705b77ae6bd3687b/stopuhr-0.0.6-py3-none-any.whl", hash = "sha256:da4c0f544a81b489f459f5e3d0cdaafdebf16d4fc47d3ea0d2747c7a1826f203", size = 10967 },
+    { url = "https://files.pythonhosted.org/packages/c5/e1/3d88ca850a412c054f9aeacc3c74ffd604638548ab52b6b38e04e19f12dc/stopuhr-0.0.8-py3-none-any.whl", hash = "sha256:4cd81585d38cf3e3dd34a6c48621b178d5a4e8c2a6d481a2a32dbed545c6aa30", size = 11507 },
 ]
 
 [[package]]
@@ -6462,7 +6462,7 @@ wheels = [
 
 [[package]]
 name = "zarr"
-version = "3.0.6"
+version = "3.0.8"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "donfig" },
@@ -6471,9 +6471,9 @@ dependencies = [
     { name = "packaging" },
     { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/6f/bf/2820e8ad5f086ea5cd4c4d65eb5e0113f98145ddf5810cec1c75fb10fb98/zarr-3.0.6.tar.gz", hash = "sha256:6ef23c740e34917a2a1099471361537732942e49f0cabe95c9b7124cd0d6d84f", size = 240812 }
+sdist = { url = "https://files.pythonhosted.org/packages/52/60/9652fd0536fbaca8d08cbc1a5572c52e0ce01773297df75da8bb47e45907/zarr-3.0.8.tar.gz", hash = "sha256:88505d095af899a88ae8ac4db02f4650ef0801d2ff6f65b6d1f0a45dcf760a6d", size = 256825 }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/fb/38/56a1c129577d20dc975a934ccc3f7f16276eab04ff0ffbe02ea348407a37/zarr-3.0.6-py3-none-any.whl", hash = "sha256:dba078726b6e4defb0ae6a852b7e7035ce163d89d485961681ece49191dcce82", size = 196357 },
+    { url = "https://files.pythonhosted.org/packages/00/3b/e20bdf84088c11f2c396d034506cbffadd53e024111c1aa4585c2aba1523/zarr-3.0.8-py3-none-any.whl", hash = "sha256:7f81e7aec086437d98882aa432209107114bd7f3a9f4958b2af9c6b5928a70a7", size = 205364 },
 ]
 
 [[package]]

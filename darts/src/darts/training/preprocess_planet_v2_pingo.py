@@ -12,25 +12,9 @@ if TYPE_CHECKING:
     import geopandas as gpd
 
 
-def _legacy_path_gen(data_dir: Path):
-    for iterdir in data_dir.iterdir():
-        if iterdir.stem == "iteration001":
-            for sitedir in (iterdir).iterdir():
-                for imgdir in (sitedir).iterdir():
-                    if not imgdir.is_dir():
-                        continue
-                    try:
-                        yield next(imgdir.glob("*_SR.tif")).parent
-                    except StopIteration:
-                        yield next(imgdir.glob("*_SR_clip.tif")).parent
-        else:
-            for imgdir in (iterdir).iterdir():
-                if not imgdir.is_dir():
-                    continue
-                try:
-                    yield next(imgdir.glob("*_SR.tif")).parent
-                except StopIteration:
-                    yield next(imgdir.glob("*_SR_clip.tif")).parent
+def _path_gen(data_dir: Path):
+    return {fpath.parent.name: fpath.parent for fpath in data_dir.rglob("*_SR.tif")}
+    # return next(data_dir.rglob(f"{image_id}*_SR.tif")).parent
 
 
 def _get_region_name(footprint: "gpd.GeoSeries", admin2: "gpd.GeoDataFrame") -> str:
@@ -50,7 +34,7 @@ def _get_region_name(footprint: "gpd.GeoSeries", admin2: "gpd.GeoDataFrame") -> 
     return region_name
 
 
-def preprocess_planet_train_data(
+def preprocess_planet_train_data_pingo(
     *,
     data_dir: Path,
     labels_dir: Path,
@@ -60,7 +44,6 @@ def preprocess_planet_train_data(
     admin_dir: Path,
     preprocess_cache: Path | None = None,
     force_preprocess: bool = False,
-    append: bool = True,
     device: Literal["cuda", "cpu", "auto"] | int | None = None,
     ee_project: str | None = None,
     ee_use_highvolume: bool = True,
@@ -121,7 +104,6 @@ def preprocess_planet_train_data(
         admin_dir (Path): The directory containing the admin files.
         preprocess_cache (Path, optional): The directory to store the preprocessed data. Defaults to None.
         force_preprocess (bool, optional): Whether to force the preprocessing of the data. Defaults to False.
-        append (bool, optional): Whether to append the data to the existing data. Defaults to True.
         device (Literal["cuda", "cpu"] | int, optional): The device to run the model on.
             If "cuda" take the first device (0), if int take the specified device.
             If "auto" try to automatically select a free GPU (<50% memory usage).
@@ -152,7 +134,7 @@ def preprocess_planet_train_data(
 
     write_function_args_to_config_file(
         fpath=train_data_dir / f"{current_time}.cli.json",
-        function=preprocess_planet_train_data,
+        function=preprocess_planet_train_data_pingo,
         locals_=locals(),
     )
 
@@ -191,8 +173,7 @@ def preprocess_planet_train_data(
 
     footprints = (gpd.read_file(footprints_file) for footprints_file in labels_dir.glob("*/ImageFootprints*.gpkg"))
     footprints = gpd.GeoDataFrame(pd.concat(footprints, ignore_index=True))
-    fpaths = {fpath.stem: fpath for fpath in _legacy_path_gen(data_dir)}
-    footprints["fpath"] = footprints.image_id.map(fpaths)
+    footprints["fpath"] = footprints.image_id.map(_path_gen(data_dir))
 
     # Download admin files if they do not exist
     admin2_fpath = admin_dir / "geoBoundariesCGAZ_ADM2.shp"
@@ -228,15 +209,8 @@ def preprocess_planet_train_data(
         exclude_nan=exclude_nan,
         mask_erosion_size=mask_erosion_size,
         device=device,
-        append=append,
     )
     cache_manager = XarrayCacheManager(preprocess_cache / "planet_v2")
-
-    if append and (train_data_dir / "metadata.parquet").exists():
-        metadata = gpd.read_parquet(train_data_dir / "metadata.parquet")
-        already_processed_planet_ids = set(metadata["planet_id"].unique())
-        logger.info(f"Already processed {len(already_processed_planet_ids)} samples.")
-        footprints = footprints[~footprints.image_id.isin(already_processed_planet_ids)]
 
     for i, footprint in track(
         footprints.iterrows(), description="Processing samples", total=len(footprints), console=rich.get_console()
@@ -283,7 +257,7 @@ def preprocess_planet_train_data(
             region = _get_region_name(footprint, admin2)
 
             with timer("Save as patches"):
-                builder.add_tile_batched(
+                builder.add_tile(
                     tile=tile,
                     labels=footprint_labels,
                     region=region,
