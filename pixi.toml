@@ -1,32 +1,97 @@
 [workspace]
-authors = ["Tobias Hölzer <tobiashoelzer@hotmail.com>"]
+authors = [
+    "Tobias Hölzer <tobiashoelzer@hotmail.com>",
+    "Ingmar Nitze <ingmar.nitze@awi.de>",
+    "Konrad Heidler <k.heidler@tum.de>",
+    "Jonas Küpper <jonas.kuepper@awi.de>",
+    "Lucas von Chamier <lucas.chamier@awi.de>"
+]
 channels = ["conda-forge"]
 name = "darts-nextgen"
 platforms = ["linux-64", "osx-arm64", "osx-64", "win-64"]
 version = "0.1.0"
 
 [tasks]
+darts = { cmd = "uv run darts"}
 
 [dependencies]
-# google-cloud-sdk = ">=525.0.0,<526" # Not availble on windows...
 uv = ">=0.7.12,<0.8"
 
-[feature.cuda118]
-channels = ["nvidia", "conda-forge"]
-platforms = ["linux-64", "win-64"]
-dependencies = { cuda = {version = "11.8.*", channel = "nvidia"} }
+# gcloud is not available on windows....
+[target.linux-64.dependencies]
+google-cloud-sdk = ">=525.0.0,<526"
 
+[target.osx-arm64.dependencies]
+google-cloud-sdk = ">=525.0.0,<526"
+
+[target.osx-64.dependencies]
+google-cloud-sdk = ">=525.0.0,<526"
+
+# =================
+# === CUDA XX.X ===
+# =================
+[feature.cuda]
+channels = ["https://prefix.dev/conda-forge"]
+platforms = ["linux-64"]
+activation = { env = { CUDA_HOME = "$CONDA_PREFIX", LD_LIBRARY_PATH = "$CONDA_PREFIX/lib" } }
+# TODO: Maybe these two also need to be set:
+# export NUMBA_CUDA_DRIVER="/usr/local/cuda-12.2/compat/libcuda.so"
+# export NUMBA_CUDA_INCLUDE_PATH="/usr/local/cuda-12.2/include"
+
+
+[feature.cuda.dependencies]
+nccl = {version = "2.*", channel = "https://prefix.dev/conda-forge"}
+cusparselt = {version = "0.*", channel = "https://prefix.dev/conda-forge"}
+cudnn = {version = "9.*", channel = "https://prefix.dev/conda-forge"}
+libcudnn = {version = "9.*", channel = "https://prefix.dev/conda-forge"}
+
+# =================
+# === CUDA 12.1 ===
+# =================
 [feature.cuda121]
-channels = ["nvidia", "conda-forge"]
-platforms = ["linux-64", "win-64"]
-dependencies = { cuda = {version = "12.1.*", channel = "nvidia"} }
+channels = ["https://prefix.dev/conda-forge"]
+platforms = ["linux-64"]
 
+[feature.cuda121.dependencies]
+cuda = {version = "12.1.*", channel = "https://prefix.dev/conda-forge"}
+cuda-version = {version = "12.1.*", channel = "https://prefix.dev/conda-forge"}
+
+# =================
+# === CUDA 12.4 ===
+# =================
+[feature.cuda124]
+channels = ["nvidia", "https://prefix.dev/conda-forge"]
+platforms = ["linux-64"]
+
+[feature.cuda124.dependencies]
+cuda = {version = "12.4.*", channel = "nvidia"}
+cuda-version = {version = "12.4.*", channel = "https://prefix.dev/conda-forge"}
+
+# =================
+# === CUDA 12.6 ===
+# =================
 [feature.cuda126]
-channels = ["nvidia", "conda-forge"]
-platforms = ["linux-64", "win-64"]
-dependencies = { cuda = {version = "12.6.*", channel = "nvidia"} }
+channels = ["nvidia"]
+platforms = ["linux-64"]
+
+[feature.cuda126.dependencies]
+cuda = {version = "12.6.*", channel = "nvidia"}
+cuda-version = {version = "12.6.*", channel = "nvidia"}
+
+# =================
+# === CUDA 12.8 ===
+# =================
+[feature.cuda128]
+channels = ["https://prefix.dev/conda-forge"]
+platforms = ["linux-64"]
+
+[feature.cuda128.dependencies]
+cuda = {version = "12.8.*", channel = "https://prefix.dev/conda-forge"}
+cuda-version = {version = "12.8.*", channel = "https://prefix.dev/conda-forge"}
+
 
 [environments]
-cuda118 = ["cuda118"]
-cuda121 = ["cuda121"]
-cuda126 = ["cuda126"]
+cuda121 = ["cuda121", "cuda"]
+cuda124 = ["cuda124", "cuda"]
+cuda126 = ["cuda126", "cuda"]
+cuda128 = ["cuda128", "cuda"]

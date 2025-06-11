@@ -1,6 +1,7 @@
 """Entrypoint for the darts-pipeline CLI."""
 
 import logging
+import os
 import sys
 from pathlib import Path
 from typing import Annotated
@@ -21,6 +22,7 @@ from darts.training import (
     preprocess_planet_train_data,
     preprocess_planet_train_data_pingo,
 )
+from darts.utils.bench import benchviz
 from darts.utils.config import ConfigParser
 from darts.utils.logging import LoggingManager
 
@@ -77,12 +79,14 @@ def env_info():
     """Print debug information about the environment."""
     from darts.utils.cuda import debug_info
 
+    logger.debug(f"PATH: {os.environ.get('PATH', 'UNSET')}")
     debug_info()
 
 
 app.command(name="run-sequential-aoi-sentinel2-pipeline", group=pipeline_group)(AOISentinel2Pipeline.cli)
 app.command(name="run-sequential-sentinel2-pipeline", group=pipeline_group)(Sentinel2Pipeline.cli)
 app.command(name="run-sequential-planet-pipeline", group=pipeline_group)(PlanetPipeline.cli)
+app.command(group=pipeline_group)(benchviz)
 
 app.command(group=train_group)(preprocess_planet_train_data)
 app.command(group=train_group)(preprocess_planet_train_data_pingo)
@@ -103,6 +107,9 @@ def launcher(  # noqa: D103
     tracebacks_show_locals: bool = False,
 ):
     command, bound, ignored = app.parse_args(tokens, verbose=verbose)
+    # Set verbose to true for debug stuff like env_info
+    if command.__name__ == "env_info":
+        verbose = True
     LoggingManager.add_logging_handlers(command.__name__, log_dir, verbose, tracebacks_show_locals)
     logger.debug(f"Running on Python version {sys.version} from {__name__} ({root_file})")
     additional_args = {}

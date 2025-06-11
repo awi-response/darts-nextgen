@@ -1,4 +1,4 @@
-"""Sequential implementation of the v2 pipelines."""
+"""Ray implementation of the v2 pipelines."""
 
 import json
 import logging
@@ -6,16 +6,26 @@ import time
 from abc import ABC, abstractmethod
 from dataclasses import asdict, dataclass, field
 from functools import cached_property
-from math import ceil, sqrt
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Literal
+from typing import TYPE_CHECKING, Any, Literal, TypedDict
 
 from cyclopts import Parameter
 
 if TYPE_CHECKING:
-    import xarray as xr
+    from darts.pipelines._ray_wrapper import RayDataDict
 
 logger = logging.getLogger(__name__)
+
+
+class RayInputDict(TypedDict):
+    """A dictionary to hold the input data for Ray tasks.
+
+    This is used to ensure that the input data can be serialized and deserialized correctly.
+    """
+
+    tilekey: Any  # The key to identify the tile, e.g. a path or a tile id
+    outpath: Path  # The path to the output directory
+    tile_id: str  # The id of the tile, e.g. the name of the file or the tile id
 
 
 @Parameter(name="*")
@@ -71,7 +81,7 @@ class _BasePipeline(ABC):
         pass
 
     @abstractmethod
-    def _load_tile(self, tileinfo: Any) -> "xr.Dataset":
+    def _load_tile(self, tileinfo: RayInputDict) -> "RayDataDict":
         pass
 
     def run(self):  # noqa: C901
@@ -107,15 +117,18 @@ class _BasePipeline(ABC):
 
         init_ee(self.ee_project, self.ee_use_highvolume)
 
-        import pandas as pd
+        import ray
         import smart_geocubes
         import torch
-        from darts_acquisition import load_arcticdem, load_tcvis
         from darts_ensemble import EnsembleV1
-        from darts_export import export_tile, missing_outputs
-        from darts_postprocessing import prepare_export
-        from darts_preprocessing import preprocess_legacy_fast
+        from darts_export import missing_outputs
 
+        from darts.pipelines._ray_wrapper import (
+            _export_tile_ray,
+            _load_and_preprocess_ray,
+            _prepare_export_ray,
+            _RayEnsembleV1,
+        )
         from darts.utils.cuda import decide_device
         from darts.utils.logging import LoggingManager
 
@@ -127,6 +140,7 @@ class _BasePipeline(ABC):
             self.write_model_outputs = False
         models = {model_file.stem: model_file for model_file in self.model_files}
         ensemble = EnsembleV1(models, device=torch.device(self.device))
+        ray_ensemble = _RayEnsembleV1(ensemble)
 
         # Create the datacubes if they do not exist
         LoggingManager.apply_logging_handlers("smart_geocubes")
@@ -141,106 +155,75 @@ class _BasePipeline(ABC):
         if not accessor.created:
             accessor.create(overwrite=False)
 
-        # Iterate over all the data
-        tileinfo = self._tileinfos()
-        n_tiles = 0
-        logger.info(f"Found {len(tileinfo)} tiles to process.")
-        results = []
-        for i, (tilekey, outpath) in enumerate(tileinfo):
+        # Get files to process
+        tileinfo: list[RayInputDict] = []
+        for i, (tilekey, outpath) in enumerate(self._tileinfos()):
             tile_id = self._get_tile_id(tilekey)
-            try:
-                if not self.overwrite:
-                    mo = missing_outputs(outpath, bands=self.export_bands, ensemble_subsets=models.keys())
-                    if mo == "none":
-                        logger.info(f"Tile {tile_id} already processed. Skipping...")
-                        continue
-                    if mo == "some":
-                        logger.warning(
-                            f"Tile {tile_id} already processed. Some outputs are missing."
-                            " Skipping because overwrite=False..."
-                        )
-                        continue
+            if not self.overwrite:
+                mo = missing_outputs(outpath, bands=self.export_bands, ensemble_subsets=models.keys())
+                if mo == "none":
+                    logger.info(f"Tile {tile_id} already processed. Skipping...")
+                    continue
+                if mo == "some":
+                    logger.warning(
+                        f"Tile {tile_id} already processed. Some outputs are missing."
+                        " Skipping because overwrite=False..."
+                    )
+                    continue
+            tileinfo.append({"tilekey": tilekey, "outpath": outpath, "tile_id": tile_id})
+        logger.info(f"Found {len(tileinfo)} tiles to process.")
 
-                with timer("Loading optical data", log=False):
-                    tile = self._load_tile(tilekey)
-                with timer("Loading ArcticDEM", log=False):
-                    arcticdem = load_arcticdem(
-                        tile.odc.geobox,
-                        self.arcticdem_dir,
-                        resolution=arcticdem_resolution,
-                        buffer=ceil(self.tpi_outer_radius / arcticdem_resolution * sqrt(2)),
-                    )
-                with timer("Loading TCVis", log=False):
-                    tcvis = load_tcvis(tile.odc.geobox, self.tcvis_dir)
-                with timer("Preprocessing tile", log=False):
-                    tile = preprocess_legacy_fast(
-                        tile,
-                        arcticdem,
-                        tcvis,
-                        self.tpi_outer_radius,
-                        self.tpi_inner_radius,
-                        self.device,
-                    )
-                with timer("Segmenting", log=False):
-                    tile = ensemble.segment_tile(
-                        tile,
-                        patch_size=self.patch_size,
-                        overlap=self.overlap,
-                        batch_size=self.batch_size,
-                        reflection=self.reflection,
-                        keep_inputs=self.write_model_outputs,
-                    )
-                with timer("Postprosessing", log=False):
-                    tile = prepare_export(
-                        tile,
-                        bin_threshold=self.binarization_threshold,
-                        mask_erosion_size=self.mask_erosion_size,
-                        min_object_size=self.min_object_size,
-                        quality_level=self.quality_level,
-                        ensemble_subsets=models.keys() if self.write_model_outputs else [],
-                        device=self.device,
-                    )
-
-                with timer("Exporting", log=False):
-                    export_tile(
-                        tile,
-                        outpath,
-                        bands=self.export_bands,
-                        ensemble_subsets=models.keys() if self.write_model_outputs else [],
-                    )
-
-                n_tiles += 1
-                results.append(
-                    {
-                        "tile_id": tile_id,
-                        "output_path": str(outpath.resolve()),
-                        "status": "success",
-                        "error": None,
-                    }
-                )
-                logger.info(f"Processed sample {i + 1} of {len(tileinfo)} '{tilekey}' ({tile_id=}).")
-            except KeyboardInterrupt:
-                logger.warning("Keyboard interrupt detected.\nExiting...")
-                raise KeyboardInterrupt
-            except Exception as e:
-                logger.warning(f"Could not process '{tilekey}' ({tile_id=}).\nSkipping...")
-                logger.exception(e)
-                results.append(
-                    {
-                        "tile_id": tile_id,
-                        "output_path": str(outpath.resolve()),
-                        "status": "failed",
-                        "error": str(e),
-                    }
-                )
-            finally:
-                if len(results) > 0:
-                    pd.DataFrame(results).to_parquet(self.output_data_dir / f"{current_time}.results.parquet")
-                if len(timer.durations) > 0:
-                    timer.export().to_parquet(self.output_data_dir / f"{current_time}.stopuhr.parquet")
-        else:
-            logger.info(f"Processed {n_tiles} tiles to {self.output_data_dir.resolve()}.")
-            timer.summary(printer=logger.info)
+        # Ray data pipeline
+        # TODO: setup device stuff correctly
+        ds = ray.data.from_items(tileinfo)
+        ds = ds.map(self._load_tile, num_cpus=1)
+        ds = ds.map(
+            _load_and_preprocess_ray,
+            fn_kwargs={
+                "arcticdem_dir": self.arcticdem_dir,
+                "arcticdem_resolution": arcticdem_resolution,
+                "tpi_outer_radius": self.tpi_outer_radius,
+                "tpi_inner_radius": self.tpi_inner_radius,
+                "tcvis_dir": self.tcvis_dir,
+                "device": self.device,
+            },
+            num_cpus=1,
+        )
+        ds = ds.map(
+            ray_ensemble,
+            fn_kwargs={
+                "patch_size": self.patch_size,
+                "overlap": self.overlap,
+                "batch_size": self.batch_size,
+                "reflection": self.reflection,
+                "write_model_outputs": self.write_model_outputs,
+            },
+            num_cpus=1,
+        )
+        ds = ds.map(
+            _prepare_export_ray,
+            fn_kwargs={
+                "binarization_threshold": self.binarization_threshold,
+                "mask_erosion_size": self.mask_erosion_size,
+                "min_object_size": self.min_object_size,
+                "quality_level": self.quality_level,
+                "models": models,
+                "write_model_outputs": self.write_model_outputs,
+                "device": self.device,
+            },
+            num_cpus=1,
+        )
+        ds = ds.map(
+            _export_tile_ray,
+            fn_kwargs={
+                "export_bands": self.export_bands,
+                "models": models,
+                "write_model_outputs": self.write_model_outputs,
+            },
+        )
+        logger.info("Ray pipeline created. Starting execution...")
+        # This should trigger the execution
+        ds.write_parquet(f"local://{self.output_data_dir.resolve()!s}/ray_output.parquet")
 
 
 # =============================================================================
@@ -339,14 +322,15 @@ class PlanetPipeline(_BasePipeline):
         out.sort()
         return out
 
-    def _load_tile(self, fpath: Path) -> "xr.Dataset":
+    def _load_tile(self, tileinfo: RayInputDict) -> "RayDataDict":
         import xarray as xr
         from darts_acquisition import load_planet_masks, load_planet_scene
 
+        fpath: Path = tileinfo["tilekey"]
         optical = load_planet_scene(fpath)
         data_masks = load_planet_masks(fpath)
         tile = xr.merge([optical, data_masks])
-        return tile
+        return {"tile": tile, **tileinfo}
 
     @staticmethod
     def cli(*, pipeline: "PlanetPipeline"):
@@ -434,14 +418,15 @@ class Sentinel2Pipeline(_BasePipeline):
         out.sort()
         return out
 
-    def _load_tile(self, fpath: Path) -> "xr.Dataset":  # Here: fpath == 'tid'
+    def _load_tile(self, tileinfo: RayInputDict) -> "RayDataDict":  # Here: fpath == 'tid'
         import xarray as xr
         from darts_acquisition import load_s2_masks, load_s2_scene
 
+        fpath: Path = tileinfo["tilekey"]
         optical = load_s2_scene(fpath)
         data_masks = load_s2_masks(fpath, optical.odc.geobox)
         tile = xr.merge([optical, data_masks])
-        return tile
+        return {"tile": tile, **tileinfo}
 
     @staticmethod
     def cli(*, pipeline: "Sentinel2Pipeline"):
@@ -528,11 +513,12 @@ class AOISentinel2Pipeline(_BasePipeline):
         out.sort()
         return out
 
-    def _load_tile(self, s2id: str) -> "xr.Dataset":
+    def _load_tile(self, tileinfo: RayInputDict) -> "RayDataDict":
         from darts_acquisition.s2 import load_s2_from_gee
 
+        s2id: str = tileinfo["tilekey"]
         tile = load_s2_from_gee(s2id, cache=self.input_cache)
-        return tile
+        return {"tile": tile, **tileinfo}
 
     @staticmethod
     def cli(*, pipeline: "AOISentinel2Pipeline"):

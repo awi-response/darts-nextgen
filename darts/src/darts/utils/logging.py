@@ -1,5 +1,6 @@
 """Utility functions for logging."""
 
+import importlib
 import logging
 import time
 from pathlib import Path
@@ -66,17 +67,6 @@ class LoggingManagerSingleton:
             tracebacks_show_locals (bool): Whether to show local variables in tracebacks.
 
         """
-        import distributed
-        import pandas as pd
-        import torch
-        import torch.utils.data
-        import xarray as xr
-
-        try:
-            import lightning as L  # noqa: N812
-        except ImportError:
-            L = None  # noqa: N806
-
         if self._rich_handler is not None or self._file_handler is not None:
             logger.warning("Logging handlers already added.")
             return
@@ -85,10 +75,22 @@ class LoggingManagerSingleton:
         current_time = time.strftime("%Y-%m-%d_%H-%M-%S")
 
         # Configure the rich console handler
-        traceback_suppress = [cyclopts, torch, torch.utils.data, xr, distributed, pd]
-        if L:
-            pass
-        #    traceback_suppress.append(L)
+        supress_module_names = [
+            "torch",
+            "torch.utils.data",
+            "xarray",
+            "distributed",
+            "pandas",
+            "lightning",
+        ]
+        traceback_suppress = [cyclopts]
+        for module_name in supress_module_names:
+            try:
+                module = importlib.import_module(module_name)
+                traceback_suppress.append(module)
+            except ImportError:
+                logger.warning(f"Module {module_name} not found, skipping traceback suppression for it.")
+                continue
         rich_handler = RichHandler(
             console=rich.get_console(),
             rich_tracebacks=True,
