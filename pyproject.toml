@@ -85,51 +85,56 @@ Issues = "https://github.com/awi-response/darts-nextgen/issues"
 # to ensure that they use the correct version of torch.
 # I opened an issue about this topic: https://github.com/astral-sh/uv/issues/12290
 [project.optional-dependencies]
-cpu = [
+torchdeps = [
     "torch>=2.2.0",
     "torchvision>=0.17.0",
     "segmentation-models-pytorch>=0.4.0",
     "lovely-tensors>=0.1.17",
     "timm>=1.0.13",
 ]
-cuda118 = [
-    "torch>=2.2.0",
-    "torchvision>=0.17.0",
-    "segmentation-models-pytorch>=0.4.0",
-    "lovely-tensors>=0.1.17",
-    "timm>=1.0.13",
-    # CUDA-only
+cuda11deps = [
     "cucim-cu11>=24.8",
     "cupy-cuda11x>=13.3.0",
     "cupy-xarray",
     "cuda-python>=12.6.2.post1",
     "pynvml==11.4.1",
 ]
-cuda121 = [
-    "torch>=2.2.0",
-    "torchvision>=0.17.0",
-    "segmentation-models-pytorch>=0.4.0",
-    "lovely-tensors>=0.1.17",
-    "timm>=1.0.13",
-    # CUDA-only
+cuda12deps = [
     "cucim-cu12>=24.8",
     "cupy-cuda12x>=13.3.0",
     "cupy-xarray",
     "cuda-python>=12.6.2.post1",
     "pynvml==11.4.1",
 ]
+cpu = [
+    "torch>=2.2.0",
+    "torchvision>=0.17.0",
+    "darts-nextgen[torchdeps]"
+]
+cuda118 = [
+    "torch>=2.2.0",
+    "torchvision>=0.17.0",
+    "darts-nextgen[torchdeps, cuda11deps]"
+]
+cuda121 = [
+    "torch>=2.2.0",
+    "torchvision>=0.17.0",
+    "darts-nextgen[torchdeps, cuda12deps]"
+]
+cuda124 = [
+    "torch>=2.2.0",
+    "torchvision>=0.17.0",
+    "darts-nextgen[torchdeps, cuda12deps]"
+]
 cuda126 = [
     "torch>=2.2.0",
     "torchvision>=0.17.0",
-    "segmentation-models-pytorch>=0.4.0",
-    "lovely-tensors>=0.1.17",
-    "timm>=1.0.13",
-    # CUDA-only
-    "cucim-cu12>=24.8",
-    "cupy-cuda12x>=13.3.0",
-    "cupy-xarray",
-    "cuda-python>=12.6.2.post1",
-    "pynvml==11.4.1",
+    "darts-nextgen[torchdeps, cuda12deps]"
+]
+cuda128 = [
+    "torch>=2.2.0",
+    "torchvision>=0.17.0",
+    "darts-nextgen[torchdeps, cuda12deps]"
 ]
 training = [
     "lightning>=2.4.0",
@@ -197,7 +202,9 @@ conflicts = [
     { extra = "cpu" },
     { extra = "cuda118" },
     { extra = "cuda121" },
+    { extra = "cuda124" },
     { extra = "cuda126" },
+    { extra = "cuda128" },
   ],
 ]
 
@@ -207,13 +214,17 @@ torch = [
   { index = "pytorch-cpu", extra = "cpu" },
   { index = "pytorch-cu118", extra = "cuda118" },
   { index = "pytorch-cu121", extra = "cuda121" },
+  { index = "pytorch-cu124", extra = "cuda124" },
   { index = "pytorch-cu126", extra = "cuda126" },
+  { index = "pytorch-cu128", extra = "cuda128" },
 ]
 torchvision = [
   { index = "pytorch-cpu", extra = "cpu" },
   { index = "pytorch-cu118", extra = "cuda118" },
   { index = "pytorch-cu121", extra = "cuda121" },
+  { index = "pytorch-cu124", extra = "cuda124" },
   { index = "pytorch-cu126", extra = "cuda126" },
+  { index = "pytorch-cu128", extra = "cuda128" },
 ]
 darts-acquisition = { workspace = true }
 darts-ensemble = { workspace = true }
@@ -224,6 +235,7 @@ darts-segmentation = { workspace = true }
 darts-superresolution = { workspace = true }
 darts-utils = { workspace = true }
 
+# Possible versions to support in general: 11.8, 12.1, 12.4, 12.6, 12.8
 [[tool.uv.index]]
 name = "pytorch-cpu"
 url = "https://download.pytorch.org/whl/cpu"
@@ -240,8 +252,18 @@ url = "https://download.pytorch.org/whl/cu121"
 explicit = true
 
 [[tool.uv.index]]
+name = "pytorch-cu124"
+url = "https://download.pytorch.org/whl/cu124"
+explicit = true
+
+[[tool.uv.index]]
 name = "pytorch-cu126"
 url = "https://download.pytorch.org/whl/cu126"
+explicit = true
+
+[[tool.uv.index]]
+name = "pytorch-cu128"
+url = "https://download.pytorch.org/whl/cu128"
 explicit = true
 
 [tool.uv.workspace]

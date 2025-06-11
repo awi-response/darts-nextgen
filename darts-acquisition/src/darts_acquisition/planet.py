@@ -115,6 +115,7 @@ def load_planet_scene(fpath: str | Path) -> xr.Dataset:
                 "units": "Reflectance",
             }
         )
+    # TODO: this is not working - it uses the file of one band too high when using training scenarios
     ds_planet.attrs = {"tile_id": fpath.parent.stem if planet_type == "orthotile" else fpath.stem}
     return ds_planet
 

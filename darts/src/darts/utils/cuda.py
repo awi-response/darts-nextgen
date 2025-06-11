@@ -6,19 +6,23 @@ from typing import Literal
 logger = logging.getLogger(__name__)
 
 
-def debug_info():
+def debug_info():  # noqa: C901
     """Print debug information about the CUDA devices and library installations."""
     import os
 
-    import torch
-    from xrspatial.utils import has_cuda_and_cupy
+    logger.debug("===vvv CUDA DEBUG INFO vvv===")
+    important_env_vars = [
+        "CUDA_HOME",
+        "CUDA_PATH",
+        "LD_LIBRARY_PATH",
+        "NUMBA_CUDA_DRIVER",
+        "NUMBA_CUDA_INCLUDE_PATH",
+    ]
+    for v in important_env_vars:
+        value = os.environ.get(v, "UNSET")
+        logger.debug(f"{v}: {value}")
 
-    logger.debug("=== CUDA DEBUG INFO ===")
-    logger.debug(f"PyTorch version: {torch.__version__}")
-    logger.debug(f"PyTorch CUDA available: {torch.cuda.is_available()}")
-    logger.debug(f"Cupy+Numba CUDA available: {has_cuda_and_cupy()}")
-    logger.debug(f"LD_LIBRARY_PATH: {os.environ.get('LD_LIBRARY_PATH')}")
-
+    logger.debug("Quicknote: CUDA driver is something different than CUDA runtime, hence versions can mismatch")
     try:
         from pynvml import (  # type: ignore
             nvmlDeviceGetCount,
@@ -32,10 +36,9 @@ def debug_info():
         )
 
         nvmlInit()
-        driver_version = nvmlSystemGetDriverVersion().decode()
-        logger.debug(f"CUDA driver version: {driver_version}")
+        cuda_driver_version_legacy = nvmlSystemGetDriverVersion().decode()
         cuda_driver_version = nvmlSystemGetCudaDriverVersion_v2()
-        logger.debug(f"CUDA runtime version: {cuda_driver_version}")
+        logger.debug(f"CUDA driver version: {cuda_driver_version} ({cuda_driver_version_legacy})")
         ndevices = nvmlDeviceGetCount()
         logger.debug(f"Number of CUDA devices: {ndevices}")
 
@@ -47,26 +50,44 @@ def debug_info():
         nvmlShutdown()
 
     except ImportError:
-        logger.debug("Module 'pynvml' not found, darts is probably installed without CUDA support.")
+        logger.debug("Module 'pynvml' could not be imported. darts is probably installed without CUDA support.")
+
+    try:
+        import torch
+
+        logger.debug(f"PyTorch version: {torch.__version__}")
+        logger.debug(f"PyTorch CUDA available: {torch.cuda.is_available()}")
+        logger.debug(f"PyTorch CUDA runtime version: {torch.version.cuda}")
+    except ImportError as e:
+        logger.error("Module 'torch' could not be imported:")
+        logger.exception(e, exc_info=True)
 
     try:
         import cupy  # type: ignore
 
         logger.debug(f"Cupy version: {cupy.__version__}")
+        cupy_driver_version = cupy.cuda.runtime.driverGetVersion()
+        logger.debug(f"Cupy CUDA driver version: {cupy_driver_version}")
         # This is the version which is installed (dynamically linked via PATH or LD_LIBRARY_PATH) in the environment
         env_runtime_version = cupy.cuda.get_local_runtime_version()
-        # This is the version which is used by cupy (statically linked)
+        logger.debug(f"Cupy CUDA runtime version: {env_runtime_version}")
+        if cupy_driver_version < env_runtime_version:
+            logger.warning(
+                "CUDA runtime version is newer than CUDA driver version!"
+                " The CUDA environment is probably not setup correctly!"
+                " Consider linking CUDA to an older version with CUDA_HOME and LD_LIBRARY_PATH environment variables,"
+                " or in case of a setup done by pixi choose a different environment with the -e flag."
+            )
+        # This is the version which is was used when cupy was compiled (statically linked)
         cupy_runtime_version = cupy.cuda.runtime.runtimeGetVersion()
         if env_runtime_version != cupy_runtime_version:
-            logger.warning(
+            logger.debug(
                 "Cupy CUDA runtime versions don't match!\n"
                 f"Got {env_runtime_version} as local (dynamically linked) runtime version.\n"
                 f"Got {cupy_runtime_version} as by cupy statically linked runtime version.\n"
-                "Cupy will use the statically linked runtime version!"
+                "This can happen if cupy was compiled using a different CUDA runtime version. "
+                "Things should still work, note that Cupy will use the dynamically linked version."
             )
-        else:
-            logger.debug(f"Cupy CUDA runtime version: {cupy_runtime_version}")
-        logger.debug(f"Cupy CUDA driver version: {cupy.cuda.runtime.driverGetVersion()}")
     except ImportError:
         logger.debug("Module 'cupy' not found, darts is probably installed without CUDA support.")
 
@@ -76,10 +97,14 @@ def debug_info():
         cuda_available = numba.cuda.is_available()
         logger.debug(f"Numba CUDA is available: {cuda_available}")
         if cuda_available:
-            logger.debug(f"Numba CUDA runtime: {numba.cuda.runtime.get_version()}")
+            logger.debug(f"Numba CUDA runtime version: {numba.cuda.runtime.get_version()}")
             # logger.debug(f"Numba CUDA has supported devices: {numba.cuda.detect()}")
     except ImportError:
         logger.debug("Module 'numba.cuda' not found, darts is probably installed without CUDA support.")
+
+    from xrspatial.utils import has_cuda_and_cupy
+
+    logger.debug(f"Cupy+Numba CUDA available: {has_cuda_and_cupy()}")
 
     try:
         import cucim  # type: ignore
@@ -87,6 +112,8 @@ def debug_info():
         logger.debug(f"Cucim version: {cucim.__version__}")
     except ImportError:
         logger.debug("Module 'cucim' not found, darts is probably installed without CUDA support.")
+
+    logger.debug("===^^^ CUDA DEBUG INFO ^^^===")
 
 
 def decide_device(device: Literal["cuda", "cpu", "auto"] | int | None) -> Literal["cuda", "cpu"] | int:

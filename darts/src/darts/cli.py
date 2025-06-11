@@ -1,6 +1,7 @@
 """Entrypoint for the darts-pipeline CLI."""
 
 import logging
+import os
 import sys
 from pathlib import Path
 from typing import Annotated
@@ -78,6 +79,7 @@ def env_info():
     """Print debug information about the environment."""
     from darts.utils.cuda import debug_info
 
+    logger.debug(f"PATH: {os.environ.get('PATH', 'UNSET')}")
     debug_info()
 
 
@@ -105,6 +107,9 @@ def launcher(  # noqa: D103
     tracebacks_show_locals: bool = False,
 ):
     command, bound, ignored = app.parse_args(tokens, verbose=verbose)
+    # Set verbose to true for debug stuff like env_info
+    if command.__name__ == "env_info":
+        verbose = True
     LoggingManager.add_logging_handlers(command.__name__, log_dir, verbose, tracebacks_show_locals)
     logger.debug(f"Running on Python version {sys.version} from {__name__} ({root_file})")
     additional_args = {}

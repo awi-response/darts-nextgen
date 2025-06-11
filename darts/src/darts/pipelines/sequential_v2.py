@@ -240,7 +240,7 @@ class _BasePipeline(ABC):
                     timer.export().to_parquet(self.output_data_dir / f"{current_time}.stopuhr.parquet")
         else:
             logger.info(f"Processed {n_tiles} tiles to {self.output_data_dir.resolve()}.")
-            timer.summary()
+            timer.summary(printer=logger.info)
 
 
 # =============================================================================

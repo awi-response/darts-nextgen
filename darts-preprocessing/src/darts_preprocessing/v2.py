@@ -128,6 +128,8 @@ def preprocess_v2(
 
     # Reproject TCVIS to optical data
     with stopwatch("Reprojecting TCVIS", printer=logger.debug):
+        # *: Reprojecting this way will not alter the datatype of the data!
+        # Should be uint8 before and after reprojection.
         ds_tcvis = ds_tcvis.odc.reproject(ds_merged.odc.geobox, resampling="cubic")
 
     ds_merged["tc_brightness"] = ds_tcvis.tc_brightness

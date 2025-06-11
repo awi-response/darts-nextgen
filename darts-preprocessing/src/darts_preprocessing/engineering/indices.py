@@ -42,6 +42,10 @@ def calculate_ndvi(planet_scene_dataset: xr.Dataset, nir_band: str = "nir", red_
     r = planet_scene_dataset[red_band].astype("float32")
     ndvi = (nir - r) / (nir + r)
 
+    # TODO: For the bands rework: Change the scaling acording to the specs
+    # TODO: Also do rio.write_nodata(0) AFTER the cast to uint16
+    # Otherwise the _FillValue will be set to 0.0 (float) instead of 0 (int)
+    # This will then cause the xarray loader to cast the data to float32
     # Scale to 0 - 20000 (for later conversion to uint16)
     ndvi = (ndvi.clip(-1, 1) + 1) * 1e4
     # Make nan to 0

@@ -2,6 +2,11 @@
 
 This is a collection of known issues and potential fixes for CUDA-related problems in the codebase.
 
+!!! abstract "CUDA Version"
+
+    There exist multiple CUDA versions at a time: the driver version installed on the system, and the runtime version which is set by the environment.
+    Read more [here](https://stackoverflow.com/questions/53422407/different-cuda-versions-shown-by-nvcc-and-nvidia-smi)
+
 ## CUCIM import
 
 ```sh
@@ -43,6 +48,11 @@ Unable to replicate
 The LD_LIBRARY_PATH is either not set correctly or the `cuda-nvrtc` package is not installed in the conda environment.
 
 **How to fix?**
+
+Install and use a conda environment created by Pixi.
+Please refer to the [Installation Guide](../guides/installation.md).
+
+**How to fix? (Legacy version)**
 Create a conda environment with the `cuda-nvrtc` package installed. You can do this by running the following command:
 
 ```sh
