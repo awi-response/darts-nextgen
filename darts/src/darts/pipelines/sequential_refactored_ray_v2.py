@@ -365,7 +365,7 @@ class _BasePipelineRefactored(ABC):
             import torch
             if torch.cuda.is_available():
                 torch.cuda.init()
-            return self._process_tile_ray( i, tilekey, outpath, tileinfo, models, timer, n_tiles, current_time, results)
+            return self._process_tile_ray(i, tilekey, outpath, tileinfo, models, timer, ensemble, n_tiles, current_time, results)
 
         # TODO fix this method
         futures = []
