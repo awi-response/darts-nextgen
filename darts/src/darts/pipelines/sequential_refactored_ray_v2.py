@@ -368,7 +368,7 @@ class _BasePipelineRefactored(ABC):
         # Process tiles in parallel
         futures = []
         for tilekey, outpath in tileinfo:
-            futures.append(process_tile_remote.remote(self, tilekey, outpath, models_ref, timer_ref))
+            futures.append(process_tile_remote.remote(self, tilekey, outpath, tileinfo, models_ref, timer, n_tiles,current_time, results))
 
         # Collect results as they complete
         results = []
