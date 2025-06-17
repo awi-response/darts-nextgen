@@ -495,7 +495,7 @@ class _BasePipelineRefactored(ABC):
 
 
 @dataclass
-class AOISentinel2PipelineRefactored(_BasePipelineRefactored):
+class AOISentinel2PipelineRefactoredRay(_BasePipelineRefactored):
     """Pipeline for Sentinel 2 data based on an area of interest.
 
     Args:
