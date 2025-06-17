@@ -8,7 +8,7 @@ from dataclasses import asdict, dataclass, field
 from functools import cached_property
 from math import ceil, sqrt
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Literal
+from typing import TYPE_CHECKING, Any, Literal, Optional, List, Dict, Tuple
 
 from cyclopts import Parameter
 
@@ -31,7 +31,7 @@ class _BasePipelineRefactored(ABC):
     The main class must be also a dataclass, to fully inherit all parameter of this class (and the mixins).
     """
 
-    model_files: list[Path] = None
+    model_files: List[Path] = None
     output_data_dir: Path = Path("data/output")
     arcticdem_dir: Path = Path("data/download/arcticdem")
     tcvis_dir: Path = Path("data/download/tcvis")
@@ -48,11 +48,12 @@ class _BasePipelineRefactored(ABC):
     mask_erosion_size: int = 10
     min_object_size: int = 32
     quality_level: int | Literal["high_quality", "low_quality", "none"] = 1
-    export_bands: list[str] = field(
+    export_bands: List[str] = field(
         default_factory=lambda: ["probabilities", "binarized", "polygonized", "extent", "thumbnail"]
     )
     write_model_outputs: bool = False
     overwrite: bool = False
+    num_workers: int = 1  # Number of parallel workers for Ray
 
     @abstractmethod
     def _arcticdem_resolution(self) -> Literal[2, 10, 32]:
@@ -64,7 +65,7 @@ class _BasePipelineRefactored(ABC):
         pass
 
     @abstractmethod
-    def _tileinfos(self) -> list[tuple[Any, Path]]:
+    def _tileinfos(self) -> List[Tuple[Any, Path]]:
         # Yields a tuple
         # str: anything which id needed to load the tile, e.g. a path or a tile id
         # Path: the path to the output directory
@@ -91,7 +92,6 @@ class _BasePipelineRefactored(ABC):
         from darts_postprocessing import prepare_export
         from darts_preprocessing import preprocess_legacy_fast
         import pandas as pd
-        # TODO create timer here
 
         tile_id = self._get_tile_id(tilekey)
         result = {
@@ -239,6 +239,56 @@ class _BasePipelineRefactored(ABC):
                 timer.export().to_parquet(self.output_data_dir / f"{current_time}.stopuhr.parquet")
             return (results, n_tiles)
 
+    def _process_tile_remote(self, i, tilekey, outpath, models, current_time):
+        """Remote version of process_tile to be used with Ray.
+
+        Args:
+            i: Index of the tile
+            tilekey: Tile identifier
+            outpath: Output path for the tile
+            models: Dictionary of model names and paths
+            current_time: Timestamp for the current run
+
+        Returns:
+            Dictionary containing processing results for this tile
+        """
+        from stopuhr import Chronometer
+        from darts_ensemble import EnsembleV1
+        import torch
+        import pandas as pd
+
+        timer = Chronometer(printer=logger.debug)
+        ensemble = EnsembleV1(models, device=torch.device(self.device))
+
+        tile_id = self._get_tile_id(tilekey)
+        result = {
+            "tile_id": tile_id,
+            "output_path": str(outpath.resolve()),
+            "status": "failed",
+            "error": None,
+        }
+
+        try:
+            # We'll reuse the existing _process_tile method but adapt it for remote execution
+            # We create empty lists here since we're processing one tile at a time remotely
+            results = []
+            n_tiles = 0
+
+            # Call the original _process_tile method
+            results, n_tiles = self._process_tile(
+                i, tilekey, outpath, [(tilekey, outpath)], models, timer,
+                ensemble, n_tiles, current_time, results
+            )
+
+            # Return the last result (should be only one)
+            if results:
+                return results[-1]
+            return result
+        except Exception as e:
+            logger.error(f"Error processing tile {tile_id} remotely: {str(e)}")
+            result["error"] = str(e)
+            return result
+
     def run(self):  # noqa: C901
         if self.model_files is None or len(self.model_files) == 0:
             raise ValueError("No model files provided. Please provide a list of model files.")
@@ -248,29 +298,13 @@ class _BasePipelineRefactored(ABC):
         current_time = time.strftime("%Y-%m-%d_%H-%M-%S")
         logger.info(f"Starting pipeline at {current_time}.")
 
-        # TODO commented out
-        # Storing the configuration as JSON file
-        # self.output_data_dir.mkdir(parents=True, exist_ok=True)
-        # with open(self.output_data_dir / f"{current_time}.config.json", "w") as f:
-        #     config = asdict(self)
-        #     # Convert everything to json serializable
-        #     for key, value in config.items():
-        #         if isinstance(value, Path):
-        #             config[key] = str(value.resolve())
-        #         elif isinstance(value, list):
-        #             config[key] = [str(v.resolve()) if isinstance(v, Path) else v for v in value]
-        #     json.dump(config, f)
-
         from stopuhr import Chronometer
-
         timer = Chronometer(printer=logger.debug)
 
         from darts.utils.cuda import debug_info
-
         debug_info()
 
         from darts.utils.earthengine import init_ee
-
         init_ee(self.ee_project, self.ee_use_highvolume)
 
         import pandas as pd
@@ -309,35 +343,69 @@ class _BasePipelineRefactored(ABC):
 
         # Iterate over all the data
         tileinfo = self._tileinfos()
-        all_tileinfo = enumerate(tileinfo)
-        print("tile info and enumerate tile info")
-        print(tileinfo)
-        print(type(tileinfo))
-        print(all_tileinfo)
-        print(type(all_tileinfo))
-        print('the tile key')
         n_tiles = 0
         logger.info(f"Found {len(tileinfo)} tiles to process.")
-        #     def _process_tile(self, i, tilekey, outpath, tileinfo, models, timer, n_tiles, current_time, results):
-
-
 
         results = []
 
-        # TODO fix this method
-        for i, (tilekey, outpath) in enumerate(tileinfo):
-            print(f"Using new process tile method")
-            (results, n_tiles) = self._process_tile( i, tilekey, outpath, tileinfo, models, timer, ensemble, n_tiles,current_time, results)
-            print('got new result')
-            print(results)
-            print(n_tiles)
-            logger.info(f"Processed {n_tiles} tiles to {self.output_data_dir.resolve()}.")
-            timer.summary()
+        if self.num_workers > 1:
+            # Use Ray for parallel processing
+            import ray
+            ray.init(num_cpus=self.num_workers)
 
+            try:
+                # We need to make sure all the required classes/functions are available to Ray workers
+                @ray.remote
+                class RemoteProcessor:
+                    def __init__(self, pipeline, models, current_time):
+                        self.pipeline = pipeline
+                        self.models = models
+                        self.current_time = current_time
+
+                    def process(self, i, tilekey, outpath):
+                        return self.pipeline._process_tile_remote(i, tilekey, outpath, self.models, self.current_time)
+
+                # Create remote processors
+                processors = [RemoteProcessor.remote(self, models, current_time) for _ in range(self.num_workers)]
+
+                # Distribute work
+                futures = []
+                for i, (tilekey, outpath) in enumerate(tileinfo):
+                    processor = processors[i % self.num_workers]
+                    futures.append(processor.process.remote(i, tilekey, outpath))
+
+                # Collect results
+                while futures:
+                    ready, futures = ray.wait(futures)
+                    for result in ray.get(ready):
+                        results.append(result)
+                        if result["status"] == "success":
+                            n_tiles += 1
+                        logger.info(f"Progress: {len(results)}/{len(tileinfo)} tiles processed")
+
+            finally:
+                ray.shutdown()
+        else:
+            # Sequential processing
+            for i, (tilekey, outpath) in enumerate(tileinfo):
+                result = self._process_tile_remote(i, tilekey, outpath, models, current_time)
+                results.append(result)
+                if result["status"] == "success":
+                    n_tiles += 1
+                logger.info(f"Progress: {i + 1}/{len(tileinfo)} tiles processed")
+
+        # Save final results
+        if results:
+            pd.DataFrame(results).to_parquet(self.output_data_dir / f"{current_time}.results.parquet")
+        if len(timer.durations) > 0:
+            timer.export().to_parquet(self.output_data_dir / f"{current_time}.stopuhr.parquet")
+
+        logger.info(f"Processed {n_tiles} tiles to {self.output_data_dir.resolve()}.")
+        timer.summary()
 
 
 @dataclass
-class AOISentinel2PipelineRefactored(_BasePipelineRefactored):
+class AOISentinel2PipelineRefactoredRay(_BasePipelineRefactored):
     """Pipeline for Sentinel 2 data based on an area of interest.
 
     Args:
@@ -385,7 +453,7 @@ class AOISentinel2PipelineRefactored(_BasePipelineRefactored):
         write_model_outputs (bool, optional): Also save the model outputs, not only the ensemble result.
             Defaults to False.
         overwrite (bool, optional): Whether to overwrite existing files. Defaults to False.
-
+        num_workers (int, optional): Number of parallel workers to use for processing tiles. Defaults to 1.
     """
 
     aoi_shapefile: Path = None
@@ -398,7 +466,7 @@ class AOISentinel2PipelineRefactored(_BasePipelineRefactored):
         return 10
 
     @cached_property
-    def _s2ids(self) -> list[str]:
+    def _s2ids(self) -> List[str]:
         from darts_acquisition.s2 import get_s2ids_from_shape_ee
 
         return sorted(get_s2ids_from_shape_ee(self.aoi_shapefile, self.start_date, self.end_date, self.max_cloud_cover))
@@ -407,7 +475,7 @@ class AOISentinel2PipelineRefactored(_BasePipelineRefactored):
         # In case of the GEE tilekey is also the s2id
         return tilekey
 
-    def _tileinfos(self) -> list[tuple[str, Path]]:
+    def _tileinfos(self) -> List[Tuple[str, Path]]:
         out = []
         for s2id in self._s2ids:
             outpath = self.output_data_dir / s2id
@@ -422,6 +490,6 @@ class AOISentinel2PipelineRefactored(_BasePipelineRefactored):
         return tile
 
     @staticmethod
-    def cli(*, pipeline: "AOISentinel2PipelineRefactored"):
+    def cli(*, pipeline: "AOISentinel2PipelineRefactoredRay"):
         """Run the sequential pipeline for AOI Sentinel 2 data."""
         pipeline.run()
