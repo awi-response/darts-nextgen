@@ -582,6 +582,6 @@ class AOISentinel2PipelineRefactoredRay(_BasePipelineRefactored):
         return tile
 
     @staticmethod
-    def cli(*, pipeline: "AOISentinel2PipelineRefactored"):
+    def cli(*, pipeline: "AOISentinel2PipelineRefactoredRay"):
         """Run the sequential pipeline for AOI Sentinel 2 data."""
-        pipeline.run()
+        pipeline.run_parallel()

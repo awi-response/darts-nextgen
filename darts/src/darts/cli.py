@@ -20,6 +20,7 @@ from darts import __version__
 from darts.pipelines import (
     AOISentinel2Pipeline,
     AOISentinel2PipelineRefactored,
+    AOISentinel2PipelineRefactoredRay,
     AOISentinel2RayPipeline,
     PlanetPipeline,
     Sentinel2Pipeline,
@@ -91,6 +92,8 @@ app.command(name="run-sequential-sentinel2-pipeline", group=pipeline_group)(Sent
 app.command(name="run-sequential-planet-pipeline", group=pipeline_group)(PlanetPipeline.cli)
 app.command(name="run-ray-aoi-sentinel2-pipeline", group=pipeline_group)(AOISentinel2RayPipeline.cli)
 app.command(name="run-ray-aoi-sentinel2-pipeline-refactored", group=pipeline_group)(AOISentinel2PipelineRefactored.cli)
+app.command(name="run-ray-aoi-sentinel2-pipeline-refactored-ray", group=pipeline_group)(AOISentinel2PipelineRefactoredRay.cli)
+
 
 
 app.command(group=train_group)(preprocess_planet_train_data)

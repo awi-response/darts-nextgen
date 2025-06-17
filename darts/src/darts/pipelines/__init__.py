@@ -7,3 +7,5 @@ from darts.pipelines.sequential_v2 import PlanetPipeline as PlanetPipeline
 from darts.pipelines.sequential_v2 import Sentinel2Pipeline as Sentinel2Pipeline
 
 from darts.pipelines.sequential_refactored_v2 import AOISentinel2PipelineRefactored
+from darts.pipelines.sequential_refactored_ray_v2 import AOISentinel2PipelineRefactoredRay
+
