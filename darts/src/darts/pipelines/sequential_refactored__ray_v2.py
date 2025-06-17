@@ -239,164 +239,6 @@ class _BasePipelineRefactored(ABC):
                 timer.export().to_parquet(self.output_data_dir / f"{current_time}.stopuhr.parquet")
             return (results, n_tiles)
 
-
-
-    def run_parallel(self):  # noqa: C901
-        if self.model_files is None or len(self.model_files) == 0:
-            raise ValueError("No model files provided. Please provide a list of model files.")
-        if len(self.export_bands) == 0:
-            raise ValueError("No export bands provided. Please provide a list of export bands.")
-
-        current_time = time.strftime("%Y-%m-%d_%H-%M-%S")
-        logger.info(f"Starting pipeline at {current_time}.")
-
-        # TODO commented out
-        # Storing the configuration as JSON file
-        # self.output_data_dir.mkdir(parents=True, exist_ok=True)
-        # with open(self.output_data_dir / f"{current_time}.config.json", "w") as f:
-        #     config = asdict(self)
-        #     # Convert everything to json serializable
-        #     for key, value in config.items():
-        #         if isinstance(value, Path):
-        #             config[key] = str(value.resolve())
-        #         elif isinstance(value, list):
-        #             config[key] = [str(v.resolve()) if isinstance(v, Path) else v for v in value]
-        #     json.dump(config, f)
-
-        import ray
-        from stopuhr import Chronometer
-        import pandas as pd
-        import torch
-        import smart_geocubes
-        from darts_ensemble import EnsembleV1
-        from darts.utils.cuda import debug_info, decide_device
-        from darts.utils.earthengine import init_ee
-        from darts.utils.logging import LoggingManager
-
-        import torch
-        print(f"CUDA available: {torch.cuda.is_available()}")
-        print(f"Number of GPUs: {torch.cuda.device_count()}")
-        if torch.cuda.is_available():
-            print(f"Current device: {torch.cuda.current_device()}")
-            print(f"Device name: {torch.cuda.get_device_name(0)}")
-
-        # Initialize Ray
-        ray.init(
-            num_cpus=self.num_cpus,
-            num_gpus=torch.cuda.device_count() if torch.cuda.is_available() else 0,
-            ignore_reinit_error=True,
-            include_dashboard=False  # Disable dashboard to reduce overhead
-        )
-
-        @ray.remote(num_cpus=1, num_gpus=1 if torch.cuda.is_available() and torch.cuda.device_count() > 0 else 0)
-        def process_tile_remote(pipeline, tilekey, outpath, models, timer):
-
-            # Initialize Earth Engine
-            init_ee(pipeline.ee_project, pipeline.ee_use_highvolume)
-
-            import torch
-            if torch.cuda.is_available():
-                torch.cuda.init()
-            return pipeline._process_tile(tilekey, outpath, models, timer)
-
-        from stopuhr import Chronometer
-
-        timer = Chronometer(printer=logger.debug)
-
-        from darts.utils.cuda import debug_info
-
-        debug_info()
-
-        from darts.utils.earthengine import init_ee
-
-        init_ee(self.ee_project, self.ee_use_highvolume)
-
-        import pandas as pd
-        import smart_geocubes
-        import torch
-        from darts_acquisition import load_arcticdem, load_tcvis
-        from darts_ensemble import EnsembleV1
-        from darts_export import export_tile, missing_outputs
-        from darts_postprocessing import prepare_export
-        from darts_preprocessing import preprocess_legacy_fast
-
-        from darts.utils.cuda import decide_device
-        from darts.utils.logging import LoggingManager
-
-        self.device = decide_device(self.device)
-
-        # determine models to use
-        if isinstance(self.model_files, Path):
-            self.model_files = [self.model_files]
-            self.write_model_outputs = False
-        models = {model_file.stem: model_file for model_file in self.model_files}
-        ensemble = EnsembleV1(models, device=torch.device(self.device))
-
-        # Create the datacubes if they do not exist
-        LoggingManager.apply_logging_handlers("smart_geocubes")
-        arcticdem_resolution = self._arcticdem_resolution()
-        if arcticdem_resolution == 2:
-            accessor = smart_geocubes.ArcticDEM2m(self.arcticdem_dir)
-        elif arcticdem_resolution == 10:
-            accessor = smart_geocubes.ArcticDEM10m(self.arcticdem_dir)
-        if not accessor.created:
-            accessor.create(overwrite=False)
-        accessor = smart_geocubes.TCTrend(self.tcvis_dir)
-        if not accessor.created:
-            accessor.create(overwrite=False)
-
-        # Iterate over all the data
-        tileinfo = self._tileinfos()
-        all_tileinfo = enumerate(tileinfo)
-        # Put models and timer in Ray object store
-        models_ref = ray.put(models)
-        timer_ref = ray.put(timer)
-        print("tile info and enumerate tile info")
-        print(tileinfo)
-        print(type(tileinfo))
-        print(all_tileinfo)
-        print(type(all_tileinfo))
-        print('the tile key')
-        n_tiles = 0
-        logger.info(f"Found {len(tileinfo)} tiles to process.")
-        #     def _process_tile(self, i, tilekey, outpath, tileinfo, models, timer, n_tiles, current_time, results):
-
-
-
-        results = []
-
-        # Process tiles in parallel
-        futures = []
-        for tilekey, outpath in tileinfo:
-            futures.append(process_tile_remote.remote(self, tilekey, outpath, tileinfo, models_ref, timer, n_tiles,current_time, results))
-
-        # Collect results as they complete
-        results = []
-        while futures:
-            done, futures = ray.wait(futures)
-            for result in ray.get(done):
-                results.append(result)
-                # Save intermediate results
-                pd.DataFrame(results).to_parquet(self.output_data_dir / f"{current_time}.results.parquet")
-                # timer.export().to_parquet(self.output_data_dir / f"{current_time}.stopuhr.parquet")
-
-                # Save timings only if they exist
-                if hasattr(timer, 'durations') and timer.durations:
-                    try:
-                        timer.export().to_parquet(self.output_data_dir / f"{current_time}.stopuhr.parquet")
-                    except ValueError as e:
-                        logger.warning(f"Could not export timings: {str(e)}")
-        # Calculate success count
-        n_tiles = sum(1 for r in results if r["status"] == "success")
-
-        logger.info(f"Processed {n_tiles} tiles to {self.output_data_dir.resolve()}.")
-        # Final timer summary only if there are durations
-        if hasattr(timer, 'durations') and timer.durations:
-            timer.summary()
-
-        # Shutdown Ray
-        ray.shutdown()
-
     def run(self):  # noqa: C901
         if self.model_files is None or len(self.model_files) == 0:
             raise ValueError("No model files provided. Please provide a list of model files.")
@@ -495,7 +337,7 @@ class _BasePipelineRefactored(ABC):
 
 
 @dataclass
-class AOISentinel2PipelineRefactoredRay(_BasePipelineRefactored):
+class AOISentinel2PipelineRefactored(_BasePipelineRefactored):
     """Pipeline for Sentinel 2 data based on an area of interest.
 
     Args:
@@ -551,8 +393,6 @@ class AOISentinel2PipelineRefactoredRay(_BasePipelineRefactored):
     end_date: str = None
     max_cloud_cover: int = 10
     input_cache: Path = Path("data/cache/input")
-    num_cpus: int = 1  # Number of CPUs to use for parallel processing
-    num_gpus: int = 0
 
     def _arcticdem_resolution(self) -> Literal[10]:
         return 10
@@ -582,6 +422,6 @@ class AOISentinel2PipelineRefactoredRay(_BasePipelineRefactored):
         return tile
 
     @staticmethod
-    def cli(*, pipeline: "AOISentinel2PipelineRefactoredRay"):
+    def cli(*, pipeline: "AOISentinel2PipelineRefactored"):
         """Run the sequential pipeline for AOI Sentinel 2 data."""
-        pipeline.run_parallel()
+        pipeline.run()
