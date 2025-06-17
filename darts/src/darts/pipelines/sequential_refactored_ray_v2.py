@@ -369,9 +369,12 @@ class _BasePipelineRefactored(ABC):
 
         # TODO fix this method
         futures = []
-        for i, (tilekey, outpath) in tileinfo:
+        results = []
+        for i, (tilekey, outpath) in enumerate(tileinfo):
+            print('BELOWREAD!')
             print(i, tilekey, outpath)
-            futures.append(process_tile_remote.remote(i, tilekey, outpath, tileinfo, models, timer, n_tiles, current_time, result))
+            print(type(i), type(tilekey), type(outpath))
+            futures.append(process_tile_remote.remote(i, tilekey, outpath, tileinfo, models, timer, n_tiles, current_time, results))
 
             # Collect results as they complete
             results = []
@@ -409,7 +412,7 @@ class _BasePipelineRefactored(ABC):
 
 
 @dataclass
-class AOISentinel2PipelineRefactored(_BasePipelineRefactored):
+class AOISentinel2PipelineRefactoredRay(_BasePipelineRefactored):
     """Pipeline for Sentinel 2 data based on an area of interest.
 
     Args:
@@ -494,6 +497,6 @@ class AOISentinel2PipelineRefactored(_BasePipelineRefactored):
         return tile
 
     @staticmethod
-    def cli(*, pipeline: "AOISentinel2PipelineRefactored"):
+    def cli(*, pipeline: "AOISentinel2PipelineRefactoredRay"):
         """Run the sequential pipeline for AOI Sentinel 2 data."""
         pipeline.run()
