@@ -4,6 +4,8 @@ from math import ceil, sqrt
 from pathlib import Path
 from typing import Any, Literal, TypedDict
 
+import ray
+import torch
 import xarray as xr
 from darts_acquisition import load_arcticdem, load_tcvis
 from darts_ensemble import EnsembleV1
@@ -37,13 +39,15 @@ class RayDataArray:
 class RayDataDict(TypedDict):
     tile: RayDataset
     tilekey: Any  # The key to identify the tile, e.g. a path or a tile id
-    outpath: Path  # The path to the output directory
+    outpath: str  # The path to the output directory
     tile_id: str  # The id of the tile, e.g. the name of the file or the tile id
 
 
-@dataclass
+@ray.remote(num_cpus=1, num_gpus=1)
 class _RayEnsembleV1:
-    ensemble: EnsembleV1
+    def __init__(self, model_dict: Any):
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.ensemble = EnsembleV1(model_dict=model_dict, device=device)
 
     def __call__(
         self,
@@ -133,7 +137,7 @@ def _export_tile_ray(
     write_model_outputs: bool,
 ) -> RayDataDict:
     tile = row["tile"].dataset
-    outpath = row["outpath"]
+    outpath = Path(row["outpath"])
     export_tile(
         tile,
         outpath,

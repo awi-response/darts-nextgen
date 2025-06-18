@@ -2,6 +2,7 @@
 
 import json
 import logging
+import os
 import time
 from abc import ABC, abstractmethod
 from dataclasses import asdict, dataclass, field
@@ -24,13 +25,13 @@ class RayInputDict(TypedDict):
     """
 
     tilekey: Any  # The key to identify the tile, e.g. a path or a tile id
-    outpath: Path  # The path to the output directory
+    outpath: str  # The path to the output directory
     tile_id: str  # The id of the tile, e.g. the name of the file or the tile id
 
 
 @Parameter(name="*")
 @dataclass
-class _BasePipeline(ABC):
+class _BaseRayPipeline(ABC):
     """Base class for all v2 pipelines.
 
     This class provides the run method which is the main entry point for all pipelines.
@@ -39,13 +40,18 @@ class _BasePipeline(ABC):
     These pipeliens must implement the _aqdata_generator method.
 
     The main class must be also a dataclass, to fully inherit all parameter of this class (and the mixins).
+
+    Args:
+        - num_cpus (int): The number of CPUs to use for the Ray tasks. Defaults to 1.
+
     """
 
     model_files: list[Path] = None
     output_data_dir: Path = Path("data/output")
     arcticdem_dir: Path = Path("data/download/arcticdem")
     tcvis_dir: Path = Path("data/download/tcvis")
-    device: Literal["cuda", "cpu", "auto"] | int | None = None
+    num_cpus: int = 1
+    devices: list[int] | None = None
     ee_project: str | None = None
     ee_use_highvolume: bool = True
     tpi_outer_radius: int = 100
@@ -105,10 +111,8 @@ class _BasePipeline(ABC):
                     config[key] = [str(v.resolve()) if isinstance(v, Path) else v for v in value]
             json.dump(config, f)
 
-        from stopuhr import Chronometer
-
-        timer = Chronometer(printer=logger.debug)
-
+        if self.devices is not None:
+            os.environ["CUDA_VISIBLE_DEVICES"] = ",".join(str(d) for d in self.devices)
         from darts.utils.cuda import debug_info
 
         debug_info()
@@ -118,9 +122,22 @@ class _BasePipeline(ABC):
         init_ee(self.ee_project, self.ee_use_highvolume)
 
         import ray
+
+        ray.init(
+            num_cpus=self.num_cpus,  # We use one CPU per Ray task
+            num_gpus=len(self.devices) if self.devices is not None else None,
+        )
+
+        # Initlize ee in every worker
+        @ray.remote
+        def init_worker():
+            init_ee(self.ee_project, self.ee_use_highvolume)
+
+        num_workers = int(ray.cluster_resources().get("CPU", 1))
+        logger.info(f"Initializing {num_workers} Ray workers with Earth Engine.")
+        ray.get([init_worker.remote() for _ in range(num_workers)])
+
         import smart_geocubes
-        import torch
-        from darts_ensemble import EnsembleV1
         from darts_export import missing_outputs
 
         from darts.pipelines._ray_wrapper import (
@@ -129,18 +146,14 @@ class _BasePipeline(ABC):
             _prepare_export_ray,
             _RayEnsembleV1,
         )
-        from darts.utils.cuda import decide_device
         from darts.utils.logging import LoggingManager
-
-        self.device = decide_device(self.device)
 
         # determine models to use
         if isinstance(self.model_files, Path):
             self.model_files = [self.model_files]
             self.write_model_outputs = False
         models = {model_file.stem: model_file for model_file in self.model_files}
-        ensemble = EnsembleV1(models, device=torch.device(self.device))
-        ray_ensemble = _RayEnsembleV1(ensemble)
+        # ray_ensemble = _RayEnsembleV1.remote(models)
 
         # Create the datacubes if they do not exist
         LoggingManager.apply_logging_handlers("smart_geocubes")
@@ -170,7 +183,7 @@ class _BasePipeline(ABC):
                         " Skipping because overwrite=False..."
                     )
                     continue
-            tileinfo.append({"tilekey": tilekey, "outpath": outpath, "tile_id": tile_id})
+            tileinfo.append({"tilekey": tilekey, "outpath": str(outpath.resolve()), "tile_id": tile_id})
         logger.info(f"Found {len(tileinfo)} tiles to process.")
 
         # Ray data pipeline
@@ -185,12 +198,14 @@ class _BasePipeline(ABC):
                 "tpi_outer_radius": self.tpi_outer_radius,
                 "tpi_inner_radius": self.tpi_inner_radius,
                 "tcvis_dir": self.tcvis_dir,
-                "device": self.device,
+                "device": "cuda",  # Ray will handle the device allocation
             },
             num_cpus=1,
+            num_gpus=1,
         )
         ds = ds.map(
-            ray_ensemble,
+            _RayEnsembleV1,
+            fn_constructor_kwargs={"model_dict": models},
             fn_kwargs={
                 "patch_size": self.patch_size,
                 "overlap": self.overlap,
@@ -199,6 +214,7 @@ class _BasePipeline(ABC):
                 "write_model_outputs": self.write_model_outputs,
             },
             num_cpus=1,
+            num_gpus=1,
         )
         ds = ds.map(
             _prepare_export_ray,
@@ -209,9 +225,10 @@ class _BasePipeline(ABC):
                 "quality_level": self.quality_level,
                 "models": models,
                 "write_model_outputs": self.write_model_outputs,
-                "device": self.device,
+                "device": "cuda",  # Ray will handle the device allocation
             },
             num_cpus=1,
+            num_gpus=1,
         )
         ds = ds.map(
             _export_tile_ray,
@@ -230,7 +247,7 @@ class _BasePipeline(ABC):
 # Source Pipeliens
 # =============================================================================
 @dataclass
-class PlanetPipeline(_BasePipeline):
+class PlanetRayPipeline(_BaseRayPipeline):
     """Pipeline for PlanetScope data.
 
     Args:
@@ -326,20 +343,23 @@ class PlanetPipeline(_BasePipeline):
         import xarray as xr
         from darts_acquisition import load_planet_masks, load_planet_scene
 
+        from darts.pipelines._ray_wrapper import RayDataset
+
         fpath: Path = tileinfo["tilekey"]
         optical = load_planet_scene(fpath)
         data_masks = load_planet_masks(fpath)
         tile = xr.merge([optical, data_masks])
+        tile = RayDataset(dataset=tile)
         return {"tile": tile, **tileinfo}
 
     @staticmethod
-    def cli(*, pipeline: "PlanetPipeline"):
+    def cli(*, pipeline: "PlanetRayPipeline"):
         """Run the sequential pipeline for Planet data."""
         pipeline.run()
 
 
 @dataclass
-class Sentinel2Pipeline(_BasePipeline):
+class Sentinel2RayPipeline(_BaseRayPipeline):
     """Pipeline for Sentinel 2 data.
 
     Args:
@@ -422,20 +442,23 @@ class Sentinel2Pipeline(_BasePipeline):
         import xarray as xr
         from darts_acquisition import load_s2_masks, load_s2_scene
 
+        from darts.pipelines._ray_wrapper import RayDataset
+
         fpath: Path = tileinfo["tilekey"]
         optical = load_s2_scene(fpath)
         data_masks = load_s2_masks(fpath, optical.odc.geobox)
         tile = xr.merge([optical, data_masks])
+        tile = RayDataset(dataset=tile)
         return {"tile": tile, **tileinfo}
 
     @staticmethod
-    def cli(*, pipeline: "Sentinel2Pipeline"):
+    def cli(*, pipeline: "Sentinel2RayPipeline"):
         """Run the sequential pipeline for Sentinel 2 data."""
         pipeline.run()
 
 
 @dataclass
-class AOISentinel2Pipeline(_BasePipeline):
+class AOISentinel2RayPipeline(_BaseRayPipeline):
     """Pipeline for Sentinel 2 data based on an area of interest.
 
     Args:
@@ -516,11 +539,14 @@ class AOISentinel2Pipeline(_BasePipeline):
     def _load_tile(self, tileinfo: RayInputDict) -> "RayDataDict":
         from darts_acquisition.s2 import load_s2_from_gee
 
+        from darts.pipelines._ray_wrapper import RayDataset
+
         s2id: str = tileinfo["tilekey"]
         tile = load_s2_from_gee(s2id, cache=self.input_cache)
+        tile = RayDataset(dataset=tile)
         return {"tile": tile, **tileinfo}
 
     @staticmethod
-    def cli(*, pipeline: "AOISentinel2Pipeline"):
+    def cli(*, pipeline: "AOISentinel2RayPipeline"):
         """Run the sequential pipeline for AOI Sentinel 2 data."""
         pipeline.run()
