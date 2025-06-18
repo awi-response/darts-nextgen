@@ -7,6 +7,7 @@ import time
 from abc import ABC, abstractmethod
 from dataclasses import asdict, dataclass, field
 from functools import cached_property
+from math import ceil, sqrt
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal, TypedDict
 
@@ -142,8 +143,9 @@ class _BaseRayPipeline(ABC):
 
         from darts.pipelines._ray_wrapper import (
             _export_tile_ray,
-            _load_and_preprocess_ray,
+            _load_aux,
             _prepare_export_ray,
+            _preprocess_ray,
             _RayEnsembleV1,
         )
         from darts.utils.logging import LoggingManager
@@ -167,6 +169,7 @@ class _BaseRayPipeline(ABC):
         accessor = smart_geocubes.TCTrend(self.tcvis_dir)
         if not accessor.created:
             accessor.create(overwrite=False)
+        adem_buffer = ceil(self.tpi_outer_radius / arcticdem_resolution * sqrt(2))
 
         # Get files to process
         tileinfo: list[RayInputDict] = []
@@ -184,6 +187,7 @@ class _BaseRayPipeline(ABC):
                     )
                     continue
             tileinfo.append({"tilekey": tilekey, "outpath": str(outpath.resolve()), "tile_id": tile_id})
+            break  # For testing
         logger.info(f"Found {len(tileinfo)} tiles to process.")
 
         # Ray data pipeline
@@ -191,13 +195,20 @@ class _BaseRayPipeline(ABC):
         ds = ray.data.from_items(tileinfo)
         ds = ds.map(self._load_tile, num_cpus=1)
         ds = ds.map(
-            _load_and_preprocess_ray,
+            _load_aux,
             fn_kwargs={
                 "arcticdem_dir": self.arcticdem_dir,
                 "arcticdem_resolution": arcticdem_resolution,
+                "buffer": adem_buffer,
+                "tcvis_dir": self.tcvis_dir,
+            },
+            num_cpus=1,
+        )
+        ds = ds.map(
+            _preprocess_ray,
+            fn_kwargs={
                 "tpi_outer_radius": self.tpi_outer_radius,
                 "tpi_inner_radius": self.tpi_inner_radius,
-                "tcvis_dir": self.tcvis_dir,
                 "device": "cuda",  # Ray will handle the device allocation
             },
             num_cpus=1,
@@ -215,6 +226,7 @@ class _BaseRayPipeline(ABC):
             },
             num_cpus=1,
             num_gpus=1,
+            concurrency=1,
         )
         ds = ds.map(
             _prepare_export_ray,
@@ -237,10 +249,12 @@ class _BaseRayPipeline(ABC):
                 "models": models,
                 "write_model_outputs": self.write_model_outputs,
             },
+            num_cpus=1,
         )
         logger.info("Ray pipeline created. Starting execution...")
         # This should trigger the execution
         ds.write_parquet(f"local://{self.output_data_dir.resolve()!s}/ray_output.parquet")
+        logger.info(f"Ray pipeline finished. Output written to {self.output_data_dir.resolve()!s}/ray_output.parquet")
 
 
 # =============================================================================
