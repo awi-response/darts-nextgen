@@ -37,7 +37,7 @@ dependencies = [
     "geocube>=0.7.0",
     "numpy>=1.26.3, <2",
     "xarray>=2024.9.0",
-    "ray[data]>=2.37.0",
+    "ray[data, default]>=2.37.0",
     # Visualization
     "cartopy>=0.24.1",
     "hvplot>=0.11.1",

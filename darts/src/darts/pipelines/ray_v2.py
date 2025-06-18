@@ -124,10 +124,14 @@ class _BaseRayPipeline(ABC):
 
         import ray
 
-        ray.init(
+        ray_context = ray.init(
             num_cpus=self.num_cpus,  # We use one CPU per Ray task
             num_gpus=len(self.devices) if self.devices is not None else None,
         )
+        logger.debug(f"Ray initialized with context: {ray_context}")
+        logger.info(f"Ray Dashboard URL: {ray_context.dashboard_url}")
+        logger.debug(f"Ray cluster resources: {ray.cluster_resources()}")
+        logger.debug(f"Ray available resources: {ray.available_resources()}")
 
         # Initlize ee in every worker
         @ray.remote
@@ -187,7 +191,7 @@ class _BaseRayPipeline(ABC):
                     )
                     continue
             tileinfo.append({"tilekey": tilekey, "outpath": str(outpath.resolve()), "tile_id": tile_id})
-            break  # For testing
+        tileinfo = tileinfo[:10]
         logger.info(f"Found {len(tileinfo)} tiles to process.")
 
         # Ray data pipeline
@@ -212,7 +216,8 @@ class _BaseRayPipeline(ABC):
                 "device": "cuda",  # Ray will handle the device allocation
             },
             num_cpus=1,
-            num_gpus=1,
+            num_gpus=0.1,
+            concurrency=4,
         )
         ds = ds.map(
             _RayEnsembleV1,
@@ -225,7 +230,7 @@ class _BaseRayPipeline(ABC):
                 "write_model_outputs": self.write_model_outputs,
             },
             num_cpus=1,
-            num_gpus=1,
+            num_gpus=0.8,
             concurrency=1,
         )
         ds = ds.map(
@@ -240,7 +245,7 @@ class _BaseRayPipeline(ABC):
                 "device": "cuda",  # Ray will handle the device allocation
             },
             num_cpus=1,
-            num_gpus=1,
+            num_gpus=0.1,
         )
         ds = ds.map(
             _export_tile_ray,
@@ -251,6 +256,7 @@ class _BaseRayPipeline(ABC):
             },
             num_cpus=1,
         )
+        logger.debug(f"Ray dataset: {ds}")
         logger.info("Ray pipeline created. Starting execution...")
         # This should trigger the execution
         ds.write_parquet(f"local://{self.output_data_dir.resolve()!s}/ray_output.parquet")
