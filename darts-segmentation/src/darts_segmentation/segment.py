@@ -68,7 +68,7 @@ class SMPSegmenter:
         """
         model_checkpoint = model_checkpoint if isinstance(model_checkpoint, Path) else Path(model_checkpoint)
         self.device = device
-        ckpt = torch.load(model_checkpoint, map_location=self.device)
+        ckpt = torch.load(model_checkpoint, map_location=self.device, weights_only=False)
         self.config = SMPSegmenterConfig.from_ckpt(ckpt["config"])
         # Overwrite the encoder weights with None, because we load our own
         self.config["model"] |= {"encoder_weights": None}

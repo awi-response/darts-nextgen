@@ -17,7 +17,17 @@ from darts_segmentation.training import (
 )
 
 from darts import __version__
-from darts.pipelines import AOISentinel2Pipeline, PlanetPipeline, Sentinel2Pipeline
+from darts.pipelines import (
+    AOISentinel2BlockPipeline,
+    AOISentinel2Pipeline,
+    AOISentinel2RayPipeline,
+    PlanetBlockPipeline,
+    PlanetPipeline,
+    PlanetRayPipeline,
+    Sentinel2BlockPipeline,
+    Sentinel2Pipeline,
+    Sentinel2RayPipeline,
+)
 from darts.training import (
     preprocess_planet_train_data,
     preprocess_planet_train_data_pingo,
@@ -86,6 +96,12 @@ def env_info():
 app.command(name="run-sequential-aoi-sentinel2-pipeline", group=pipeline_group)(AOISentinel2Pipeline.cli)
 app.command(name="run-sequential-sentinel2-pipeline", group=pipeline_group)(Sentinel2Pipeline.cli)
 app.command(name="run-sequential-planet-pipeline", group=pipeline_group)(PlanetPipeline.cli)
+app.command(name="run-ray-aoi-sentinel2-pipeline", group=pipeline_group)(AOISentinel2RayPipeline.cli)
+app.command(name="run-ray-sentinel2-pipeline", group=pipeline_group)(Sentinel2RayPipeline.cli)
+app.command(name="run-ray-planet-pipeline", group=pipeline_group)(PlanetRayPipeline.cli)
+app.command(name="run-block-sentinel2-pipeline", group=pipeline_group)(Sentinel2BlockPipeline.cli)
+app.command(name="run-block-aoi-sentinel2-pipeline", group=pipeline_group)(AOISentinel2BlockPipeline.cli)
+app.command(name="run-block-planet-pipeline", group=pipeline_group)(PlanetBlockPipeline.cli)
 app.command(group=pipeline_group)(benchviz)
 
 app.command(group=train_group)(preprocess_planet_train_data)

@@ -14,6 +14,7 @@ def debug_info():  # noqa: C901
     important_env_vars = [
         "CUDA_HOME",
         "CUDA_PATH",
+        "CUDA_VISIBLE_DEVICES",
         "LD_LIBRARY_PATH",
         "NUMBA_CUDA_DRIVER",
         "NUMBA_CUDA_INCLUDE_PATH",
