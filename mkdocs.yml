@@ -19,6 +19,7 @@ nav:
       - Devices: guides/devices.md
       - Config Files: guides/config.md
       - Logging: guides/logging.md
+      - Debugging: guides/debugging.md
       - Training:
           - guides/training/index.md
           - Preprocessing: guides/training/data.md
@@ -28,6 +29,7 @@ nav:
   - Dev:
       - Contribute: contribute.md
       - Architecture: dev/arch.md
+      - Bands: dev/bands.md
       - Datacubes: dev/auxiliary.md
       - Docs: dev/docs.md
       - Problems with CUDA: dev/cuda_fixes.md
