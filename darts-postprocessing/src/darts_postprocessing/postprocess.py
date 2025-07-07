@@ -28,13 +28,16 @@ except ImportError:
 
 
 @stopwatch.f("Eroding mask", printer=logger.debug, print_kwargs=["size"])
-def erode_mask(mask: xr.DataArray, size: int, device: Literal["cuda", "cpu"] | int) -> xr.DataArray:
+def erode_mask(
+    mask: xr.DataArray, size: int, device: Literal["cuda", "cpu"] | int, edge_size: int | None = None
+) -> xr.DataArray:
     """Erode the mask, also set the edges to invalid.
 
     Args:
         mask (xr.DataArray): The mask to erode.
         size (int): The size of the disk to use for erosion and the edge-cropping.
         device (Literal["cuda", "cpu"] | int): The device to use for erosion.
+        edge_size (int, optional): Define a different edge erosion width, will use size parameter if None.
 
     Returns:
         xr.DataArray: The dilated and inverted mask.
@@ -70,11 +73,14 @@ def erode_mask(mask: xr.DataArray, size: int, device: Literal["cuda", "cpu"] | i
     else:
         mask.values = binary_erosion(mask.values, disk(size))
 
+    if edge_size is None:
+        edge_size = size
+
     # Mask edges
-    mask[:size, :] = 0
-    mask[-size:, :] = 0
-    mask[:, :size] = 0
-    mask[:, -size:] = 0
+    mask[:edge_size, :] = 0
+    mask[-edge_size:, :] = 0
+    mask[:, :edge_size] = 0
+    mask[:, -edge_size:] = 0
 
     return mask
 
@@ -153,7 +159,14 @@ def binarize(
 @stopwatch.f(
     "Preparing export",
     printer=logger.debug,
-    print_kwargs=["bin_threshold", "mask_erosion_size", "min_object_size", "quality_level", "ensemble_subsets"],
+    print_kwargs=[
+        "bin_threshold",
+        "mask_erosion_size",
+        "edge_erosion_size",
+        "min_object_size",
+        "quality_level",
+        "ensemble_subsets",
+    ],
 )
 def prepare_export(
     tile: xr.Dataset,
@@ -163,6 +176,7 @@ def prepare_export(
     quality_level: int | Literal["high_quality", "low_quality", "none"] = 0,
     ensemble_subsets: list[str] = [],
     device: Literal["cuda", "cpu"] | int = DEFAULT_DEVICE,
+    edge_erosion_size: int | None = None,
 ) -> xr.Dataset:
     """Prepare the export, e.g. binarizes the data and convert the float probabilities to uint8.
 
@@ -178,6 +192,8 @@ def prepare_export(
             Defaults to [].
         device (Literal["cuda", "cpu"] | int, optional): The device to use for dilation.
             Defaults to "cuda" if cuda for cucim is available, else "cpu".
+        edge_erosion_size (int, optional): If the edge-cropping should have a different witdth, than the (inner) mask
+            erosion, set it here. Defaults to `mask_erosion_size`.
 
     Returns:
         xr.Dataset: Output tile.
@@ -190,7 +206,7 @@ def prepare_export(
     )
     mask = tile["quality_data_mask"] >= quality_level
     if quality_level > 0:
-        mask = erode_mask(mask, mask_erosion_size, device)  # 0=positive, 1=negative
+        mask = erode_mask(mask, mask_erosion_size, device, edge_size=edge_erosion_size)  # 0=positive, 1=negative
     tile["extent"] = mask.copy()
     tile["extent"].attrs = {
         "long_name": "Extent of the segmentation",

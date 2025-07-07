@@ -46,6 +46,7 @@ class _BasePipeline(ABC):
     reflection: int = 0
     binarization_threshold: float = 0.5
     mask_erosion_size: int = 10
+    edge_erosion_size: int | None = None
     min_object_size: int = 32
     quality_level: int | Literal["high_quality", "low_quality", "none"] = 1
     export_bands: list[str] = field(
@@ -199,6 +200,7 @@ class _BasePipeline(ABC):
                         quality_level=self.quality_level,
                         ensemble_subsets=models.keys() if self.write_model_outputs else [],
                         device=self.device,
+                        edge_erosion_size=self.edge_erosion_size,
                     )
 
                 with timer("Exporting", log=False):
@@ -282,6 +284,8 @@ class PlanetPipeline(_BasePipeline):
         binarization_threshold (float, optional): The threshold to binarize the probabilities. Defaults to 0.5.
         mask_erosion_size (int, optional): The size of the disk to use for mask erosion and the edge-cropping.
             Defaults to 10.
+        edge_erosion_size (int, optional): If the edge-cropping should have a different witdth, than the (inner) mask
+            erosion, set it here. Defaults to `mask_erosion_size`.
         min_object_size (int, optional): The minimum object size to keep in pixel. Defaults to 32.
         quality_level (int | Literal["high_quality", "low_quality", "none"], optional):
             The quality level to use for the segmentation. Can also be an int.
@@ -390,6 +394,8 @@ class Sentinel2Pipeline(_BasePipeline):
         binarization_threshold (float, optional): The threshold to binarize the probabilities. Defaults to 0.5.
         mask_erosion_size (int, optional): The size of the disk to use for mask erosion and the edge-cropping.
             Defaults to 10.
+        edge_erosion_size (int, optional): If the edge-cropping should have a different witdth, than the (inner) mask
+            erosion, set it here. Defaults to `mask_erosion_size`.
         min_object_size (int, optional): The minimum object size to keep in pixel. Defaults to 32.
         quality_level (int | Literal["high_quality", "low_quality", "none"], optional):
             The quality level to use for the segmentation. Can also be an int.
@@ -487,6 +493,8 @@ class AOISentinel2Pipeline(_BasePipeline):
         binarization_threshold (float, optional): The threshold to binarize the probabilities. Defaults to 0.5.
         mask_erosion_size (int, optional): The size of the disk to use for mask erosion and the edge-cropping.
             Defaults to 10.
+        edge_erosion_size (int, optional): If the edge-cropping should have a different witdth, than the (inner) mask
+            erosion, set it here. Defaults to `mask_erosion_size`.
         min_object_size (int, optional): The minimum object size to keep in pixel. Defaults to 32.
         quality_level (int | Literal["high_quality", "low_quality", "none"], optional):
             The quality level to use for the segmentation. Can also be an int.
