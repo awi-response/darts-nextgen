@@ -53,6 +53,7 @@ class _BasePipeline(ABC):
     )
     write_model_outputs: bool = False
     overwrite: bool = False
+    log_plain: bool = False
 
     @abstractmethod
     def _arcticdem_resolution(self) -> Literal[2, 10, 32]:

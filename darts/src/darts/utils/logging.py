@@ -2,6 +2,7 @@
 
 import importlib
 import logging
+import sys
 import time
 from pathlib import Path
 
@@ -33,7 +34,7 @@ class LoggingManagerSingleton:
 
     def __init__(self):
         """Initialize the LoggingManager."""
-        self._rich_handler = None
+        self._console_handler = None
         self._file_handler = None
         self._managed_loggers = []
         self._log_level = DARTS_LEVEL
@@ -56,7 +57,12 @@ class LoggingManagerSingleton:
         logging.captureWarnings(True)
 
     def add_logging_handlers(
-        self, command: str, log_dir: Path, verbose: bool = False, tracebacks_show_locals: bool = False
+        self,
+        command: str,
+        log_dir: Path,
+        verbose: bool = False,
+        tracebacks_show_locals: bool = False,
+        log_plain: bool = False,
     ):
         """Add logging handlers (rich-console and file) to the application.
 
@@ -65,9 +71,11 @@ class LoggingManagerSingleton:
             log_dir (Path): The directory to save the logs to.
             verbose (bool): Whether to set the log level to DEBUG.
             tracebacks_show_locals (bool): Whether to show local variables in tracebacks.
+            log_plain (bool, optional): uses the RichHandler as output by default,
+                enable this to use a common print handler
 
         """
-        if self._rich_handler is not None or self._file_handler is not None:
+        if self._console_handler is not None or self._file_handler is not None:
             logger.warning("Logging handlers already added.")
             return
 
@@ -91,24 +99,31 @@ class LoggingManagerSingleton:
             except ImportError:
                 logger.warning(f"Module {module_name} not found, skipping traceback suppression for it.")
                 continue
-        rich_handler = RichHandler(
-            console=rich.get_console(),
-            rich_tracebacks=True,
-            tracebacks_suppress=traceback_suppress,
-            tracebacks_show_locals=tracebacks_show_locals,
-        )
-        rich_fmt = (
-            "%(message)s"
-            if not verbose
-            else "%(name)s@%(processName)s(%(process)d)-%(threadName)s(%(thread)d) - %(message)s"
-        )
-        rich_handler.setFormatter(
-            logging.Formatter(
-                rich_fmt,
-                datefmt="[%Y-%m-%d %H:%M:%S]",
+
+        if not log_plain:
+            console_fmt = (
+                "%(message)s"
+                if not verbose
+                else "%(name)s@%(processName)s(%(process)d)-%(threadName)s(%(thread)d) - %(message)s"
             )
-        )
-        self._rich_handler = rich_handler
+            console_handler = RichHandler(
+                console=rich.get_console(),
+                rich_tracebacks=True,
+                tracebacks_suppress=traceback_suppress,
+                tracebacks_show_locals=tracebacks_show_locals,
+            )
+        else:
+            console_fmt = "** %(levelname)s %(asctime)s **\n   [%(pathname)s:%(lineno)d]\n"
+            console_fmt += (
+                "%(message)s"
+                if not verbose
+                else "   [%(name)s@%(processName)s(%(process)d)-%(threadName)s(%(thread)d)]\n%(message)s\n"
+            )
+            console_handler = logging.StreamHandler(sys.stdout)
+
+        console_formatter = logging.Formatter(console_fmt, datefmt="[%Y-%m-%d %H:%M:%S]")
+        console_handler.setFormatter(console_formatter)
+        self._console_handler = console_handler
 
         # Configure the file handler (no fancy)
         file_handler = logging.FileHandler(log_dir / f"darts_{command}_{current_time}.log")
@@ -124,7 +139,7 @@ class LoggingManagerSingleton:
         self._log_level = logging.DEBUG if verbose else DARTS_LEVEL
 
         darts_logger = logging.getLogger("darts")
-        darts_logger.addHandler(rich_handler)
+        darts_logger.addHandler(console_handler)
         darts_logger.addHandler(file_handler)
         darts_logger.setLevel(self._log_level)
 
@@ -148,7 +163,7 @@ class LoggingManagerSingleton:
             for handler in third_party_logger.handlers:
                 if isinstance(handler, logging.StreamHandler):
                     third_party_logger.removeHandler(handler)
-            third_party_logger.addHandler(self._rich_handler)
+            third_party_logger.addHandler(self._console_handler)
             third_party_logger.addHandler(self._file_handler)
             # Set level for all handlers
             third_party_logger.setLevel(level)
