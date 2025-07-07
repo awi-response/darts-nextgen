@@ -190,7 +190,7 @@ class _BasePipeline(ABC):
                         reflection=self.reflection,
                         keep_inputs=self.write_model_outputs,
                     )
-                with timer("Postprosessing", log=False):
+                with timer("Postprocessing", log=False):
                     tile = prepare_export(
                         tile,
                         bin_threshold=self.binarization_threshold,
