@@ -156,8 +156,9 @@ class _BasePipeline(ABC):
                         continue
                     if mo == "some":
                         logger.warning(
-                            f"Tile {tile_id} already processed. Some outputs are missing."
-                            " Skipping because overwrite=False..."
+                            f"Tile {tile_id} seems to be already processed, "
+                            "but some of the requested outputs are missing. "
+                            "Skipping because overwrite=False..."
                         )
                         continue
 
@@ -244,7 +245,7 @@ class _BasePipeline(ABC):
 
 
 # =============================================================================
-# Source Pipeliens
+# Source Pipelines
 # =============================================================================
 @dataclass
 class PlanetPipeline(_BasePipeline):
