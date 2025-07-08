@@ -74,6 +74,24 @@ class _BasePipeline(ABC):
     def _load_tile(self, tileinfo: Any) -> "xr.Dataset":
         pass
 
+    def _result_metadata(self, tilekey: Any) -> dict:
+        export_metadata = {
+            "tileid": self._get_tile_id(tilekey),
+            "modelfiles": [f.name for f in self.model_files],
+            "tpiouter": self.tpi_outer_radius,
+            "tpiinner": self.tpi_inner_radius,
+            "patchsize": self.patch_size,
+            "overlap": self.overlap,
+            "reflection": self.reflection,
+            "binarizethreshold": self.binarization_threshold,
+            "maskerosion": self.mask_erosion_size,
+            "edgeerosion": self.edge_erosion_size,
+            "mmu": self.min_object_size,
+            "qualitymask": self.quality_level,
+        }
+
+        return {f"DARTS_{k}": v for k, v in export_metadata.items()}
+
     def run(self):  # noqa: C901
         if self.model_files is None or len(self.model_files) == 0:
             raise ValueError("No model files provided. Please provide a list of model files.")
@@ -202,12 +220,15 @@ class _BasePipeline(ABC):
                         device=self.device,
                     )
 
+                export_metadata = self._result_metadata(tilekey)
+
                 with timer("Exporting", log=False):
                     export_tile(
                         tile,
                         outpath,
                         bands=self.export_bands,
                         ensemble_subsets=models.keys() if self.write_model_outputs else [],
+                        metadata=export_metadata,
                     )
 
                 n_tiles += 1
@@ -289,7 +310,7 @@ class PlanetPipeline(_BasePipeline):
             In this case 0="none" 1="low_quality" 2="high_quality". Defaults to 1.
         export_bands (list[str], optional): The bands to export.
             Can be a list of "probabilities", "binarized", "polygonized", "extent", "thumbnail", "optical", "dem",
-            "tcvis" or concrete band-names.
+            "tcvis", "metadata" or concrete band-names.
             Defaults to ["probabilities", "binarized", "polygonized", "extent", "thumbnail"].
         write_model_outputs (bool, optional): Also save the model outputs, not only the ensemble result.
             Defaults to False.
@@ -397,7 +418,7 @@ class Sentinel2Pipeline(_BasePipeline):
             In this case 0="none" 1="low_quality" 2="high_quality". Defaults to 1.
         export_bands (list[str], optional): The bands to export.
             Can be a list of "probabilities", "binarized", "polygonized", "extent", "thumbnail", "optical", "dem",
-            "tcvis" or concrete band-names.
+            "tcvis", "metadata" or concrete band-names.
             Defaults to ["probabilities", "binarized", "polygonized", "extent", "thumbnail"].
         write_model_outputs (bool, optional): Also save the model outputs, not only the ensemble result.
             Defaults to False.
@@ -443,6 +464,38 @@ class Sentinel2Pipeline(_BasePipeline):
         data_masks = load_s2_masks(fpath, optical.odc.geobox)
         tile = xr.merge([optical, data_masks])
         return tile
+
+    def _result_metadata(self, fpath: Path):
+        base_metadata = super()._result_metadata(fpath)
+
+        import rasterio as rio
+
+        # find the SR
+        try:
+            s2_image = next(fpath.glob("*_SR*.tif"))
+        except StopIteration:
+            return base_metadata
+
+        with rio.open(s2_image) as riods:
+            src_tags: dict = riods.tags()
+
+        file_meta = {
+            k: src_tags.get(k, None)
+            for k in [
+                "CLOUDY_PIXEL_PERCENTAGE",
+                "DATASTRIP_ID",
+                "DATATAKE_IDENTIFIER",
+                "GRANULE_ID",
+                "MGRS_TILE",
+                "PRODUCT_ID",
+                "SENSING_ORBIT_NUMBER",
+            ]
+            if k in src_tags
+        }
+        file_meta = {f"S2_{k}": v for k, v in file_meta.items()}
+        file_meta["S2_TILEID"] = fpath.name
+
+        return base_metadata | file_meta
 
     @staticmethod
     def cli(*, pipeline: "Sentinel2Pipeline"):
@@ -494,7 +547,7 @@ class AOISentinel2Pipeline(_BasePipeline):
             In this case 0="none" 1="low_quality" 2="high_quality". Defaults to 1.
         export_bands (list[str], optional): The bands to export.
             Can be a list of "probabilities", "binarized", "polygonized", "extent", "thumbnail", "optical", "dem",
-            "tcvis" or concrete band-names.
+            "tcvis", "metadata" or concrete band-names.
             Defaults to ["probabilities", "binarized", "polygonized", "extent", "thumbnail"].
         write_model_outputs (bool, optional): Also save the model outputs, not only the ensemble result.
             Defaults to False.
