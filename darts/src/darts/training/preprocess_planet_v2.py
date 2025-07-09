@@ -243,7 +243,7 @@ def preprocess_planet_train_data(
     ):
         planet_id = footprint.image_id
         try:
-            logger.debug(f"Processing sample {planet_id} ({i + 1} of {len(footprints)})")
+            logger.info(f"Processing sample {planet_id} ({i + 1} of {len(footprints)})")
 
             if not footprint.fpath or (not footprint.fpath.exists() and not cache_manager.exists(planet_id)):
                 logger.warning(f"Footprint image {planet_id} at {footprint.fpath} does not exist. Skipping...")

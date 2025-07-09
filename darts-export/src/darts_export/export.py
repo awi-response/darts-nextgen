@@ -78,7 +78,7 @@ def export_tile(  # noqa: C901
     bands: list[str] = ["probabilities", "binarized", "polygonized", "extent", "thumbnail"],
     ensemble_subsets: list[str] = [],
 ):
-    """Export a tile to a file.
+    """Export a tile into a inference dataset, consisting of multiple files.
 
     Args:
         tile (xr.Dataset): The tile to export.
