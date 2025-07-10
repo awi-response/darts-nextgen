@@ -116,6 +116,7 @@ def _prepare_export_ray(
         tile,
         bin_threshold=binarization_threshold,
         mask_erosion_size=mask_erosion_size,
+        # TODO: edge_erosion_size
         min_object_size=min_object_size,
         quality_level=quality_level,
         ensemble_subsets=models.keys() if write_model_outputs else [],
