@@ -1,6 +1,8 @@
 """Darts export module for inference results."""
 
+import json
 import logging
+from datetime import UTC, datetime
 from pathlib import Path
 
 import xarray as xr
@@ -11,12 +13,12 @@ from darts_export import miniviz, vectorization
 logger = logging.getLogger(__name__.replace("darts_", "darts."))
 
 
-def _export_raster(tile: xr.Dataset, name: str, out_dir: Path, fname: str | None = None):
+def _export_raster(tile: xr.Dataset, name: str, out_dir: Path, fname: str | None = None, tags={}):
     if fname is None:
         fname = name
     fpath = out_dir / f"{fname}.tif"
     with stopwatch(f"Exporting {name} to {fpath.resolve()}", printer=logger.debug):
-        tile[name].rio.to_raster(fpath, driver="GTiff", compress="LZW")
+        tile[name].rio.to_raster(fpath, driver="GTiff", compress="LZW", tags=tags)
 
 
 def _export_vector(tile: xr.Dataset, name: str, out_dir: Path, fname: str | None = None):
@@ -41,7 +43,7 @@ def _export_polygonized(tile: xr.Dataset, out_dir: Path, ensemble_subsets: list[
         )
 
 
-def _export_binarized(tile: xr.Dataset, out_dir: Path, ensemble_subsets: list[str] = []):
+def _export_binarized(tile: xr.Dataset, out_dir: Path, ensemble_subsets: list[str] = [], tags={}):
     _export_raster(tile, "binarized_segmentation", out_dir, fname="binarized")
     for ensemble_subset in ensemble_subsets:
         _export_raster(
@@ -49,17 +51,19 @@ def _export_binarized(tile: xr.Dataset, out_dir: Path, ensemble_subsets: list[st
             f"binarized_segmentation-{ensemble_subset}",
             out_dir,
             fname=f"binarized-{ensemble_subset}",
+            tags=tags,
         )
 
 
-def _export_probabilities(tile: xr.Dataset, out_dir: Path, ensemble_subsets: list[str] = []):
-    _export_raster(tile, "probabilities", out_dir, fname="probabilities")
+def _export_probabilities(tile: xr.Dataset, out_dir: Path, ensemble_subsets: list[str] = [], tags={}):
+    _export_raster(tile, "probabilities", out_dir, fname="probabilities", tags=tags)
     for ensemble_subset in ensemble_subsets:
         _export_raster(
             tile,
             f"probabilities-{ensemble_subset}",
             out_dir,
             fname=f"probabilities-{ensemble_subset}",
+            tags=tags,
         )
 
 
@@ -71,12 +75,18 @@ def _export_thumbnail(tile: xr.Dataset, out_dir: Path):
         fig.clear()
 
 
+def _export_metadata(out_dir: Path, metadata: dict):
+    with (out_dir / "darts_inference.json").open("w") as fp:
+        json.dump(metadata, fp, indent=2)
+
+
 @stopwatch.f("Exporting tile", printer=logger.debug, print_kwargs=["bands", "ensemble_subsets"])
 def export_tile(  # noqa: C901
     tile: xr.Dataset,
     out_dir: Path,
     bands: list[str] = ["probabilities", "binarized", "polygonized", "extent", "thumbnail"],
     ensemble_subsets: list[str] = [],
+    metadata: dict = {},
 ):
     """Export a tile into a inference dataset, consisting of multiple files.
 
@@ -85,6 +95,7 @@ def export_tile(  # noqa: C901
         out_dir (Path): The path where to export to.
         bands (list[str], optional): The bands to export. Defaults to ["probabilities"].
         ensemble_subsets (list[str], optional): The ensemble subsets to export. Defaults to [].
+        metadata (dict, optional): Metadata to include in the export.
 
     Raises:
         ValueError: If the band is not found in the tile.
@@ -92,28 +103,37 @@ def export_tile(  # noqa: C901
     """
     out_dir.mkdir(parents=True, exist_ok=True)
 
+    if len(metadata) > 0:
+        metadata["DARTS_exportdate"] = str(datetime.now(UTC))
+
+    raster_tags = metadata
+
     for band in bands:
         match band:
             case "polygonized":
                 _export_polygonized(tile, out_dir, ensemble_subsets)
             case "binarized":
-                _export_binarized(tile, out_dir, ensemble_subsets)
+                _export_binarized(tile, out_dir, ensemble_subsets, tags=raster_tags)
             case "probabilities":
-                _export_probabilities(tile, out_dir, ensemble_subsets)
+                _export_probabilities(tile, out_dir, ensemble_subsets, tags=raster_tags)
             case "extent":
                 _export_vector(tile, "extent", out_dir, fname="prediction_extent")
             case "thumbnail":
                 _export_thumbnail(tile, out_dir)
             case "optical":
-                _export_raster(tile, ["red", "green", "blue", "nir"], out_dir, fname="optical")
+                _export_raster(tile, ["red", "green", "blue", "nir"], out_dir, fname="optical", tags=raster_tags)
             case "dem":
-                _export_raster(tile, ["slope", "relative_elevation"], out_dir, fname="dem")
+                _export_raster(tile, ["slope", "relative_elevation"], out_dir, fname="dem", tags=raster_tags)
             case "tcvis":
-                _export_raster(tile, ["tc_brightness", "tc_greenness", "tc_wetness"], out_dir, fname="tcvis")
+                _export_raster(
+                    tile, ["tc_brightness", "tc_greenness", "tc_wetness"], out_dir, fname="tcvis", tags=raster_tags
+                )
+            case "metadata":
+                _export_metadata(out_dir, metadata)
             case _:
                 if band not in tile.data_vars:
                     raise ValueError(
                         f"Band {band} not found in tile for export. Available bands are: {list(tile.data_vars.keys())}"
                     )
                 # Export the band as a raster
-                _export_raster(tile, band, out_dir)
+                _export_raster(tile, band, out_dir, tags=raster_tags)
