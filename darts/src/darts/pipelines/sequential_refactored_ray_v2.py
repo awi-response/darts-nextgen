@@ -9,6 +9,7 @@ from functools import cached_property
 from math import ceil, sqrt
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
+import sys
 
 from cyclopts import Parameter
 
@@ -308,6 +309,7 @@ class _BasePipelineRefactored(ABC):
             self.model_files = [self.model_files]
             self.write_model_outputs = False
         models = {model_file.stem: model_file for model_file in self.model_files}
+        # TODO take this and put it into an object store to save space
         ensemble = EnsembleV1(models, device=torch.device(self.device))
 
         # Create the datacubes if they do not exist
@@ -349,6 +351,7 @@ class _BasePipelineRefactored(ABC):
             print(f"Device name: {torch.cuda.get_device_name(0)}")
 
         # Initialize Ray
+        # TODO assign memory for each worker node
         ray.init(
             num_cpus=self.num_cpus,
             num_gpus=torch.cuda.device_count() if torch.cuda.is_available() else 0,
@@ -356,8 +359,9 @@ class _BasePipelineRefactored(ABC):
             include_dashboard=False  # Disable dashboard to reduce overhead
         )
 
-        @ray.remote(num_cpus=1, num_gpus=1 if torch.cuda.is_available() and torch.cuda.device_count() > 0 else 0)
-        def process_tile_remote( i, tilekey, outpath, tileinfo, models, timer, n_tiles, current_time, results):
+        # TODO add memory here
+        @ray.remote(num_cpus=1, num_gpus=1 if torch.cuda.is_available() and torch.cuda.device_count() > 0 else 0, memory= 4 * 1024 * 1024 *1024)
+        def process_tile_remote( i, tilekey, outpath, tileinfo, models, timer, ensemble, n_tiles, current_time, results):
 
             # Initialize Earth Engine
             init_ee(self.ee_project, self.ee_use_highvolume)
@@ -374,10 +378,14 @@ class _BasePipelineRefactored(ABC):
             print('BELOWREAD!')
             print(i, tilekey, outpath)
             print(type(i), type(tilekey), type(outpath))
-            futures.append(process_tile_remote.remote(i, tilekey, outpath, tileinfo, models, timer, n_tiles, current_time, results))
+            print(sys.getsizeof(tileinfo), 'size of tile info')
+            print(sys.getsizeof(models), 'size of models')
+            print(sys.getsizeof(outpath), 'size of outpath')
+            ref_tile_info = ray.put(tileinfo)
+            ref_models = ray.put(models)
+            futures.append(process_tile_remote.remote(i, tilekey, outpath, ref_tile_info, ref_models, timer, n_tiles, current_time, results))
 
             # Collect results as they complete
-            results = []
             while futures:
                 done, futures = ray.wait(futures)
                 for result in ray.get(done):
