@@ -198,6 +198,7 @@ class _BaseRayPipeline(ABC):
             os.environ["CUDA_VISIBLE_DEVICES"] = "0"  # Or your device index
             os.environ["NVIDIA_VISIBLE_DEVICES"] = "all"
             os.environ["NCCL_DEBUG"] = "INFO"
+            # TODO this needs to be a dynamic check!!!
             os.environ["NCCL_SOCKET_IFNAME"] = "ens3"  # Or your network interface
             os.environ["GLOO_SOCKET_IFNAME"] = "ens3"
             import torch
