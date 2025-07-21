@@ -6,10 +6,12 @@ from pathlib import Path
 import ee
 import geopandas as gpd
 import odc.geo.xr
+import pandas as pd
 import rioxarray  # noqa: F401
 import xarray as xr
 from darts_utils.tilecache import XarrayCacheManager
 from odc.geo.geobox import GeoBox
+from pystac import Item
 from pystac_client import Client
 from stopuhr import stopwatch
 
@@ -265,6 +267,10 @@ def load_s2_from_stac(
 ) -> xr.Dataset:
     """Load a Sentinel 2 scene from the Copernicus STAC API and return it as an xarray dataset.
 
+    Note:
+        Must use the `darts.utils.copernicus.init_copernicus` function to setup authentification
+        with the Copernicus AWS S3 bucket before using this function.
+
     Args:
         s2id (str): The Sentinel 2 image ID.
         bands_mapping (dict[str, str], optional): A mapping from bands to obtain.
@@ -331,7 +337,7 @@ def load_s2_from_stac(
 
 @stopwatch("Searching for Sentinel 2 tiles via Earth Engine", printer=logger.debug)
 def get_s2ids_from_geodataframe_ee(
-    aoi: gpd.GeoDataFrame,
+    aoi: gpd.GeoDataFrame | Path | str,
     start_date: str,
     end_date: str,
     max_cloud_cover: int = 100,
@@ -339,7 +345,8 @@ def get_s2ids_from_geodataframe_ee(
     """Search for Sentinel 2 tiles via Earth Engine based on an aoi shapefile.
 
     Args:
-        aoi_shapefile (Path): AOI shapefile path. Can be anything readable by geopandas.
+        aoi (gpd.GeoDataFrame | Path | str): AOI as a GeoDataFrame or path to a shapefile.
+            If a path is provided, it will be read using geopandas.
         start_date (str): Starting date in a format readable by ee.
         end_date (str): Ending date in a format readable by ee.
         max_cloud_cover (int, optional): Maximum percentage of cloud cover. Defaults to 100.
@@ -348,7 +355,8 @@ def get_s2ids_from_geodataframe_ee(
         set[str]: Unique Sentinel 2 tile IDs.
 
     """
-    aoi = gpd.read_file(aoi_shapefile)
+    if isinstance(aoi, Path | str):
+        aoi = gpd.read_file(aoi)
     aoi = aoi.to_crs("EPSG:4326")
     s2ids = set()
     for i, row in aoi.iterrows():
@@ -378,7 +386,8 @@ def search_s2_stac(
         Read more about the date format here: https://pystac-client.readthedocs.io/en/stable/api.html#pystac_client.Client.search
 
     Args:
-        aoi_shapefile (Path): AOI shapefile path. Can be anything readable by geopandas.
+        intersects (any): The geometry object to search for Sentinel 2 tiles.
+            Can be anything implementing the `__geo_interface__` protocol, such as a GeoDataFrame or a shapely geometry.
         start_date (str): Starting date in a format readable by pystac_client.
         end_date (str): Ending date in a format readable by pystac_client.
         max_cloud_cover (int, optional): Maximum percentage of cloud cover. Defaults to 100.
@@ -387,7 +396,6 @@ def search_s2_stac(
         set[str]: Unique Sentinel 2 tile IDs.
 
     """
-    aoi = gpd.read_file(aoi_shapefile)
     catalog = Client.open("https://stac.dataspace.copernicus.eu/v1/")
     search = catalog.search(
         collections=["sentinel-2-l2a"],
@@ -411,6 +419,7 @@ def get_s2ids_from_geodataframe_stac(
 
     Args:
         aoi (gpd.GeoDataFrame | Path | str): AOI as a GeoDataFrame or path to a shapefile.
+            If a path is provided, it will be read using geopandas.
         start_date (str): Starting date in a format readable by pystac_client.
         end_date (str): Ending date in a format readable by pystac_client.
         max_cloud_cover (int, optional): Maximum percentage of cloud cover. Defaults to 100.
@@ -425,7 +434,7 @@ def get_s2ids_from_geodataframe_stac(
     for i, row in aoi.iterrows():
         s2items.update(
             search_s2_stac(
-                intersects=row.geometry.__geo_interface__,
+                intersects=row.geometry,
                 start_date=start_date,
                 end_date=end_date,
                 max_cloud_cover=max_cloud_cover,
@@ -440,6 +449,20 @@ def match_s2ids_from_geodataframe_stac(
     day_range: int,
     max_cloud_cover: int = 100,
 ) -> dict[str, dict[str, Item]]:
+    """Match items from a GeoDataFrame with Sentinel 2 items from the STAC API based on a date range.
+
+    Args:
+        aoi (gpd.GeoDataFrame): The area of interest as a GeoDataFrame.
+        day_range (int): The number of days before and after the date to search for.
+        max_cloud_cover (int, optional): The maximum cloud cover percentage. Defaults to 100.
+
+    Raises:
+        ValueError: If the 'date' column is not present or not of type datetime.
+
+    Returns:
+        dict[str, dict[str, Item]]: A dictionary mapping each feature ID to its matching Sentinel 2 items.
+
+    """
     # Check weather the "date" column is present and of type datetime
     if "date" not in aoi.columns or not pd.api.types.is_datetime64_any_dtype(aoi["date"]):
         raise ValueError("The 'date' column must be present and of type datetime in the GeoDataFrame.")
@@ -454,3 +477,4 @@ def match_s2ids_from_geodataframe_stac(
             end_date=end_date,
             max_cloud_cover=max_cloud_cover,
         )
+    return matches
