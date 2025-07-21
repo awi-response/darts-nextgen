@@ -99,3 +99,25 @@ builder.finalize(
 )
 
 ```
+
+## About patching
+
+The preprocessing will create patches of the images and labels to increase performance.
+Read performance is actually pretty important for training smaller models, since the time it takes for an image to be read from disk is in relation to the training step of smaller models significant.
+That is why we store the patches in a zarr array beforehand, so we gain maximum read performance.
+
+The information about the patches, meaning region, id, geometry etc., are stored in the metadata file.
+
+The following image shows an examples of how these patches look like when visualized.
+The data of the example comes from a single year - hence all labels are applied to all images.
+Of course one can write a pipeline matches labels to specific images, and in case the default pipeline works like this.
+However, this is an easier example to visualize the patches.
+Further, this example only covers a single region.
+Of course this can also be done for multiple regions and extents.
+Both examples show the extent in red in the background together with the labels in orange and the colored patches.
+The first example shows which patch comes from which image.
+The second example shows which patch is empty, meaning it has no positive pixels in the labels.
+
+![Patching showing Planet-IDs](../assets/training_patches_planetid.png){ loading=lazy }
+
+![Patching showing empty patches](../assets/training_patches_empty.png){ loading=lazy }

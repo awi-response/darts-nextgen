@@ -1,9 +1,9 @@
 import logging
 from dataclasses import dataclass
-from math import ceil, sqrt
 from pathlib import Path
 from typing import Any, Literal, TypedDict
 
+import torch
 import xarray as xr
 from darts_acquisition import load_arcticdem, load_tcvis
 from darts_ensemble import EnsembleV1
@@ -35,15 +35,19 @@ class RayDataArray:
 
 
 class RayDataDict(TypedDict):
-    tile: RayDataset
+    tile: RayDataset | None
+    adem: RayDataset | None
+    tcvis: RayDataset | None
     tilekey: Any  # The key to identify the tile, e.g. a path or a tile id
-    outpath: Path  # The path to the output directory
+    outpath: str  # The path to the output directory
     tile_id: str  # The id of the tile, e.g. the name of the file or the tile id
 
 
-@dataclass
+# @ray.remote(num_cpus=1, num_gpus=1)
 class _RayEnsembleV1:
-    ensemble: EnsembleV1
+    def __init__(self, model_dict: Any):
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.ensemble = EnsembleV1(model_dict=model_dict, device=device)
 
     def __call__(
         self,
@@ -70,24 +74,37 @@ class _RayEnsembleV1:
 
 # TODO: Das hier aufdröseln, damit loading und preprocessing separat läuft
 # Dazu muss ein neues preprocess_legacy_fast geschrieben werden.
-def _load_and_preprocess_ray(
+def _load_aux(
     row: RayDataDict,
     *,
     arcticdem_dir: Path,
     arcticdem_resolution: int,
-    tpi_outer_radius: int,
-    tpi_inner_radius: int,
+    buffer: int,
     tcvis_dir: Path,
-    device: int | Literal["cuda", "cpu"],
 ) -> RayDataDict:
     tile = row["tile"].dataset
     arcticdem = load_arcticdem(
         tile.odc.geobox,
         data_dir=arcticdem_dir,
         resolution=arcticdem_resolution,
-        buffer=ceil(tpi_outer_radius / arcticdem_resolution * sqrt(2)),
+        buffer=buffer,
     )
     tcvis = load_tcvis(tile.odc.geobox, tcvis_dir)
+    row["adem"] = RayDataset(arcticdem)
+    row["tcvis"] = RayDataset(tcvis)
+    return row
+
+
+def _preprocess_ray(
+    row: RayDataDict,
+    *,
+    tpi_outer_radius: int,
+    tpi_inner_radius: int,
+    device: int | Literal["cuda", "cpu"],
+):
+    tile = row["tile"].dataset
+    arcticdem = row["adem"].dataset
+    tcvis = row["tcvis"].dataset
     tile = preprocess_legacy_fast(
         tile,
         arcticdem,
@@ -97,6 +114,8 @@ def _load_and_preprocess_ray(
         device,
     )
     row["tile"] = RayDataset(tile)
+    row["adem"] = None
+    row["tcvis"] = None
     return row
 
 
@@ -134,7 +153,7 @@ def _export_tile_ray(
     write_model_outputs: bool,
 ) -> RayDataDict:
     tile = row["tile"].dataset
-    outpath = row["outpath"]
+    outpath = Path(row["outpath"])
     export_tile(
         tile,
         outpath,
@@ -146,4 +165,8 @@ def _export_tile_ray(
     tilekey = row["tilekey"]
     tile_id = row["tile_id"]
     logger.info(f"Processed sample '{tilekey}' ({tile_id=}).")
-    return row
+    return {
+        "tilekey": tilekey,
+        "tile_id": tile_id,
+        "outpath": str(outpath),
+    }

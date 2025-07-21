@@ -89,7 +89,7 @@ class LoggingManagerSingleton:
             "xarray",
             "distributed",
             "pandas",
-            "lightning",
+            # "lightning",
         ]
         traceback_suppress = [cyclopts]
         for module_name in supress_module_names:
@@ -104,7 +104,7 @@ class LoggingManagerSingleton:
             console_fmt = (
                 "%(message)s"
                 if not verbose
-                else "%(name)s@%(processName)s(%(process)d)-%(threadName)s(%(thread)d) - %(message)s"
+                else "%(processName)s(%(process)d)-%(threadName)s(%(thread)d)@%(name)s - %(message)s"
             )
             console_handler = RichHandler(
                 console=rich.get_console(),
@@ -127,7 +127,7 @@ class LoggingManagerSingleton:
 
         # Configure the file handler (no fancy)
         file_handler = logging.FileHandler(log_dir / f"darts_{command}_{current_time}.log")
-        file_fmt = "%(name)s@%(processName)s(%(process)d)-%(threadName)s(%(thread)d):%(levelname)s - %(message)s (in %(filename)s:%(lineno)d)"  # noqa: E501
+        file_fmt = "%(processName)s(%(process)d)-%(threadName)s(%(thread)d)@%(name)s:%(levelname)s - %(message)s (in %(filename)s:%(lineno)d)"  # noqa: E501
         file_handler.setFormatter(
             logging.Formatter(
                 file_fmt,

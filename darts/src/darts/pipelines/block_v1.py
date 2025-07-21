@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 
 @Parameter(name="*")
 @dataclass
-class _BasePipeline(ABC):
+class _BaseBlockPipeline(ABC):
     """Base class for all v2 pipelines.
 
     This class provides the run method which is the main entry point for all pipelines.
@@ -46,7 +46,6 @@ class _BasePipeline(ABC):
     reflection: int = 0
     binarization_threshold: float = 0.5
     mask_erosion_size: int = 10
-    edge_erosion_size: int | None = None
     min_object_size: int = 32
     quality_level: int | Literal["high_quality", "low_quality", "none"] = 1
     export_bands: list[str] = field(
@@ -111,6 +110,7 @@ class _BasePipeline(ABC):
         import pandas as pd
         import smart_geocubes
         import torch
+        import xarray as xr
         from darts_acquisition import load_arcticdem, load_tcvis
         from darts_ensemble import EnsembleV1
         from darts_export import export_tile, missing_outputs
@@ -147,110 +147,111 @@ class _BasePipeline(ABC):
         n_tiles = 0
         logger.info(f"Found {len(tileinfo)} tiles to process.")
         results = []
+
+        tmp_dir = self.output_data_dir / "tmp"
+        tmp_dir.mkdir(parents=True, exist_ok=True)
+
+        res_dir = self.output_data_dir / "results"
+        res_dir.mkdir(parents=True, exist_ok=True)
+
         for i, (tilekey, outpath) in enumerate(tileinfo):
             tile_id = self._get_tile_id(tilekey)
-            try:
-                if not self.overwrite:
-                    mo = missing_outputs(outpath, bands=self.export_bands, ensemble_subsets=models.keys())
-                    if mo == "none":
-                        logger.info(f"Tile {tile_id} already processed. Skipping...")
-                        continue
-                    if mo == "some":
-                        logger.warning(
-                            f"Tile {tile_id} seems to be already processed, "
-                            "but some of the requested outputs are missing. "
-                            "Skipping because overwrite=False..."
-                        )
-                        continue
+            if not self.overwrite:
+                mo = missing_outputs(outpath, bands=self.export_bands, ensemble_subsets=models.keys())
+                if mo == "none":
+                    logger.info(f"Tile {tile_id} already processed. Skipping...")
+                    continue
+                if mo == "some":
+                    logger.warning(
+                        f"Tile {tile_id} already processed. Some outputs are missing."
+                        " Skipping because overwrite=False..."
+                    )
+                    continue
 
-                with timer("Loading Optical", log=False):
-                    tile = self._load_tile(tilekey)
-                with timer("Loading ArcticDEM", log=False):
-                    arcticdem = load_arcticdem(
-                        tile.odc.geobox,
-                        self.arcticdem_dir,
-                        resolution=arcticdem_resolution,
-                        buffer=ceil(self.tpi_outer_radius / arcticdem_resolution * sqrt(2)),
-                    )
-                with timer("Loading TCVis", log=False):
-                    tcvis = load_tcvis(tile.odc.geobox, self.tcvis_dir)
-                with timer("Preprocessing", log=False):
-                    tile = preprocess_legacy_fast(
-                        tile,
-                        arcticdem,
-                        tcvis,
-                        self.tpi_outer_radius,
-                        self.tpi_inner_radius,
-                        self.device,
-                    )
-                with timer("Segmenting", log=False):
-                    tile = ensemble.segment_tile(
-                        tile,
-                        patch_size=self.patch_size,
-                        overlap=self.overlap,
-                        batch_size=self.batch_size,
-                        reflection=self.reflection,
-                        keep_inputs=self.write_model_outputs,
-                    )
-                with timer("Postprocessing", log=False):
-                    tile = prepare_export(
-                        tile,
-                        bin_threshold=self.binarization_threshold,
-                        mask_erosion_size=self.mask_erosion_size,
-                        min_object_size=self.min_object_size,
-                        quality_level=self.quality_level,
-                        ensemble_subsets=models.keys() if self.write_model_outputs else [],
-                        device=self.device,
-                        edge_erosion_size=self.edge_erosion_size,
-                    )
+            with timer("Loading & Preprocessing", log=False):
+                tile = self._load_tile(tilekey)
 
-                with timer("Exporting", log=False):
-                    export_tile(
-                        tile,
-                        outpath,
-                        bands=self.export_bands,
-                        ensemble_subsets=models.keys() if self.write_model_outputs else [],
-                    )
-
-                n_tiles += 1
-                results.append(
-                    {
-                        "tile_id": tile_id,
-                        "output_path": str(outpath.resolve()),
-                        "status": "success",
-                        "error": None,
-                    }
+                arcticdem = load_arcticdem(
+                    tile.odc.geobox,
+                    self.arcticdem_dir,
+                    resolution=arcticdem_resolution,
+                    buffer=ceil(self.tpi_outer_radius / arcticdem_resolution * sqrt(2)),
                 )
-                logger.info(f"Processed sample {i + 1} of {len(tileinfo)} '{tilekey}' ({tile_id=}).")
-            except KeyboardInterrupt:
-                logger.warning("Keyboard interrupt detected.\nExiting...")
-                raise KeyboardInterrupt
-            except Exception as e:
-                logger.warning(f"Could not process '{tilekey}' ({tile_id=}).\nSkipping...")
-                logger.exception(e)
-                results.append(
-                    {
-                        "tile_id": tile_id,
-                        "output_path": str(outpath.resolve()),
-                        "status": "failed",
-                        "error": str(e),
-                    }
+
+                tcvis = load_tcvis(tile.odc.geobox, self.tcvis_dir)
+
+                tile = preprocess_legacy_fast(
+                    tile,
+                    arcticdem,
+                    tcvis,
+                    self.tpi_outer_radius,
+                    self.tpi_inner_radius,
+                    self.device,
                 )
-            finally:
-                if len(results) > 0:
-                    pd.DataFrame(results).to_parquet(self.output_data_dir / f"{current_time}.results.parquet")
-                if len(timer.durations) > 0:
-                    timer.export().to_parquet(self.output_data_dir / f"{current_time}.stopuhr.parquet")
-        else:
-            logger.info(f"Processed {n_tiles} tiles to {self.output_data_dir.resolve()}.")
-            timer.summary(printer=logger.info)
+
+                tile.to_netcdf(tmp_dir / f"{tile_id}_preprocessed.nc", mode="w", engine="h5netcdf")
+
+        for i, (tilekey, outpath) in enumerate(tileinfo):
+            tile_id = self._get_tile_id(tilekey)
+            with timer("Segmenting", log=False):
+                tile = xr.open_dataset(tmp_dir / f"{tile_id}_preprocessed.nc", engine="h5netcdf").set_coords(
+                    "spatial_ref"
+                )
+                tile = ensemble.segment_tile(
+                    tile,
+                    patch_size=self.patch_size,
+                    overlap=self.overlap,
+                    batch_size=self.batch_size,
+                    reflection=self.reflection,
+                    keep_inputs=self.write_model_outputs,
+                )
+                tile.to_netcdf(tmp_dir / f"{tile_id}_segmented.nc", mode="w", engine="h5netcdf")
+
+        for i, (tilekey, outpath) in enumerate(tileinfo):
+            tile_id = self._get_tile_id(tilekey)
+            with timer("Postprocessing & Exporting", log=False):
+                tile = xr.open_dataset(tmp_dir / f"{tile_id}_segmented.nc", engine="h5netcdf").set_coords("spatial_ref")
+                tile = prepare_export(
+                    tile,
+                    bin_threshold=self.binarization_threshold,
+                    mask_erosion_size=self.mask_erosion_size,
+                    min_object_size=self.min_object_size,
+                    quality_level=self.quality_level,
+                    ensemble_subsets=models.keys() if self.write_model_outputs else [],
+                    device=self.device,
+                )
+
+                export_tile(
+                    tile,
+                    outpath,
+                    bands=self.export_bands,
+                    ensemble_subsets=models.keys() if self.write_model_outputs else [],
+                )
+
+            n_tiles += 1
+            results.append(
+                {
+                    "tile_id": tile_id,
+                    "output_path": str(outpath.resolve()),
+                    "status": "success",
+                    "error": None,
+                }
+            )
+            logger.info(f"Processed sample {i + 1} of {len(tileinfo)} '{tilekey}' ({tile_id=}).")
+
+        if len(results) > 0:
+            pd.DataFrame(results).to_parquet(self.output_data_dir / f"{current_time}.results.parquet")
+        if len(timer.durations) > 0:
+            timer.export().to_parquet(self.output_data_dir / f"{current_time}.stopuhr.parquet")
+        logger.info(f"Processed {n_tiles} tiles to {self.output_data_dir.resolve()}.")
+        timer.summary(printer=logger.info)
 
 
 # =============================================================================
-# Source Pipelines
+# Source Pipeliens
 # =============================================================================
 @dataclass
-class PlanetPipeline(_BasePipeline):
+class PlanetBlockPipeline(_BaseBlockPipeline):
     """Pipeline for PlanetScope data.
 
     Args:
@@ -285,8 +286,6 @@ class PlanetPipeline(_BasePipeline):
         binarization_threshold (float, optional): The threshold to binarize the probabilities. Defaults to 0.5.
         mask_erosion_size (int, optional): The size of the disk to use for mask erosion and the edge-cropping.
             Defaults to 10.
-        edge_erosion_size (int, optional): If the edge-cropping should have a different witdth, than the (inner) mask
-            erosion, set it here. Defaults to `mask_erosion_size`.
         min_object_size (int, optional): The minimum object size to keep in pixel. Defaults to 32.
         quality_level (int | Literal["high_quality", "low_quality", "none"], optional):
             The quality level to use for the segmentation. Can also be an int.
@@ -354,13 +353,13 @@ class PlanetPipeline(_BasePipeline):
         return tile
 
     @staticmethod
-    def cli(*, pipeline: "PlanetPipeline"):
+    def cli(*, pipeline: "PlanetBlockPipeline"):
         """Run the sequential pipeline for Planet data."""
         pipeline.run()
 
 
 @dataclass
-class Sentinel2Pipeline(_BasePipeline):
+class Sentinel2BlockPipeline(_BaseBlockPipeline):
     """Pipeline for Sentinel 2 data.
 
     Args:
@@ -395,8 +394,6 @@ class Sentinel2Pipeline(_BasePipeline):
         binarization_threshold (float, optional): The threshold to binarize the probabilities. Defaults to 0.5.
         mask_erosion_size (int, optional): The size of the disk to use for mask erosion and the edge-cropping.
             Defaults to 10.
-        edge_erosion_size (int, optional): If the edge-cropping should have a different witdth, than the (inner) mask
-            erosion, set it here. Defaults to `mask_erosion_size`.
         min_object_size (int, optional): The minimum object size to keep in pixel. Defaults to 32.
         quality_level (int | Literal["high_quality", "low_quality", "none"], optional):
             The quality level to use for the segmentation. Can also be an int.
@@ -451,13 +448,13 @@ class Sentinel2Pipeline(_BasePipeline):
         return tile
 
     @staticmethod
-    def cli(*, pipeline: "Sentinel2Pipeline"):
+    def cli(*, pipeline: "Sentinel2BlockPipeline"):
         """Run the sequential pipeline for Sentinel 2 data."""
         pipeline.run()
 
 
 @dataclass
-class AOISentinel2Pipeline(_BasePipeline):
+class AOISentinel2BlockPipeline(_BaseBlockPipeline):
     """Pipeline for Sentinel 2 data based on an area of interest.
 
     Args:
@@ -494,8 +491,6 @@ class AOISentinel2Pipeline(_BasePipeline):
         binarization_threshold (float, optional): The threshold to binarize the probabilities. Defaults to 0.5.
         mask_erosion_size (int, optional): The size of the disk to use for mask erosion and the edge-cropping.
             Defaults to 10.
-        edge_erosion_size (int, optional): If the edge-cropping should have a different witdth, than the (inner) mask
-            erosion, set it here. Defaults to `mask_erosion_size`.
         min_object_size (int, optional): The minimum object size to keep in pixel. Defaults to 32.
         quality_level (int | Literal["high_quality", "low_quality", "none"], optional):
             The quality level to use for the segmentation. Can also be an int.
@@ -546,6 +541,6 @@ class AOISentinel2Pipeline(_BasePipeline):
         return tile
 
     @staticmethod
-    def cli(*, pipeline: "AOISentinel2Pipeline"):
+    def cli(*, pipeline: "AOISentinel2BlockPipeline"):
         """Run the sequential pipeline for AOI Sentinel 2 data."""
         pipeline.run()
