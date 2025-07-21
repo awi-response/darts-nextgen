@@ -11,6 +11,7 @@ import toml
 import torch
 import xarray as xr
 import zarr
+from darts_utils.cuda import free_torch
 
 # TODO: move erode_mask to darts_utils, since uasge is not limited to prepare_export
 from geocube.api.core import make_geocube
@@ -54,9 +55,49 @@ class PatchCoords:
         )
 
 
+def create_labels(
+    tile: xr.Dataset,
+    labels: gpd.GeoDataFrame,
+    extent: gpd.GeoDataFrame | None = None,
+):
+    """Create labels from the tile and labels.
+
+    Args:
+        tile (xr.Dataset): The input tile, containing preprocessed, harmonized data.
+        labels (gpd.GeoDataFrame): The labels to be used for training.
+        extent (gpd.GeoDataFrame | None): The extent of the labels.
+            The tile will be cropped to this extent.
+            If None, the tile will not be cropped.
+
+    Returns:
+        xr.DataArray: The rasterized labels.
+
+    """
+    # Rasterize the labels
+    if len(labels) > 0:
+        labels["id"] = labels.index
+        labels_rasterized = 1 - make_geocube(labels, measurements=["id"], like=tile).id.isnull()
+    else:
+        labels_rasterized = xr.zeros_like(tile["quality_data_mask"])
+
+    # Rasterize the extent if provided
+    if extent is not None:
+        extent["id"] = extent.index
+        extent_rasterized = 1 - make_geocube(extent, measurements=["id"], like=tile).id.isnull()
+        labels_rasterized = labels_rasterized.where(extent_rasterized, 2)
+
+    # Filter out low-quality and no-data values (class 2 -> best quality)
+    quality_mask = tile["quality_data_mask"] == 2
+    # quality_mask = erode_mask(tile["quality_data_mask"] == 2, mask_erosion_size, device)
+    labels_rasterized = labels_rasterized.where(quality_mask, 2)
+
+    return labels_rasterized
+
+
 def create_training_patches(
     tile: xr.Dataset,
     labels: gpd.GeoDataFrame,
+    extent: gpd.GeoDataFrame | None,
     bands: Bands,
     patch_size: int,
     overlap: int,
@@ -70,6 +111,9 @@ def create_training_patches(
     Args:
         tile (xr.Dataset): The input tile, containing preprocessed, harmonized data.
         labels (gpd.GeoDataFrame): The labels to be used for training.
+        extent (gpd.GeoDataFrame | None): The extent of the labels.
+            The tile will be cropped to this extent.
+            If None, the tile will not be cropped.
         bands (Bands): The bands to be used for training.
         patch_size (int): The size of the patches.
         overlap (int): The size of the overlap.
@@ -91,14 +135,7 @@ def create_training_patches(
         return
 
     # Rasterize the labels
-    if len(labels) > 0:
-        labels_rasterized = 1 - make_geocube(labels, measurements=["id"], like=tile).id.isnull()
-    else:
-        labels_rasterized = xr.zeros_like(tile["quality_data_mask"])
-
-    # Filter out the nodata values (class 2 -> invalid data)
-    # quality_mask = erode_mask(tile["quality_data_mask"] == 2, mask_erosion_size, device)
-    # labels_rasterized = xr.where(quality_mask, labels_rasterized, 2)
+    labels_rasterized = create_labels(tile, labels, extent)
 
     # Transpose to (H, W)
     tile = tile.transpose("y", "x")
@@ -152,7 +189,10 @@ def create_training_patches(
     tensor_patches = tensor_patches[~filter_mask].cpu()
     tensor_labels = tensor_labels[~filter_mask].cpu()
     tensor_coords = tensor_coords[~filter_mask].cpu()
+    free_torch()
     coords = [PatchCoords.from_tensor(tensor_coords[i], patch_size) for i in range(tensor_coords.shape[0])]
+    # Fill nan with 0, since we don't want to have NaNs in the patches
+    tensor_patches = tensor_patches.nan_to_num(0.0)
     return tensor_patches, tensor_labels, coords
 
 
@@ -207,6 +247,11 @@ class TrainDatasetBuilder:
                 dtype="uint8",
                 compressors=BloscCodec(cname="lz4", clevel=9),
             )
+        else:
+            assert "x" in self._zroot and "y" in self._zroot, (
+                "When appending to an existing dataset, the 'x' and 'y' arrays must already exist."
+                "Did you set append=True by accident?"
+            )
 
     def add_tile(
         self,
@@ -214,6 +259,7 @@ class TrainDatasetBuilder:
         labels: gpd.GeoDataFrame,
         region: str,
         sample_id: str,
+        extent: gpd.GeoDataFrame | None = None,
         metadata: dict[str, str] | None = None,
     ):
         """Add a tile to the dataset.
@@ -223,6 +269,9 @@ class TrainDatasetBuilder:
             labels (gpd.GeoDataFrame): The labels to be used for training.
             region (str): The region of the tile.
             sample_id (str): The sample id of the tile.
+            extent (gpd.GeoDataFrame | None, optional): The extent of the labels.
+                The tile will be cropped to this extent.
+                If None, the tile will not be cropped.
             metadata (dict[str, str], optional): Any metadata to be added to the metadata file.
                 Will not be used for the training, but can be used for better debugging or reproducibility.
 
@@ -234,6 +283,7 @@ class TrainDatasetBuilder:
         x, y, stacked_coords = create_training_patches(
             tile=tile,
             labels=labels,
+            extent=extent,
             bands=self.bands,
             patch_size=self.patch_size,
             overlap=self.overlap,
@@ -250,10 +300,11 @@ class TrainDatasetBuilder:
             geometry = tile.isel(x=coords.x, y=coords.y).odc.geobox.geographic_extent.geom
             self._metadata.append(
                 {
+                    "z_idx": len(self._metadata),
                     "patch_id": patch_id,
                     "region": region,
                     "sample_id": sample_id,
-                    "empty": not (y == 1).any(),
+                    "empty": not (y[patch_id] == 1).any(),
                     "x": coords.x.start,
                     "y": coords.y.start,
                     "patch_idx_x": coords.patch_idx_x,
