@@ -7,7 +7,7 @@ logger = logging.getLogger(__name__)
 
 
 def debug_info():  # noqa: C901
-    """Print debug information about the CUDA devices and library installations."""
+    """Print debug information about the CUDA devices and library installations."""  # noqa: DOC501
     import os
 
     logger.debug("===vvv CUDA DEBUG INFO vvv===")
@@ -26,6 +26,7 @@ def debug_info():  # noqa: C901
     logger.debug("Quicknote: CUDA driver is something different than CUDA runtime, hence versions can mismatch")
     try:
         from pynvml import (  # type: ignore
+            NVMLError,
             nvmlDeviceGetCount,
             nvmlDeviceGetHandleByIndex,
             nvmlDeviceGetMemoryInfo,
@@ -36,19 +37,22 @@ def debug_info():  # noqa: C901
             nvmlSystemGetDriverVersion,
         )
 
-        nvmlInit()
-        cuda_driver_version_legacy = nvmlSystemGetDriverVersion().decode()
-        cuda_driver_version = nvmlSystemGetCudaDriverVersion_v2()
-        logger.debug(f"CUDA driver version: {cuda_driver_version} ({cuda_driver_version_legacy})")
-        ndevices = nvmlDeviceGetCount()
-        logger.debug(f"Number of CUDA devices: {ndevices}")
+        try:
+            nvmlInit()
+            cuda_driver_version_legacy = nvmlSystemGetDriverVersion().decode()
+            cuda_driver_version = nvmlSystemGetCudaDriverVersion_v2()
+            logger.debug(f"CUDA driver version: {cuda_driver_version} ({cuda_driver_version_legacy})")
+            ndevices = nvmlDeviceGetCount()
+            logger.debug(f"Number of CUDA devices: {ndevices}")
 
-        for i in range(ndevices):
-            handle = nvmlDeviceGetHandleByIndex(i)
-            device_name = nvmlDeviceGetName(handle).decode()
-            meminfo = nvmlDeviceGetMemoryInfo(handle)
-            logger.debug(f"Device {i} ({device_name}): {meminfo.used / meminfo.total:.2%} memory usage.")
-        nvmlShutdown()
+            for i in range(ndevices):
+                handle = nvmlDeviceGetHandleByIndex(i)
+                device_name = nvmlDeviceGetName(handle).decode()
+                meminfo = nvmlDeviceGetMemoryInfo(handle)
+                logger.debug(f"Device {i} ({device_name}): {meminfo.used / meminfo.total:.2%} memory usage.")
+            nvmlShutdown()
+        except NVMLError:
+            raise ImportError
 
     except ImportError:
         logger.debug("Module 'pynvml' could not be imported. darts is probably installed without CUDA support.")
