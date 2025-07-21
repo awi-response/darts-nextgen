@@ -390,8 +390,8 @@ def search_s2_stac(
     start_date: str,
     end_date: str,
     max_cloud_cover: int = 100,
-) -> set[str]:
-    """Search for Sentinel 2 tiles via Earth Engine based on an aoi shapefile.
+) -> dict[str, Item]:
+    """Search for Sentinel 2 tiles via STAC based on an area of interest (intersects) and date range.
 
     Note:
         `start_date` and `end_date` will be concatted with a `/` to form a date range.
@@ -405,7 +405,7 @@ def search_s2_stac(
         max_cloud_cover (int, optional): Maximum percentage of cloud cover. Defaults to 100.
 
     Returns:
-        set[str]: Unique Sentinel 2 tile IDs.
+        dict[str, Item]: A dictionary of found Sentinel 2 items as values and the s2id as keys.
 
     """
     catalog = Client.open("https://stac.dataspace.copernicus.eu/v1/")

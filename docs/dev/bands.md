@@ -18,7 +18,7 @@ This information is then used to select the bands for inference.
 Split up the data representation into three different representations:
 
 - **Disk**: Data is stored in the most efficient way, e.g. uint16 for Sentinel 2, uint8 for TCVIS
-- **Memory**: Data is stored in the most convenient and correct way for visualisation purposes. E.g. [-1, 1] float for NDVI
+- **Memory**: Data is stored in the most convenient and correct way for visualisation purposes. This should be equal to the original data representation. E.g. [-1, 1] float for NDVI
 - **Model**: Data ist normalised to [0, 1] for training and inference
 
 Therefore the data convertion happens in two different places of the pipeline:
