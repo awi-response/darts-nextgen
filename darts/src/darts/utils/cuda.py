@@ -1,15 +1,15 @@
 """Utility functions for working with CUDA devices."""
 
 import logging
+import os
+from pathlib import Path
 from typing import Literal
 
 logger = logging.getLogger(__name__)
 
 
 def debug_info():  # noqa: C901
-    """Print debug information about the CUDA devices and library installations."""
-    import os
-
+    """Print debug information about the CUDA devices and library installations."""  # noqa: DOC501
     logger.debug("===vvv CUDA DEBUG INFO vvv===")
     important_env_vars = [
         "CUDA_HOME",
@@ -26,6 +26,7 @@ def debug_info():  # noqa: C901
     logger.debug("Quicknote: CUDA driver is something different than CUDA runtime, hence versions can mismatch")
     try:
         from pynvml import (  # type: ignore
+            NVMLError,
             nvmlDeviceGetCount,
             nvmlDeviceGetHandleByIndex,
             nvmlDeviceGetMemoryInfo,
@@ -36,22 +37,31 @@ def debug_info():  # noqa: C901
             nvmlSystemGetDriverVersion,
         )
 
-        nvmlInit()
-        cuda_driver_version_legacy = nvmlSystemGetDriverVersion().decode()
-        cuda_driver_version = nvmlSystemGetCudaDriverVersion_v2()
-        logger.debug(f"CUDA driver version: {cuda_driver_version} ({cuda_driver_version_legacy})")
-        ndevices = nvmlDeviceGetCount()
-        logger.debug(f"Number of CUDA devices: {ndevices}")
+        try:
+            nvmlInit()
+            cuda_driver_version_legacy = nvmlSystemGetDriverVersion().decode()
+            cuda_driver_version = nvmlSystemGetCudaDriverVersion_v2()
+            logger.debug(f"CUDA driver version: {cuda_driver_version} ({cuda_driver_version_legacy})")
+            ndevices = nvmlDeviceGetCount()
+            logger.debug(f"Number of CUDA devices: {ndevices}")
 
-        for i in range(ndevices):
-            handle = nvmlDeviceGetHandleByIndex(i)
-            device_name = nvmlDeviceGetName(handle).decode()
-            meminfo = nvmlDeviceGetMemoryInfo(handle)
-            logger.debug(f"Device {i} ({device_name}): {meminfo.used / meminfo.total:.2%} memory usage.")
-        nvmlShutdown()
+            for i in range(ndevices):
+                handle = nvmlDeviceGetHandleByIndex(i)
+                device_name = nvmlDeviceGetName(handle).decode()
+                meminfo = nvmlDeviceGetMemoryInfo(handle)
+                logger.debug(f"Device {i} ({device_name}): {meminfo.used / meminfo.total:.2%} memory usage.")
+            nvmlShutdown()
+        except NVMLError:
+            raise ImportError
 
     except ImportError:
         logger.debug("Module 'pynvml' could not be imported. darts is probably installed without CUDA support.")
+    except Exception as e:
+        logger.error(
+            "Error while trying to get CUDA driver version or device info."
+            " Is is possible that this device has no CUDA device?"
+        )
+        logger.exception(e, exc_info=True)
 
     try:
         import torch
@@ -185,3 +195,26 @@ def decide_device(device: Literal["cuda", "cpu", "auto"] | int | None) -> Litera
     # If device is int or "cuda" or "cpu", we just return it
     logger.info(f"Using {device=}.")
     return device
+
+
+def set_pixi_cuda_env(version: Literal["cuda121", "cuda124", "cuda126", "cuda128"], prefix: str = "../"):
+    """Set the CUDA environment variables.
+
+    This is useful when working with a notebook wich does not load the Pixi environment.
+
+    !!! warnign
+
+        This does not work currently as expected!
+
+    Args:
+        version (str): The version string of the pixi CUDA envirnonent.
+        prefix (str): The prefix to the PIXI installation. E.g. when in the `./notebooks` directory, the prefix is `../`
+
+    """
+    prefix = str(Path(prefix).resolve())
+    os.environ["PATH"] = f"{prefix}/.pixi/envs/{version}/bin:{os.environ.get('PATH', '')}"
+    os.environ["CUDA_HOME"] = f"{prefix}/.pixi/envs/{version}"
+    os.environ["CUDA_PATH"] = f"{prefix}/.pixi/envs/{version}"
+    os.environ["LD_LIBRARY_PATH"] = f"{prefix}/.pixi/envs/{version}/lib:{prefix}/.pixi/envs/{version}/lib/stubs"
+    os.environ["NUMBA_CUDA_DRIVER"] = f"{prefix}/.pixi/envs/{version}/lib/stubs/libcuda.so"
+    os.environ["NUMBA_CUDA_INCLUDE_PATH"] = f"{prefix}/.pixi/envs/{version}/include"

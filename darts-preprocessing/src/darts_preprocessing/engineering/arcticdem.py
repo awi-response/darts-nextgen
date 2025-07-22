@@ -95,21 +95,23 @@ def calculate_slope(arcticdem_ds: xr.Dataset) -> xr.Dataset:
 
 
 @stopwatch("Calculating hillshade", printer=logger.debug)
-def calculate_hillshade(arcticdem_ds: xr.Dataset) -> xr.Dataset:
+def calculate_hillshade(arcticdem_ds: xr.Dataset, azimuth: int = 225, angle_altitude: int = 25) -> xr.Dataset:
     """Calculate the hillshade of the terrain surface from an ArcticDEM Dataset.
 
     Args:
         arcticdem_ds (xr.Dataset): The ArcticDEM Dataset containing the 'dem' variable.
+        azimuth (int, optional): The azimuth angle of the light source in degrees. Defaults to 225.
+        angle_altitude (int, optional): The altitude angle of the light source in degrees. Defaults to 25.
 
     Returns:
-        xr.Dataset: The input Dataset with the calculated slhillshadeope added as a new variable 'hillshade'.
+        xr.Dataset: The input Dataset with the calculated hillshade added as a new variable 'hillshade'.
 
     """
-    hillshade_da = hillshade(arcticdem_ds.dem)
+    hillshade_da = hillshade(arcticdem_ds.dem, azimuth=azimuth, angle_altitude=angle_altitude)
     hillshade_da.attrs = {
         "long_name": "Hillshade",
         "units": "",
-        "description": "The hillshade based on azimuth 255 and angle_altitude 25.",
+        "description": f"The hillshade based on azimuth {azimuth} and angle_altitude {angle_altitude}.",
         "source": "ArcticDEM",
         "_FillValue": float("nan"),
     }

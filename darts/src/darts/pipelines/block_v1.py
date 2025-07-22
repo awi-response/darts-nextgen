@@ -516,9 +516,11 @@ class AOISentinel2BlockPipeline(_BaseBlockPipeline):
 
     @cached_property
     def _s2ids(self) -> list[str]:
-        from darts_acquisition.s2 import get_s2ids_from_shape_ee
+        from darts_acquisition.s2 import get_s2ids_from_geodataframe_ee
 
-        return sorted(get_s2ids_from_shape_ee(self.aoi_shapefile, self.start_date, self.end_date, self.max_cloud_cover))
+        return sorted(
+            get_s2ids_from_geodataframe_ee(self.aoi_shapefile, self.start_date, self.end_date, self.max_cloud_cover)
+        )
 
     def _get_tile_id(self, tilekey):
         # In case of the GEE tilekey is also the s2id

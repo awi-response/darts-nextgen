@@ -64,6 +64,7 @@ class DataConfig:
         total_folds (int, optional): Total number of folds in cross-validation. Defaults to 5.
         subsample (int | None, optional): If set, will subsample the dataset to this number of samples.
             This is useful for debugging and testing. Defaults to None.
+        in_memory (bool, optional): If True, the dataset will be loaded into memory.
 
     """
 
@@ -73,6 +74,7 @@ class DataConfig:
     fold_method: Literal["kfold", "shuffle", "stratified", "region", "region-stratified"] = "kfold"
     total_folds: int = 5
     subsample: int | None = None
+    in_memory: bool = False
     # fold is only used in the training function, and fulfills a similar purpose as the random seed in terms of cv.
     # Hence it is moves to the run config.
 
@@ -112,19 +114,29 @@ class TrainingConfig:
     Defines the script inputs for the training script and can be propagated by the cross-validation and tuning scripts.
 
     Attributes:
+        weights_from_checkpoint (Path | None, optional): Path to the lightning checkpoint to load the model from.
+            If None, the model will be trained from scratch. Defaults to None.
         continue_from_checkpoint (Path | None, optional): Path to a checkpoint to continue training from.
+            Differs from `weights_from_checkpoint` in that it will continue training from this training state,
+            hence all optimizer states, learning rate schedulers, etc. will be continued.
             Defaults to None.
         max_epochs (int, optional): Maximum number of epochs to train. Defaults to 100.
         early_stopping_patience (int, optional): Number of epochs to wait for improvement before stopping.
             Defaults to 5.
         num_workers (int, optional): Number of Dataloader workers. Defaults to 0.
+        save_top_k (int, optional): Number of best checkpoints to save.
+            Set to 0 to disable saving checkpoints.
+            Set to -1 to save all checkpoints.
+            Defaults to 1.
 
     """
 
+    weights_from_checkpoint: Path | None = None
     continue_from_checkpoint: Path | None = None
     max_epochs: int = 100
     early_stopping_patience: int = 5
     num_workers: int = 0
+    save_top_k: int = 1
 
 
 @cyclopts.Parameter(name="*")
@@ -362,7 +374,7 @@ def train_smp(
     from darts.utils.logging import LoggingManager
     from darts_utils.namegen import generate_counted_name, generate_id
     from lightning.pytorch import seed_everything
-    from lightning.pytorch.callbacks import EarlyStopping, RichProgressBar
+    from lightning.pytorch.callbacks import EarlyStopping, ModelCheckpoint, RichProgressBar
     from lightning.pytorch.loggers import CSVLogger, WandbLogger
 
     from darts_segmentation.segment import SMPSegmenterConfig
@@ -425,20 +437,28 @@ def train_smp(
         bands=hparams.bands,
         augment=hparams.augment,
         num_workers=training_config.num_workers,
+        in_memory=data_config.in_memory,
     )
-    model = LitSMP(
-        config=config,
-        learning_rate=hparams.learning_rate,
-        gamma=hparams.gamma,
-        focal_loss_alpha=hparams.focal_loss_alpha,
-        focal_loss_gamma=hparams.focal_loss_gamma,
-        # These are only stored in the hparams and are not used
-        run_id=run_id,
-        run_name=run_name,
-        cv_name=run.cv_name or "none",
-        tune_name=run.tune_name or "none",
-        random_seed=run.random_seed,
-    )
+    if training_config.weights_from_checkpoint:
+        logger.debug(f"Loading model weights from checkpoint '{training_config.weights_from_checkpoint.resolve()}'")
+        model = LitSMP.load_from_checkpoint(
+            training_config.weights_from_checkpoint,
+            map_location="cpu",
+        )
+    else:
+        model = LitSMP(
+            config=config,
+            learning_rate=hparams.learning_rate,
+            gamma=hparams.gamma,
+            focal_loss_alpha=hparams.focal_loss_alpha,
+            focal_loss_gamma=hparams.focal_loss_gamma,
+            # These are only stored in the hparams and are not used
+            run_id=run_id,
+            run_name=run_name,
+            cv_name=run.cv_name or "none",
+            tune_name=run.tune_name or "none",
+            random_seed=run.random_seed,
+        )
 
     # Loggers
     trainer_loggers = [
@@ -472,7 +492,16 @@ def train_smp(
 
     # Callbacks and profiler
     callbacks = [
-        RichProgressBar(),
+        # RichProgressBar(),
+        ModelCheckpoint(
+            filename="epoch={epoch}-step={step}-val_iou={val/JaccardIndex:.2f}",
+            auto_insert_metric_name=False,
+            verbose=True,
+            monitor="val/JaccardIndex",
+            mode="max",
+            save_last="link",
+            save_top_k=training_config.save_top_k,
+        ),
         BinarySegmentationMetrics(
             bands=bands,
             val_set=f"val{run.fold}",
@@ -489,6 +518,11 @@ def train_smp(
         # Something does not work well here...
         # ThroughputMonitor(batch_size_fn=lambda batch: batch[0].size(0), window_size=log_every_n_steps),
     ]
+    # There is a bug when continuing from a checkpoint and using the RichProgressBar
+    # https://github.com/Lightning-AI/pytorch-lightning/issues/20976
+    if training_config.continue_from_checkpoint is None:
+        callbacks.append(RichProgressBar())
+
     if training_config.early_stopping_patience:
         logger.debug(f"Using EarlyStopping with patience {training_config.early_stopping_patience}")
         early_stopping = EarlyStopping(

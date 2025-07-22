@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING, Literal
 logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
-    import geopandas as gpd
+    pass
 
 
 def _legacy_path_gen(data_dir: Path):
@@ -33,31 +33,12 @@ def _legacy_path_gen(data_dir: Path):
                     yield next(imgdir.glob("*_SR_clip.tif")).parent
 
 
-def _get_region_name(footprint: "gpd.GeoSeries", admin2: "gpd.GeoDataFrame") -> str:
-    # Check if any label is intersecting with the test regions
-    admin2_of_footprint = admin2[admin2.intersects(footprint.geometry)]
-
-    if admin2_of_footprint.empty:
-        raise ValueError("No intersection found between labels and admin2 regions")
-
-    region_name = admin2_of_footprint.iloc[0]["shapeName"]
-
-    if len(admin2_of_footprint) > 1:
-        logger.warning(
-            f"Found multiple regions for footprint {footprint.image_id}: {admin2_of_footprint.shapeName.to_list()}."
-            f" Using the first one ({region_name})"
-        )
-    return region_name
-
-
-def preprocess_planet_train_data(
+def preprocess_planet_train_data_for_nina(
     *,
     data_dir: Path,
-    labels_dir: Path,
     train_data_dir: Path,
     arcticdem_dir: Path,
     tcvis_dir: Path,
-    admin_dir: Path,
     preprocess_cache: Path | None = None,
     force_preprocess: bool = False,
     append: bool = True,
@@ -112,8 +93,7 @@ def preprocess_planet_train_data(
     ```
 
     Args:
-        data_dir (Path): The directory containing the Planet scenes and orthotiles.
-        labels_dir (Path): The directory containing the labels and footprints / extents.
+        data_dir (Path): Ninas data directory containing the Planet data.
         train_data_dir (Path): The "output" directory where the tensors are written to.
         arcticdem_dir (Path): The directory containing the ArcticDEM data (the datacube and the extent files).
             Will be created and downloaded if it does not exist.
@@ -142,19 +122,15 @@ def preprocess_planet_train_data(
         mask_erosion_size (int, optional): The size of the disk to use for mask erosion and the edge-cropping.
             Defaults to 10.
 
+    Raises:
+        ValueError: If no Planet scenes are found in the data directory.
+
     """
     current_time = time.strftime("%Y-%m-%d_%H-%M-%S")
     logger.info(f"Starting preprocessing at {current_time}.")
 
     # Storing the configuration as JSON file
     train_data_dir.mkdir(parents=True, exist_ok=True)
-    from darts_utils.functools import write_function_args_to_config_file
-
-    write_function_args_to_config_file(
-        fpath=train_data_dir / f"{current_time}.cli.json",
-        function=preprocess_planet_train_data,
-        locals_=locals(),
-    )
 
     from stopuhr import Chronometer
 
@@ -166,14 +142,13 @@ def preprocess_planet_train_data(
 
     # Import here to avoid long loading times when running other commands
     import geopandas as gpd
-    import pandas as pd
     import rich
     import xarray as xr
     from darts_acquisition import load_arcticdem, load_planet_masks, load_planet_scene, load_tcvis
-    from darts_acquisition.admin import download_admin_files
     from darts_preprocessing import preprocess_v2
     from darts_segmentation.training.prepare_training import TrainDatasetBuilder
     from darts_segmentation.utils import Bands
+    from darts_utils.cuda import free_cupy
     from darts_utils.tilecache import XarrayCacheManager
     from odc.stac import configure_rio
     from rich.progress import track
@@ -186,19 +161,10 @@ def preprocess_planet_train_data(
     configure_rio(cloud_defaults=True, aws={"aws_unsigned": True})
     logger.info("Configured Rasterio")
 
-    labels = (gpd.read_file(labels_file) for labels_file in labels_dir.glob("*/TrainingLabel*.gpkg"))
-    labels = gpd.GeoDataFrame(pd.concat(labels, ignore_index=True))
-
-    footprints = (gpd.read_file(footprints_file) for footprints_file in labels_dir.glob("*/ImageFootprints*.gpkg"))
-    footprints = gpd.GeoDataFrame(pd.concat(footprints, ignore_index=True))
-    fpaths = {fpath.stem: fpath for fpath in _legacy_path_gen(data_dir)}
-    footprints["fpath"] = footprints.image_id.map(fpaths)
-
-    # Download admin files if they do not exist
-    admin2_fpath = admin_dir / "geoBoundariesCGAZ_ADM2.shp"
-    if not admin2_fpath.exists():
-        download_admin_files(admin_dir)
-    admin2 = gpd.read_file(admin2_fpath)
+    extent = gpd.read_file(data_dir / "STUDY_AREA_POLYGON.geojson")
+    extent["id"] = extent["fid"]
+    labels = gpd.read_file(data_dir / "DELINEATED_POLYGONS_Y2_Planet2024.geojson")
+    labels["id"] = [1] * len(labels)
 
     # We hardcode these because they depend on the preprocessing used
     bands = Bands.from_dict(
@@ -232,32 +198,31 @@ def preprocess_planet_train_data(
     )
     cache_manager = XarrayCacheManager(preprocess_cache / "planet_v2")
 
-    if append and (train_data_dir / "metadata.parquet").exists():
-        metadata = gpd.read_parquet(train_data_dir / "metadata.parquet")
-        already_processed_planet_ids = set(metadata["planet_id"].unique())
-        logger.info(f"Already processed {len(already_processed_planet_ids)} samples.")
-        footprints = footprints[~footprints.image_id.isin(already_processed_planet_ids)]
+    fpaths = sorted((data_dir / "IMAGES_USED_TO_LABEL").glob("**/*_SR.tif"))
+    logger.info(f"Found {len(fpaths)} Planet scenes in {data_dir / 'IMAGES_USED_TO_LABEL'}")
+    if not fpaths:
+        raise ValueError(f"No Planet scenes found in {data_dir / 'IMAGES_USED_TO_LABEL'}")
 
-    for i, footprint in track(
-        footprints.iterrows(), description="Processing samples", total=len(footprints), console=rich.get_console()
+    for i, fpath in track(
+        enumerate(fpaths), description="Processing samples", total=len(fpaths), console=rich.get_console()
     ):
-        planet_id = footprint.image_id
+        planet_id = "_".join(fpath.stem.split("_")[:4])
         try:
-            logger.info(f"Processing sample {planet_id} ({i + 1} of {len(footprints)})")
+            logger.info(f"Processing sample {planet_id} ({i + 1} of {len(fpaths)})")
 
-            if not footprint.fpath or (not footprint.fpath.exists() and not cache_manager.exists(planet_id)):
-                logger.warning(f"Footprint image {planet_id} at {footprint.fpath} does not exist. Skipping...")
+            if not fpath or (not fpath.exists() and not cache_manager.exists(planet_id)):
+                logger.warning(f"Footprint image {planet_id} at {fpath} does not exist. Skipping...")
                 continue
 
             def _get_tile():
-                tile = load_planet_scene(footprint.fpath)
+                tile = load_planet_scene(fpath.parent)
                 arctidem_res = 2
                 arcticdem_buffer = ceil(tpi_outer_radius / arctidem_res * sqrt(2))
                 arcticdem = load_arcticdem(
                     tile.odc.geobox, arcticdem_dir, resolution=arctidem_res, buffer=arcticdem_buffer
                 )
                 tcvis = load_tcvis(tile.odc.geobox, tcvis_dir)
-                data_masks = load_planet_masks(footprint.fpath)
+                data_masks = load_planet_masks(fpath.parent)
                 tile = xr.merge([tile, data_masks])
 
                 tile: xr.Dataset = preprocess_v2(
@@ -268,6 +233,7 @@ def preprocess_planet_train_data(
                     tpi_inner_radius,
                     device,
                 )
+                free_cupy()
                 return tile
 
             with timer("Loading tile"):
@@ -279,35 +245,34 @@ def preprocess_planet_train_data(
 
             logger.debug(f"Found tile with size {tile.sizes}")
 
-            footprint_labels = labels[labels.image_id == planet_id]
-            region = _get_region_name(footprint, admin2)
+            region = "Ninas Region"
 
             with timer("Save as patches"):
                 builder.add_tile(
                     tile=tile,
-                    labels=footprint_labels,
+                    labels=labels,
+                    extent=extent,
                     region=region,
                     sample_id=planet_id,
                     metadata={
                         "planet_id": planet_id,
-                        "fpath": footprint.fpath,
+                        "fpath": fpath,
                     },
                 )
 
-            logger.info(f"Processed sample {planet_id} ({i + 1} of {len(footprints)})")
+            logger.info(f"Processed sample {planet_id} ({i + 1} of {len(fpaths)})")
 
         except (KeyboardInterrupt, SystemExit, SystemError):
             logger.info("Interrupted by user.")
             break
 
         except Exception as e:
-            logger.warning(f"Could not process sample {planet_id} ({i + 1} of {len(footprints)}). \nSkipping...")
+            logger.warning(f"Could not process sample {planet_id} ({i + 1} of {len(fpaths)}). \nSkipping...")
             logger.exception(e)
 
     builder.finalize(
         {
             "data_dir": data_dir,
-            "labels_dir": labels_dir,
             "arcticdem_dir": arcticdem_dir,
             "tcvis_dir": tcvis_dir,
             "ee_project": ee_project,

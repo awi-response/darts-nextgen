@@ -40,7 +40,7 @@ class LitSMP(L.LightningModule):
         super().__init__()
 
         # This saves config, learning_rate and gamma under self.hparams
-        self.save_hyperparameters(ignore=["test_set", "val_set"])
+        self.save_hyperparameters()
         self.model = smp.create_model(**config["model"], activation="sigmoid")
 
         # Assumes that the training preparation was done with setting invalid pixels in the mask to 2

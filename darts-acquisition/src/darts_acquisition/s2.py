@@ -1,19 +1,34 @@
 """Sentinel 2 related data loading. Should be used temporary and maybe moved to the acquisition package."""
 
 import logging
+from collections.abc import MutableMapping
 from pathlib import Path
+from typing import Literal
 
 import ee
 import geopandas as gpd
 import odc.geo.xr
+import pandas as pd
 import rioxarray  # noqa: F401
 import xarray as xr
 from darts_utils.tilecache import XarrayCacheManager
 from odc.geo.geobox import GeoBox
+from pystac import Item
 from pystac_client import Client
 from stopuhr import stopwatch
 
 logger = logging.getLogger(__name__.replace("darts_", "darts."))
+
+
+def _flatten_dict(d: MutableMapping, parent_key: str = "", sep: str = ".") -> MutableMapping:
+    items = []
+    for k, v in d.items():
+        new_key = parent_key + sep + k if parent_key else k
+        if isinstance(v, MutableMapping):
+            items.extend(_flatten_dict(v, new_key, sep=sep).items())
+        else:
+            items.append((new_key, v))
+    return dict(items)
 
 
 @stopwatch("Converting Sentinel 2 masks", printer=logger.debug)
@@ -256,17 +271,21 @@ def load_s2_from_gee(
     return ds_s2
 
 
-@stopwatch.f("Loading Sentinel 2 scene from STAC", printer=logger.debug, print_kwargs=["s2id"])
+@stopwatch.f("Loading Sentinel 2 scene from STAC", printer=logger.debug, print_kwargs=["s2item"])
 def load_s2_from_stac(
-    s2id: str,
+    s2item: str | Item,
     bands_mapping: dict = {"B02_10m": "blue", "B03_10m": "green", "B04_10m": "red", "B08_10m": "nir"},
     scale_and_offset: bool | tuple[float, float] = True,
     cache: Path | None = None,
 ) -> xr.Dataset:
     """Load a Sentinel 2 scene from the Copernicus STAC API and return it as an xarray dataset.
 
+    Note:
+        Must use the `darts.utils.copernicus.init_copernicus` function to setup authentification
+        with the Copernicus AWS S3 bucket before using this function.
+
     Args:
-        s2id (str): The Sentinel 2 image ID.
+        s2item (str | Item): The Sentinel 2 image ID or the corresponing STAC Item.
         bands_mapping (dict[str, str], optional): A mapping from bands to obtain.
             Will be renamed to the corresponding band names.
             Defaults to {"B2": "blue", "B3": "green", "B4": "red", "B8": "nir"}.
@@ -281,21 +300,29 @@ def load_s2_from_stac(
         xr.Dataset: The loaded dataset
 
     """
+    s2id = s2item.id if isinstance(s2item, Item) else s2item
+
     if "SCL_20m" not in bands_mapping.keys():
         bands_mapping["SCL_20m"] = "scl"
 
-    catalog = Client.open("https://stac.dataspace.copernicus.eu/v1/")
-    search = catalog.search(
-        collections=["sentinel-2-l2a"],
-        ids=[s2id],
-    )
-
     def _get_tile():
+        bands = list(bands_mapping.keys())
+
+        if isinstance(s2item, str):
+            catalog = Client.open("https://stac.dataspace.copernicus.eu/v1/")
+            search = catalog.search(
+                collections=["sentinel-2-l2a"],
+                ids=[s2id],
+            )
+            s2item = next(search.items())
+
         ds_s2 = xr.open_dataset(
-            search,
+            s2item,
             engine="stac",
-            backend_kwargs={"crs": "utm", "resolution": 10, "bands": list(bands_mapping.keys())},
+            backend_kwargs={"crs": "utm", "resolution": 10, "bands": bands},
         )
+
+        ds_s2.attrs = _flatten_dict(s2item.properties)
         ds_s2.attrs["time"] = str(ds_s2.time.values[0])
         ds_s2 = ds_s2.isel(time=0).drop_vars("time")
         with stopwatch(f"Downloading data from STAC for {s2id=}", printer=logger.debug):
@@ -329,9 +356,9 @@ def load_s2_from_stac(
     return ds_s2
 
 
-@stopwatch.f("Searching for Sentinel 2 tiles via Earth Engine", printer=logger.debug)
-def get_s2ids_from_shape_ee(
-    aoi_shapefile: Path,
+@stopwatch("Searching for Sentinel 2 tiles via Earth Engine", printer=logger.debug)
+def get_s2ids_from_geodataframe_ee(
+    aoi: gpd.GeoDataFrame | Path | str,
     start_date: str,
     end_date: str,
     max_cloud_cover: int = 100,
@@ -339,7 +366,8 @@ def get_s2ids_from_shape_ee(
     """Search for Sentinel 2 tiles via Earth Engine based on an aoi shapefile.
 
     Args:
-        aoi_shapefile (Path): AOI shapefile path. Can be anything readable by geopandas.
+        aoi (gpd.GeoDataFrame | Path | str): AOI as a GeoDataFrame or path to a shapefile.
+            If a path is provided, it will be read using geopandas.
         start_date (str): Starting date in a format readable by ee.
         end_date (str): Ending date in a format readable by ee.
         max_cloud_cover (int, optional): Maximum percentage of cloud cover. Defaults to 100.
@@ -348,7 +376,8 @@ def get_s2ids_from_shape_ee(
         set[str]: Unique Sentinel 2 tile IDs.
 
     """
-    aoi = gpd.read_file(aoi_shapefile)
+    if isinstance(aoi, Path | str):
+        aoi = gpd.read_file(aoi)
     aoi = aoi.to_crs("EPSG:4326")
     s2ids = set()
     for i, row in aoi.iterrows():
@@ -364,40 +393,133 @@ def get_s2ids_from_shape_ee(
     return s2ids
 
 
-@stopwatch.f("Searching for Sentinel 2 tiles via STAC", printer=logger.debug)
-def get_s2ids_from_shape_stac(
-    aoi_shapefile: Path,
+@stopwatch("Searching for Sentinel 2 tiles via STAC", printer=logger.debug)
+def search_s2_stac(
+    intersects,
     start_date: str,
     end_date: str,
     max_cloud_cover: int = 100,
-) -> set[str]:
-    """Search for Sentinel 2 tiles via Earth Engine based on an aoi shapefile.
+) -> dict[str, Item]:
+    """Search for Sentinel 2 tiles via STAC based on an area of interest (intersects) and date range.
 
     Note:
         `start_date` and `end_date` will be concatted with a `/` to form a date range.
         Read more about the date format here: https://pystac-client.readthedocs.io/en/stable/api.html#pystac_client.Client.search
 
     Args:
-        aoi_shapefile (Path): AOI shapefile path. Can be anything readable by geopandas.
+        intersects (any): The geometry object to search for Sentinel 2 tiles.
+            Can be anything implementing the `__geo_interface__` protocol, such as a GeoDataFrame or a shapely geometry.
         start_date (str): Starting date in a format readable by pystac_client.
         end_date (str): Ending date in a format readable by pystac_client.
         max_cloud_cover (int, optional): Maximum percentage of cloud cover. Defaults to 100.
 
     Returns:
-        set[str]: Unique Sentinel 2 tile IDs.
+        dict[str, Item]: A dictionary of found Sentinel 2 items as values and the s2id as keys.
 
     """
-    aoi = gpd.read_file(aoi_shapefile)
     catalog = Client.open("https://stac.dataspace.copernicus.eu/v1/")
-    s2ids = set()
-    for i, row in aoi.iterrows():
-        geom = ee.Geometry.Polygon(list(row.geometry.exterior.coords))
-        search = catalog.search(
-            collections=["sentinel-2-l2a"],
-            bbox=geom.bounds,
-            datetime=f"{start_date}/{end_date}",
-            query=[f"eo:cloud_cover<={max_cloud_cover}"],
+    search = catalog.search(
+        collections=["sentinel-2-l2a"],
+        intersects=intersects,
+        datetime=f"{start_date}/{end_date}",
+        query=[f"eo:cloud_cover<={max_cloud_cover}"],
+    )
+    found_items = list(search.items())
+    if len(found_items) == 0:
+        logger.warning(
+            "No Sentinel 2 items found for the given parameters:"
+            f" {intersects=}, {start_date=}, {end_date=}, {max_cloud_cover=}"
         )
-        s2ids.update(search.get_all_items())
-    logger.debug(f"Found {len(s2ids)} Sentinel 2 tiles via stac.")
-    return s2ids
+        return {}
+    logger.debug(f"Found {len(found_items)} Sentinel 2 items via STAC.")
+    return {item.id: item for item in found_items}
+
+
+@stopwatch("Searching for Sentinel 2 tiles via STAC from AOI", printer=logger.debug)
+def get_s2ids_from_geodataframe_stac(
+    aoi: gpd.GeoDataFrame | Path | str,
+    start_date: str,
+    end_date: str,
+    max_cloud_cover: int = 100,
+    simplify_geometry: float | Literal[False] = False,
+) -> dict[str, Item]:
+    """Search for Sentinel 2 tiles via STAC based on an area of interest (aoi) and date range.
+
+    Args:
+        aoi (gpd.GeoDataFrame | Path | str): AOI as a GeoDataFrame or path to a shapefile.
+            If a path is provided, it will be read using geopandas.
+        start_date (str): Starting date in a format readable by pystac_client.
+        end_date (str): Ending date in a format readable by pystac_client.
+        max_cloud_cover (int, optional): Maximum percentage of cloud cover. Defaults to 100.
+        simplify_geometry (float | Literal[False], optional): If a float is provided, the geometry will be simplified
+            using the `simplify` method of geopandas. If False, no simplification will be done.
+            This may become useful for large / weird AOIs which are too large for the STAC API.
+            Defaults to False.
+
+    Returns:
+        dict[str, Item]: A dictionary of found Sentinel 2 items.
+
+    """
+    if isinstance(aoi, Path | str):
+        aoi = gpd.read_file(aoi)
+    s2items: dict[str, Item] = {}
+    if simplify_geometry:
+        aoi = aoi.copy()
+        aoi["geometry"] = aoi.geometry.simplify(simplify_geometry)
+    for i, row in aoi.iterrows():
+        s2items.update(
+            search_s2_stac(
+                intersects=row.geometry,
+                start_date=start_date,
+                end_date=end_date,
+                max_cloud_cover=max_cloud_cover,
+            )
+        )
+    return s2items
+
+
+@stopwatch("Searching for Sentinel 2 tiles via STAC from AOI", printer=logger.debug)
+def match_s2ids_from_geodataframe_stac(
+    aoi: gpd.GeoDataFrame,
+    day_range: int,
+    max_cloud_cover: int = 100,
+    simplify_geometry: float | Literal[False] = False,
+) -> dict[str, dict[str, Item]]:
+    """Match items from a GeoDataFrame with Sentinel 2 items from the STAC API based on a date range.
+
+    Args:
+        aoi (gpd.GeoDataFrame): The area of interest as a GeoDataFrame.
+        day_range (int): The number of days before and after the date to search for.
+        max_cloud_cover (int, optional): The maximum cloud cover percentage. Defaults to 100.
+        simplify_geometry (float | Literal[False], optional): If a float is provided, the geometry will be simplified
+            using the `simplify` method of geopandas. If False, no simplification will be done.
+            This may become useful for large / weird AOIs which are too large for the STAC API.
+            Defaults to False.
+
+    Raises:
+        ValueError: If the 'date' column is not present or not of type datetime.
+
+    Returns:
+        dict[str, dict[str, Item]]: A dictionary mapping each feature ID to its matching Sentinel 2 items.
+
+    """
+    # Check weather the "date" column is present and of type datetime
+    if "date" not in aoi.columns or not pd.api.types.is_datetime64_any_dtype(aoi["date"]):
+        raise ValueError("The 'date' column must be present and of type datetime in the GeoDataFrame.")
+
+    if simplify_geometry:
+        aoi = aoi.copy()
+        aoi["geometry"] = aoi.geometry.simplify(simplify_geometry)
+
+    matches = {}
+    for i, row in aoi.iterrows():
+        intersects = row.geometry.__geo_interface__
+        start_date = (row["date"] - pd.Timedelta(days=day_range)).strftime("%Y-%m-%d")
+        end_date = (row["date"] + pd.Timedelta(days=day_range)).strftime("%Y-%m-%d")
+        matches[i] = search_s2_stac(
+            intersects=intersects,
+            start_date=start_date,
+            end_date=end_date,
+            max_cloud_cover=max_cloud_cover,
+        )
+    return matches

@@ -1,7 +1,7 @@
 # Cross-Validation
 
 ```sh
-[uv run] darts cross-validate-smp ...
+[uv run] darts cross-validation-smp ...
 ```
 
 ## Fold strategies

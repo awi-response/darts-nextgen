@@ -30,6 +30,7 @@ from darts.pipelines import (
 )
 from darts.training import (
     preprocess_planet_train_data,
+    preprocess_planet_train_data_for_nina,
     preprocess_planet_train_data_pingo,
 )
 from darts.utils.bench import benchviz
@@ -106,6 +107,7 @@ app.command(group=pipeline_group)(benchviz)
 
 app.command(group=train_group)(preprocess_planet_train_data)
 app.command(group=train_group)(preprocess_planet_train_data_pingo)
+app.command(group=train_group)(preprocess_planet_train_data_for_nina)
 app.command(group=train_group)(train_smp)
 app.command(group=train_group)(test_smp)
 app.command(group=train_group)(convert_lightning_checkpoint)
@@ -121,12 +123,13 @@ def launcher(  # noqa: D103
     config_file: Path = Path("config.toml"),
     verbose: bool = False,
     tracebacks_show_locals: bool = False,
+    log_plain: bool = False,
 ):
     command, bound, ignored = app.parse_args(tokens, verbose=verbose)
     # Set verbose to true for debug stuff like env_info
     if command.__name__ == "env_info":
         verbose = True
-    LoggingManager.add_logging_handlers(command.__name__, log_dir, verbose, tracebacks_show_locals)
+    LoggingManager.add_logging_handlers(command.__name__, log_dir, verbose, tracebacks_show_locals, log_plain=log_plain)
     logger.debug(f"Running on Python version {sys.version} from {__name__} ({root_file})")
     additional_args = {}
     if "config_file" in ignored:

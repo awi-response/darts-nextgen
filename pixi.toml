@@ -33,10 +33,9 @@ google-cloud-sdk = ">=525.0.0,<526"
 [feature.cuda]
 channels = ["https://prefix.dev/conda-forge"]
 platforms = ["linux-64"]
-activation = { env = { CUDA_HOME = "$CONDA_PREFIX", LD_LIBRARY_PATH = "$CONDA_PREFIX/lib" } }
-# TODO: Maybe these two also need to be set:
+activation = { env = { CUDA_PATH = "$CONDA_PREFIX", CUDA_HOME = "$CONDA_PREFIX", LD_LIBRARY_PATH = "$CONDA_PREFIX/lib", NUMBA_CUDA_INCLUDE_PATH = "$CONDA_PREFIX/include" } }
+# TODO: Maybe this also needs to be set:
 # export NUMBA_CUDA_DRIVER="/usr/local/cuda-12.2/compat/libcuda.so"
-# export NUMBA_CUDA_INCLUDE_PATH="/usr/local/cuda-12.2/include"
 
 
 [feature.cuda.dependencies]
