@@ -124,6 +124,10 @@ class TrainingConfig:
         early_stopping_patience (int, optional): Number of epochs to wait for improvement before stopping.
             Defaults to 5.
         num_workers (int, optional): Number of Dataloader workers. Defaults to 0.
+        save_top_k (int, optional): Number of best checkpoints to save.
+            Set to 0 to disable saving checkpoints.
+            Set to -1 to save all checkpoints.
+            Defaults to 1.
 
     """
 
@@ -132,6 +136,7 @@ class TrainingConfig:
     max_epochs: int = 100
     early_stopping_patience: int = 5
     num_workers: int = 0
+    save_top_k: int = 1
 
 
 @cyclopts.Parameter(name="*")
@@ -369,7 +374,7 @@ def train_smp(
     from darts.utils.logging import LoggingManager
     from darts_utils.namegen import generate_counted_name, generate_id
     from lightning.pytorch import seed_everything
-    from lightning.pytorch.callbacks import EarlyStopping, RichProgressBar
+    from lightning.pytorch.callbacks import EarlyStopping, ModelCheckpoint, RichProgressBar
     from lightning.pytorch.loggers import CSVLogger, WandbLogger
 
     from darts_segmentation.segment import SMPSegmenterConfig
@@ -488,6 +493,15 @@ def train_smp(
     # Callbacks and profiler
     callbacks = [
         # RichProgressBar(),
+        ModelCheckpoint(
+            filename="epoch={epoch}-step={step}-val_iou={val/JaccardIndex:.2f}",
+            auto_insert_metric_name=False,
+            verbose=True,
+            monitor="val/JaccardIndex",
+            mode="max",
+            save_last="link",
+            save_top_k=training_config.save_top_k,
+        ),
         BinarySegmentationMetrics(
             bands=bands,
             val_set=f"val{run.fold}",
