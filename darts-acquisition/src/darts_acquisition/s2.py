@@ -1,6 +1,7 @@
 """Sentinel 2 related data loading. Should be used temporary and maybe moved to the acquisition package."""
 
 import logging
+from collections.abc import MutableMapping
 from pathlib import Path
 from typing import Literal
 
@@ -17,6 +18,17 @@ from pystac_client import Client
 from stopuhr import stopwatch
 
 logger = logging.getLogger(__name__.replace("darts_", "darts."))
+
+
+def _flatten_dict(d: MutableMapping, parent_key: str = "", sep: str = ".") -> MutableMapping:
+    items = []
+    for k, v in d.items():
+        new_key = parent_key + sep + k if parent_key else k
+        if isinstance(v, MutableMapping):
+            items.extend(_flatten_dict(v, new_key, sep=sep).items())
+        else:
+            items.append((new_key, v))
+    return dict(items)
 
 
 @stopwatch("Converting Sentinel 2 masks", printer=logger.debug)
@@ -296,24 +308,21 @@ def load_s2_from_stac(
     def _get_tile():
         bands = list(bands_mapping.keys())
 
-        if isinstance(s2item, Item):
-            ds_s2 = xr.open_dataset(
-                s2item,
-                engine="stac",
-                backend_kwargs={"crs": "utm", "resolution": 10, "bands": bands},
-            )
-        else:
+        if isinstance(s2item, str):
             catalog = Client.open("https://stac.dataspace.copernicus.eu/v1/")
             search = catalog.search(
                 collections=["sentinel-2-l2a"],
                 ids=[s2id],
             )
-            ds_s2 = xr.open_dataset(
-                search,
-                engine="stac",
-                backend_kwargs={"crs": "utm", "resolution": 10, "bands": bands},
-            )
+            s2item = next(search.items())
 
+        ds_s2 = xr.open_dataset(
+            s2item,
+            engine="stac",
+            backend_kwargs={"crs": "utm", "resolution": 10, "bands": bands},
+        )
+
+        ds_s2.attrs = _flatten_dict(s2item.properties)
         ds_s2.attrs["time"] = str(ds_s2.time.values[0])
         ds_s2 = ds_s2.isel(time=0).drop_vars("time")
         with stopwatch(f"Downloading data from STAC for {s2id=}", printer=logger.debug):

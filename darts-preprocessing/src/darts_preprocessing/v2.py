@@ -36,6 +36,8 @@ def preprocess_arcticdem(
     tpi_outer_radius: int,
     tpi_inner_radius: int,
     device: Literal["cuda", "cpu"] | int,
+    azimuth: int,
+    angle_altitude: int,
 ) -> xr.Dataset:
     """Preprocess the ArcticDEM data with mdoern (DARTS v2) preprocessing steps.
 
@@ -45,6 +47,8 @@ def preprocess_arcticdem(
         tpi_inner_radius (int): The inner radius of the annulus kernel for the tpi calculation in number of cells.
         device (Literal["cuda", "cpu"] | int): The device to run the tpi and slope calculations on.
             If "cuda" take the first device (0), if int take the specified device.
+        azimuth (int): The azimuth angle of the light source in degrees for hillshade calculation.
+        angle_altitude (int): The altitude angle of the light source in degrees for hillshade
 
     Returns:
         xr.Dataset: The preprocessed ArcticDEM dataset.
@@ -71,7 +75,7 @@ def preprocess_arcticdem(
             ds_arcticdem = ds_arcticdem.cupy.as_cupy()
             ds_arcticdem = calculate_topographic_position_index(ds_arcticdem, tpi_outer_radius, tpi_inner_radius)
             ds_arcticdem = calculate_slope(ds_arcticdem)
-            ds_arcticdem = calculate_hillshade(ds_arcticdem)
+            ds_arcticdem = calculate_hillshade(ds_arcticdem, azimuth=azimuth, angle_altitude=angle_altitude)
             ds_arcticdem = calculate_aspect(ds_arcticdem)
             ds_arcticdem = calculate_curvature(ds_arcticdem)
             ds_arcticdem = ds_arcticdem.cupy.as_numpy()
@@ -81,7 +85,7 @@ def preprocess_arcticdem(
     else:
         ds_arcticdem = calculate_topographic_position_index(ds_arcticdem, tpi_outer_radius, tpi_inner_radius)
         ds_arcticdem = calculate_slope(ds_arcticdem)
-        ds_arcticdem = calculate_hillshade(ds_arcticdem)
+        ds_arcticdem = calculate_hillshade(ds_arcticdem, azimuth=azimuth, angle_altitude=angle_altitude)
         ds_arcticdem = calculate_aspect(ds_arcticdem)
         ds_arcticdem = calculate_curvature(ds_arcticdem)
 
@@ -140,7 +144,20 @@ def preprocess_v2(
     with stopwatch("Reprojecting ArcticDEM", printer=logger.debug):
         ds_arcticdem = ds_arcticdem.odc.reproject(ds_merged.odc.geobox.buffered(tpi_outer_radius), resampling="cubic")
 
-    ds_arcticdem = preprocess_arcticdem(ds_arcticdem, tpi_outer_radius, tpi_inner_radius, device)
+    azimuth = 225  # Default azimuth for hillshade calculation
+    angle_altitude = 25  # Default angle altitude for hillshade calculation
+    if "view:azimuth" in ds_arcticdem.attrs:
+        azimuth = round(ds_arcticdem.attrs["view:azimuth"])
+    if "view:sun_elevation" in ds_arcticdem.attrs:
+        angle_altitude = round(ds_arcticdem.attrs["view:sun_elevation"])
+    ds_arcticdem = preprocess_arcticdem(
+        ds_arcticdem,
+        tpi_outer_radius,
+        tpi_inner_radius,
+        device,
+        azimuth,
+        angle_altitude,
+    )
     ds_arcticdem = ds_arcticdem.odc.crop(ds_merged.odc.geobox.extent)
     # For some reason, we need to reindex, because the reproject + crop of the arcticdem sometimes results
     # in floating point errors. These error are at the order of 1e-10, hence, way below millimeter precision.
