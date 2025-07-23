@@ -100,6 +100,11 @@ class _BaseRayPipeline(ABC):
         current_time = time.strftime("%Y-%m-%d_%H-%M-%S")
         logger.info(f"Starting pipeline at {current_time}.")
 
+        from darts.utils.cuda import get_default_network_interface
+
+        current_network_interface = get_default_network_interface()
+        logger.info(f"Current network interface {current_network_interface}")
+
         # Storing the configuration as JSON file
         self.output_data_dir.mkdir(parents=True, exist_ok=True)
         with open(self.output_data_dir / f"{current_time}.config.json", "w") as f:
@@ -158,11 +163,10 @@ class _BaseRayPipeline(ABC):
                 num_cpus=final_cpus,
                 num_gpus=final_gpus,
                 include_dashboard=True,
-                # TODO NCCL SOCKET IFNAME check don't use default value
                 runtime_env={"env_vars": {
                     "CUDA_VISIBLE_DEVICES": "0",
                     "NCCL_DEBUG": "INFO",
-                    "NCCL_SOCKET_IFNAME": "ens3",
+                    "NCCL_SOCKET_IFNAME": current_network_interface,
                 }},
                 _system_config={"worker_register_timeout_seconds": 60}
             )
@@ -199,9 +203,8 @@ class _BaseRayPipeline(ABC):
             os.environ["CUDA_VISIBLE_DEVICES"] = "0"  # Or your device index
             os.environ["NVIDIA_VISIBLE_DEVICES"] = "all"
             os.environ["NCCL_DEBUG"] = "INFO"
-            # TODO this needs to be a dynamic check!!!
-            os.environ["NCCL_SOCKET_IFNAME"] = "ens3"  # Or your network interface
-            os.environ["GLOO_SOCKET_IFNAME"] = "ens3"
+            os.environ["NCCL_SOCKET_IFNAME"] = current_network_interface
+            os.environ["GLOO_SOCKET_IFNAME"] = current_network_interface
             import torch
             if not torch.cuda.is_available():
                 raise RuntimeError("CUDA not available in worker!")
