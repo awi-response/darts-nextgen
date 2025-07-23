@@ -7,6 +7,41 @@ from typing import Literal
 
 logger = logging.getLogger(__name__)
 
+# TODO set or get network values add here
+import netifaces
+
+
+def get_default_network_interface():
+    """
+    Get the name of the default network interface that has a default route.
+    Returns 'ens3' if found, otherwise tries common interface names.
+    """
+    try:
+        # Get the default gateway
+        gws = netifaces.gateways()
+        default_gateway = gws.get('default', {})
+
+        # Try to find interface with IPv4 route first
+        if netifaces.AF_INET in default_gateway:
+            interface = default_gateway[netifaces.AF_INET][1]
+            return interface
+
+        # Common interface names to try as fallback
+        common_interfaces = ['ens3', 'eth0', 'enp0s3', 'wlan0', 'eno1']
+
+        # Check which interfaces exist
+        available_interfaces = netifaces.interfaces()
+
+        # Return the first common interface that exists
+        for iface in common_interfaces:
+            if iface in available_interfaces:
+                return iface
+
+    except Exception as e:
+        print(f"Warning: Could not determine network interface automatically: {e}")
+
+    # Final fallback
+    return 'ens3'  # or 'eth0' depending on your most common case
 
 def debug_info():  # noqa: C901
     """Print debug information about the CUDA devices and library installations."""  # noqa: DOC501
