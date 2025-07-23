@@ -158,6 +158,7 @@ class _BaseRayPipeline(ABC):
                 num_cpus=final_cpus,
                 num_gpus=final_gpus,
                 include_dashboard=True,
+                # TODO NCCL SOCKET IFNAME check don't use default value
                 runtime_env={"env_vars": {
                     "CUDA_VISIBLE_DEVICES": "0",
                     "NCCL_DEBUG": "INFO",
