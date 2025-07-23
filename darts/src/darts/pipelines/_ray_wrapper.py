@@ -2,7 +2,8 @@ import logging
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal, TypedDict
-
+import time
+import psutil
 import torch
 import xarray as xr
 from darts_acquisition import load_arcticdem, load_tcvis
@@ -82,6 +83,17 @@ def _load_aux(
     buffer: int,
     tcvis_dir: Path,
 ) -> RayDataDict:
+    # Initialize timers
+    start_time = time.time()
+    load_details = {}
+
+    # --- 1. Log input metadata ---
+    logger.debug(f"Processing tile: {row.get('tile_id', 'unknown')}")
+    logger.debug(f"Input geobox: {row['tile'].dataset.odc.geobox}")
+
+    # --- 2. Time ArcticDEM load ---
+    dem_start = time.time()
+
     tile = row["tile"].dataset
     arcticdem = load_arcticdem(
         tile.odc.geobox,
@@ -89,9 +101,25 @@ def _load_aux(
         resolution=arcticdem_resolution,
         buffer=buffer,
     )
+
+    load_details["arcticdem_load_sec"] = time.time() - dem_start
+    logger.debug(f"Loaded ArcticDEM in {load_details['arcticdem_load_sec']:.2f}s")
+
+    # --- 3. Time TcVis load ---
+    tcvis_start = time.time()
     tcvis = load_tcvis(tile.odc.geobox, tcvis_dir)
+    load_details["tcvis_load_sec"] = time.time() - tcvis_start
+    logger.debug(f"Loaded TcVis in {load_details['tcvis_load_sec']:.2f}s")
+
+    # --- 4. Log memory usage ---
+    import psutil
+    process = psutil.Process()
+    load_details["memory_mb"] = process.memory_info().rss / (1024 * 1024)
+    logger.debug(f"Memory usage: {load_details['memory_mb']:.2f} MB")
+
     row["adem"] = RayDataset(arcticdem)
     row["tcvis"] = RayDataset(tcvis)
+
     return row
 
 

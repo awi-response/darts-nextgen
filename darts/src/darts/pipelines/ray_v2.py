@@ -169,7 +169,10 @@ class _BaseRayPipeline(ABC):
                     "NCCL_DEBUG": "INFO",
                     "NCCL_SOCKET_IFNAME": current_network_interface,
                 }},
-                _system_config={"worker_register_timeout_seconds": 60}
+                _system_config={"worker_register_timeout_seconds": 60,
+                                "metrics_report_interval_ms": 1000,  # Faster metric updates
+                                "enable_metrics_collection": True,
+                                },
             )
         else:
             ray_context = ray.get_context()
@@ -285,7 +288,7 @@ class _BaseRayPipeline(ABC):
         # Ray data pipeline
         # TODO: setup device stuff correctly
         ds = ray.data.from_items(tileinfo)
-        ds = ds.map(self._load_tile, num_cpus=1)
+        ds = ds.map(self._load_tile, num_cpus=0.5, concurrency=safe_cpus // 2)
         ds = ds.map(
             _load_aux,
             fn_kwargs={
@@ -295,6 +298,7 @@ class _BaseRayPipeline(ABC):
                 "tcvis_dir": self.tcvis_dir,
             },
             num_cpus=1,
+            concurrency= safe_cpus // 4
         )
         ds = ds.map(
             _preprocess_ray,

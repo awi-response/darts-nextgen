@@ -16,6 +16,7 @@ darts = { cmd = "uv run darts"}
 
 [dependencies]
 uv = ">=0.7.12,<0.8"
+psutil = ">=5.9.0"
 
 # gcloud is not available on windows....
 [target.linux-64.dependencies]
