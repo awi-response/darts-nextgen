@@ -146,8 +146,9 @@ class _BaseRayPipeline(ABC):
 
         logger.debug(f"Discovered resources - CPUs: {total_cpus}, GPUs: {total_gpus} were found")
 
-        # Calculate safe allocations (keep 2 CPUs for system)
-        safe_cpus = max(1, total_cpus - 2)
+        available_cpus = max(1, int(os.cpu_count()) - 2)
+        # Use 75% of available CPUs for safety
+        safe_cpus = max(1, int(available_cpus * 0.75))
         safe_gpus = total_gpus
 
         # Use configured num_cpus if set, otherwise use safe_cpus
