@@ -57,6 +57,7 @@ dependencies = [
     "darts-superresolution",
     "darts-utils",
     "filelock>=3.18.0",
+    "netifaces",
 ]
 readme = "README.md"
 requires-python = ">= 3.11, < 3.13"
