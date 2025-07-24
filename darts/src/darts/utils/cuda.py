@@ -4,12 +4,44 @@ import logging
 import os
 from pathlib import Path
 from typing import Literal
+import psutil
+import ray
+from math import floor
 
 logger = logging.getLogger(__name__)
 
 # TODO set or get network values add here
 import netifaces
 
+
+def configure_ray_memory():
+    """Dynamically configures Ray memory settings based on system resources"""
+    # Get system memory
+    mem = psutil.virtual_memory()
+    available_gb = mem.available / (1024 ** 3)  # Convert to GB
+
+    # Calculate object store size (30-50% of available memory)
+    # Using conservative 30% to leave room for system and other processes
+    object_store_gb = floor(available_gb * 0.3)
+
+    # Set reasonable bounds (min 4GB, max 64GB unless you have special needs)
+    object_store_gb = max(4, min(object_store_gb, 64))
+
+    # Convert back to bytes for Ray configuration
+    object_store_bytes = int(object_store_gb * (1024 ** 3))
+
+    # Calculate remaining memory for worker processes
+    remaining_gb = available_gb - object_store_gb
+    worker_memory_gb = floor(remaining_gb * 0.8)  # 80% of remaining for workers
+
+    return {
+        'object_store_memory': object_store_bytes,
+        'worker_memory': worker_memory_gb * (1024 ** 3),
+        'system_total_memory_gb': mem.total / (1024 ** 3),
+        'system_available_gb': available_gb,
+        'configured_object_store_gb': object_store_gb,
+        'configured_worker_memory_gb': worker_memory_gb
+    }
 
 def get_default_network_interface():
     """

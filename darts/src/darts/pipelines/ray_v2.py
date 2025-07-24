@@ -7,7 +7,9 @@ import time
 from abc import ABC, abstractmethod
 from dataclasses import asdict, dataclass, field
 from functools import cached_property
-from math import ceil, sqrt
+from math import ceil, sqrt, floor
+import ray
+import psutil
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal, TypedDict
 
@@ -101,6 +103,7 @@ class _BaseRayPipeline(ABC):
         logger.info(f"Starting pipeline at {current_time}.")
 
         from darts.utils.cuda import get_default_network_interface
+        from darts.utils.cuda import configure_ray_memory
 
         ray_wrapper_logger = logging.getLogger('darts.pipelines._ray_wrapper')
         logger.info(f"Raywrapper logger {ray_wrapper_logger}")
@@ -132,6 +135,14 @@ class _BaseRayPipeline(ABC):
 
         import ray
 
+        mem_config = configure_ray_memory()
+
+        logger.debug(f"\nMemory Configuration:")
+        logger.debug(f"System Total: {mem_config['system_total_memory_gb']:.1f} GB")
+        logger.debug(f"System Available: {mem_config['system_available_gb']:.1f} GB")
+        logger.debug(f"Configured Object Store: {mem_config['configured_object_store_gb']} GB")
+        logger.debug(f"Configured Worker Memory: {mem_config['configured_worker_memory_gb']} GB")
+
         # First initialization to detect resources
         # First initialization - let Ray autodetect all resources
         initial_context = ray.init(
@@ -160,10 +171,15 @@ class _BaseRayPipeline(ABC):
 
         logger.info(f"Final resource allocation - CPUs: {final_cpus}, GPUs: {final_gpus}")
 
+        # memory allocation
+
+
         # Only reinitialize if we need different resources
         if (final_cpus != total_cpus) or (final_gpus != total_gpus):
             ray.shutdown()
             ray_context = ray.init(
+                object_store_memory=mem_config['object_store_memory'],
+                _memory=mem_config['worker_memory'],
                 num_cpus=final_cpus,
                 num_gpus=final_gpus,
                 include_dashboard=True,
@@ -175,6 +191,12 @@ class _BaseRayPipeline(ABC):
                 _system_config={"worker_register_timeout_seconds": 60,
                                 "metrics_report_interval_ms": 1000,  # Faster metric updates
                                 "enable_metrics_collection": True,
+                                "object_store_full_delay_ms": 100,
+                                "task_retry_delay_ms": 300,
+
+                                # Spilling
+                                "max_io_workers": min(20, os.cpu_count()),
+                                "min_spilling_size": 500 * 1024 * 1024,
                                 },
             )
         else:
@@ -312,7 +334,7 @@ class _BaseRayPipeline(ABC):
             },
             num_cpus=1,
             num_gpus=0.1,
-            concurrency=2,
+            concurrency=4,
         )
         ds = ds.map(
             _RayEnsembleV1,
