@@ -42,7 +42,7 @@ def init_copernicus(profile_name: str = "default"):
             "aws_access_key_id": credentials.access_key,
             "aws_secret_access_key": credentials.secret_key,
             "region_name": "default",
-            "endpoint_url": "eodata.ams.dataspace.copernicus.eu",
+            "endpoint_url": "eodata.dataspace.copernicus.eu",
         },
         AWS_VIRTUAL_HOSTING=False,
     )
