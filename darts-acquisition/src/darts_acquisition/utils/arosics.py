@@ -1,12 +1,14 @@
 """Re-implementation of the AROSICS algorithm."""
 
 import logging
+from dataclasses import dataclass
 from typing import Literal
 
 import numpy as np
 import xarray as xr
 from matplotlib import pyplot as plt
 from scipy.fft import fft2, fftshift, ifft2
+from skimage.metrics import structural_similarity as ssim
 
 logger = logging.getLogger(__name__)
 
@@ -56,14 +58,14 @@ def _validate_subset(
     return True
 
 
-def _find_suitable_subset(
+def _find_suitable_subset_slices(
     target: xr.Dataset | xr.DataArray,
     reference: xr.Dataset | xr.DataArray,
     window_size: int = 256,
     target_mask: xr.DataArray | None = None,
     reference_mask: xr.DataArray | None = None,
     max_invalid_ratio: float = 0.01,
-) -> tuple[xr.Dataset | xr.DataArray, xr.Dataset | xr.DataArray]:
+) -> dict[Literal["x", "y"], slice] | Literal[False]:
     # Start naive with the center
     center_x = target.sizes["x"] // 2
     center_y = target.sizes["y"] // 2
@@ -78,6 +80,7 @@ def _find_suitable_subset(
     steps_in_direction = 0
     turns_taken = 0
 
+    # This will search for a valid subset in a spiraling pattern
     for tries in range(1000):
         xslice = slice(corner[0], corner[0] + window_size)
         yslice = slice(corner[1], corner[1] + window_size)
@@ -97,7 +100,7 @@ def _find_suitable_subset(
         )
         if is_valid:
             logger.debug(f"Found valid subset after {tries=} at corner {corner} with {direction=} and {window_size=}.")
-            return target_subset, reference_subset
+            return {"x": xslice, "y": yslice}
         # If not valid, shift the corner in a spiraling pattern
         corner = (corner[0] + dx[direction], corner[1] + dy[direction])
 
@@ -105,7 +108,10 @@ def _find_suitable_subset(
         if (corner[0] < 0 or corner[0] + window_size > target.sizes["x"]) or (
             corner[1] < 0 or corner[1] + window_size > target.sizes["y"]
         ):
-            logger.warning("Couldn't find a valid subset in the target and reference datasets.")
+            logger.debug(
+                "Couldn't find a valid subset in the target and reference datasets."
+                " Please check the window size and masks. Falling back to calculate offsets with the complete images."
+            )
             break
 
         # Update direction if needed
@@ -114,38 +120,243 @@ def _find_suitable_subset(
             direction = (direction + 1) % 4
             steps_in_direction = 0
             turns_taken += 1
-    return None, None
+    return False
 
 
-def _calculate_scps(reference: xr.DataArray, target: xr.DataArray) -> np.array:
+def _get_window_subsets(
+    target: xr.DataArray,
+    reference: xr.DataArray,
+    subset: dict[Literal["x", "y"], slice] | Literal[False],
+) -> tuple[xr.DataArray, xr.DataArray]:
+    if not subset:
+        # In case of no subset, we need to find the common spatial intersection of the two images again, since the
+        # Target could be changed since inbetween calls
+        common_extent = reference.odc.geobox.geographic_extent.intersection(target.odc.geobox.geographic_extent)
+        reference_window = reference.odc.crop(common_extent)
+    else:
+        reference_window = reference.isel(x=subset["x"], y=subset["y"])
+    target_window = target.odc.crop(reference_window.odc.geobox.extent)
+    return target_window, reference_window
+
+
+def _calculate_scps(reference_window: xr.DataArray, target_window: xr.DataArray) -> np.array:
     # Calculate the shifted cross power spectrum
     # This is a trick to avoid convoluted block matching:
     # Convolutions can be computed in the frequency domain with fourier transforms
     # Hence, we turn our images into the frequency domain, compute the cross power spectrum,
     # and then turn it back into the spatial domain.
     # The peak of the result tells us the spatial shift between the two images.
-    ref_fft = fft2(reference.astype("complex64"))
-    target_fft = fft2(target.astype("complex64"))
-    eps = np.abs(ref_fft).max() * 1e-15
+    ref_freq = fft2(reference_window.astype("complex64"))
+    target_freq = fft2(target_window.astype("complex64"))
+    eps = np.abs(ref_freq).max() * 1e-15
     with np.errstate(divide="ignore", invalid="ignore"):
-        cross_power_spectrum = (ref_fft * target_fft.conj()) / (abs(ref_fft) * abs(target_fft) + eps)
+        cross_power_spectrum = (ref_freq * target_freq.conj()) / (abs(ref_freq) * abs(target_freq) + eps)
     cross_power_spectrum = ifft2(cross_power_spectrum)
     cross_power_spectrum = abs(cross_power_spectrum)
     shifted_cross_power_spectrum = fftshift(cross_power_spectrum)
     return shifted_cross_power_spectrum
 
 
-def _calculate_offset(reference: xr.DataArray, target: xr.DataArray) -> tuple[int, int]:
-    shifted_cross_power_spectrum = _calculate_scps(reference, target)
-    # Find the peak in the cross power spectrum
-    # The peak position in relation to the images center corresponds to the offset between the two images
-    y_peak, x_peak = np.unravel_index(np.argmax(shifted_cross_power_spectrum), shifted_cross_power_spectrum.shape)
-    x_offset = x_peak - reference.sizes["x"] // 2
-    y_offset = y_peak - reference.sizes["y"] // 2
-    return x_offset, y_offset
+@dataclass
+class OffsetInfo:
+    """Dataclass to hold offset information."""
+
+    x_offset: float | None
+    y_offset: float | None
+    ssim_before: float | None = None
+    ssim_after: float | None = None
+    shift_reliability: float = 0.0
+
+    @property
+    def ssim_improved(self) -> bool:  # noqa: D102
+        return self.ssim_before <= self.ssim_after
+
+    @property
+    def ssim_improvement(self) -> float:  # noqa: D102
+        return self.ssim_after - self.ssim_before
+
+    @property
+    def xy(self, max_offset: float = 10.0, min_reliability: float = 30.0) -> tuple[float, float]:  # noqa: D102
+        if not self.is_valid(max_offset=max_offset, min_reliability=min_reliability):
+            return 0.0, 0.0
+        return self.x_offset or 0.0, self.y_offset or 0.0
+
+    def is_valid(self, max_offset: float, min_reliability: float) -> bool:  # noqa: D102
+        if any(self.x_offset is None or self.y_offset is None):
+            return False
+        return (
+            abs(self.x_offset) <= max_offset
+            and abs(self.y_offset) <= max_offset
+            and self.shift_reliability >= min_reliability
+            and self.ssim_after >= self.ssim_before
+        )
 
 
-def get_offsets(  # noqa: C901
+def _xy_from_multiple(
+    offset_infos: dict[str, "OffsetInfo"], max_offset: float, min_reliability: float
+) -> tuple[float, float]:
+    # Try to resolve the best offset based on a multiple offsets
+    # 0. Filter invalids
+    # 1. Check if all offsets are (almost) equal (within a single pixel) -> take mean
+    # 2. Check if all offsets are somewhat close (low std) -> take weighted mean based on reliability
+    # 3. Use best offset based on reliability and ssim improvement
+    for band, oi in offset_infos.items():
+        if not oi.is_valid(max_offset=max_offset, min_reliability=min_reliability):
+            logger.debug(f"{band=} resulted in an invalid offset: {oi}")
+
+    x_offsets = np.array(
+        [
+            oi.x_offset
+            for oi in offset_infos.values()
+            if oi.is_valid(max_offset=max_offset, min_reliability=min_reliability)
+        ]
+    )
+    y_offsets = np.array(
+        [
+            oi.y_offset
+            for oi in offset_infos.values()
+            if oi.is_valid(max_offset=max_offset, min_reliability=min_reliability)
+        ]
+    )
+    reliabilities = np.array(
+        [
+            oi.shift_reliability
+            for oi in offset_infos.values()
+            if oi.is_valid(max_offset=max_offset, min_reliability=min_reliability)
+        ]
+    )
+    if len(x_offsets) == 0 or len(y_offsets) == 0:
+        logger.warning("No valid offsets found. Returning 0.")
+        return 0, 0
+
+    x_max_deviation = abs(x_offsets - x_offsets.mean()).max()
+    y_max_deviation = abs(y_offsets - y_offsets.mean()).max()
+    if x_max_deviation < 1 and y_max_deviation < 1:
+        return x_offsets.mean(), y_offsets.mean()
+
+    if np.std(x_offsets) < 1 and np.std(y_offsets) < 1:
+        return np.average(x_offsets, weights=reliabilities), np.average(y_offsets, weights=reliabilities)
+
+    # Use the best offset based on reliability and ssim improvement
+    best = reliabilities.argmax()
+    return x_offsets[best], y_offsets[best]
+
+
+def _calculate_offset(
+    reference: xr.DataArray,
+    target: xr.DataArray,
+    subset: dict[Literal["x", "y"], slice] | Literal[False] = False,
+    max_iter: int = 5,
+) -> OffsetInfo:
+    # Copy the original axes to be able to restore them later
+    # We want to alter the axes in this function, but we don't want to clone the complete original array
+    original_axes = (target.x.copy(deep=True), target.y.copy(deep=True))
+
+    # Calculate the ssim before the offset calculation
+    ssim_before = _calc_ssim(target, reference, subset=subset)
+
+    potential_x_offset = 0
+    potential_y_offset = 0
+    for i in range(max_iter):
+        target_window, reference_window = _get_window_subsets(target, reference, subset)
+        shifted_cross_power_spectrum = _calculate_scps(reference_window, target_window)
+        # Find the peak in the cross power spectrum
+        # The peak position in relation to the images center corresponds to the offset between the two images
+        y_peak, x_peak = np.unravel_index(np.argmax(shifted_cross_power_spectrum), shifted_cross_power_spectrum.shape)
+        x_offset = x_peak - reference.sizes["x"] // 2
+        y_offset = y_peak - reference.sizes["y"] // 2
+        # If no more offset is left, it means that we found the "real" offset in the iteration before
+        # in this case we break and continue with subpixel offset calculation and validation
+        if x_offset == 0 and y_offset == 0:
+            break
+
+        # Apply the offset to the target array
+        target["x"] = target.x + x_offset * target.odc.geobox.resolution.x
+        target["y"] = target.y + y_offset * target.odc.geobox.resolution.y
+
+        # Add to the overall offset
+        potential_x_offset += x_offset
+        potential_y_offset += y_offset
+    else:
+        logger.debug(f"Could not find a suitable offset after {max_iter} iterations.")
+        return OffsetInfo(x_offset=None, y_offset=None)
+
+    # Calculate subpixel shift
+    sm_left = shifted_cross_power_spectrum[y_peak, x_peak - 1]
+    sm_right = shifted_cross_power_spectrum[y_peak, x_peak + 1]
+    sm_above = shifted_cross_power_spectrum[y_peak - 1, x_peak]
+    sm_below = shifted_cross_power_spectrum[y_peak + 1, x_peak]
+
+    v_00 = np.max(shifted_cross_power_spectrum)
+    v_10 = max(sm_left, sm_right)  # x
+    v_01 = max(sm_above, sm_below)  # y
+
+    subpixel_x_offset = np.sign(sm_right - sm_left) * v_10 / (v_00 + v_10)
+    subpixel_y_offset = np.sign(sm_below - sm_above) * v_01 / (v_00 + v_01)
+
+    # Apply the offset to the target array
+    target["x"] = target.x + subpixel_x_offset * target.odc.geobox.resolution.x
+    target["y"] = target.y + subpixel_y_offset * target.odc.geobox.resolution.y
+
+    potential_x_offset += subpixel_x_offset
+    potential_y_offset += subpixel_y_offset
+
+    # Calculate metrics
+    shift_reliability = _calc_shift_reliability(shifted_cross_power_spectrum, x_peak, y_peak)
+
+    # Calculate the ssim after the offsets are applied
+    ssim_after = _calc_ssim(target=target, reference=reference, subset=subset)
+
+    # Apply the original axes back to the reference array to avoid cloning the original data
+    target["x"] = original_axes[0]
+    target["y"] = original_axes[1]
+
+    # Calculate the ssim before the offset are applied
+    ssim_before = _calc_ssim(target, reference, subset=subset)
+
+    return OffsetInfo(
+        x_offset=potential_x_offset,
+        y_offset=potential_y_offset,
+        shift_reliability=shift_reliability,
+        ssim_before=ssim_before,
+        ssim_after=ssim_after,
+    )
+
+
+def _calc_shift_reliability(shifted_cross_power_spectrum: np.ndarray, x_peak: int, y_peak: int) -> float:
+    # calculate mean power at peak
+    power_at_peak = np.mean(shifted_cross_power_spectrum[y_peak - 1 : y_peak + 2, x_peak - 1 : x_peak + 2])
+
+    # calculate mean power without peak + 3* standard deviation
+    shifted_cross_power_spectrum_unpeaked = shifted_cross_power_spectrum.copy()
+    shifted_cross_power_spectrum_unpeaked[y_peak - 1 : y_peak + 2, x_peak - 1 : x_peak + 2] = -9999
+    shifted_cross_power_spectrum_unpeaked = np.ma.masked_equal(shifted_cross_power_spectrum_unpeaked, -9999)
+    power_without_peak = np.mean(shifted_cross_power_spectrum_unpeaked) + 2 * np.std(
+        shifted_cross_power_spectrum_unpeaked
+    )
+
+    # calculate confidence
+    shift_reliability = 100 - ((power_without_peak / power_at_peak) * 100)
+    shift_reliability = min(max(shift_reliability, 0), 100)
+
+    return shift_reliability
+
+
+def _calc_ssim(
+    target: xr.DataArray, reference: xr.DataArray, subset: dict[Literal["x", "y"], slice] | Literal[False]
+) -> float:
+    target_window, reference_window = _get_window_subsets(target, reference, subset)
+
+    # Normalise both arrays
+    target_window = (target_window - target_window.min()) / (target_window.max() - target_window.min())
+    reference_window = (reference_window - reference_window.min()) / (reference_window.max() - reference_window.min())
+    # Mask NaN values
+    target_window = np.ma.masked_array(target_window.astype(np.float64).values, mask=target_window.isnull())
+    reference_window = np.ma.masked_array(reference_window.astype(np.float64).values, mask=reference_window.isnull())
+    return ssim(target_window, reference_window, data_range=1)
+
+
+def get_offsets(
     target: xr.Dataset | xr.DataArray,
     reference: xr.Dataset | xr.DataArray,
     bands: list[str] | Literal["multiband"] | str = "multiband",
@@ -154,8 +365,9 @@ def get_offsets(  # noqa: C901
     target_mask: xr.DataArray | None = None,
     reference_mask: xr.DataArray | None = None,
     max_invalid_ratio: float = 0.01,
+    max_iter: int = 5,
     resample_to: Literal["reference", "target"] | None = None,
-) -> tuple[int, int]:
+) -> OffsetInfo | dict[str, OffsetInfo]:
     """Get the offsets between a target and a reference using the AROSICS algorithm.
 
     Note:
@@ -193,6 +405,7 @@ def get_offsets(  # noqa: C901
         max_invalid_ratio (float): The maximum ratio of invalid pixels in the target and reference subset masks.
             Is not used if the masks are not provided.
             Defaults to 0.01.
+        max_iter (int): The maximum number of iterations to find the offset. Defaults to 5.
         resample_to (Literal["reference", "target"] | None): The dataset to resample the other dataset to.
             If "reference", the target dataset is resampled to the reference dataset.
             If "target", the reference dataset is resampled to the target dataset.
@@ -201,7 +414,7 @@ def get_offsets(  # noqa: C901
             This assumes that the pixel grids of the target and reference datasets are already aligned.
 
     Returns:
-        tuple[int, int]: The offsets in x and y direction between the target and reference datasets.
+        OffsetInfo | dict[str, OffsetInfo]: The offsets in x and y direction between the target and reference datasets.
 
     Raises:
         ValueError: If the target and reference are not both datasets or dataarrays.
@@ -269,7 +482,7 @@ def get_offsets(  # noqa: C901
         )
 
     if subset is None:
-        target, reference = _find_suitable_subset(
+        subset = _find_suitable_subset_slices(
             target,
             reference,
             window_size=window_size,
@@ -277,39 +490,16 @@ def get_offsets(  # noqa: C901
             reference_mask=reference_mask,
             max_invalid_ratio=max_invalid_ratio,
         )
-        if reference is None or target is None:
-            raise ValueError(
-                "No suitable subset found for alignment. Try decreasing the window size and check the masks."
-            )
-    elif isinstance(subset, dict):
-        reference = reference.isel(x=subset["x"], y=subset["y"])
-        target = target.isel(x=subset["x"], y=subset["y"])
 
     # Calculate the offset between the two subsets
     if both_are_dataarrays:
-        x_offset, y_offset = _calculate_offset(reference, target)
-        logger.debug(f"Offset: x_offset={x_offset}, y_offset={y_offset}")
-        return x_offset, y_offset
+        offset_info = _calculate_offset(reference, target, subset=subset, max_iter=max_iter)
+        return offset_info
     else:
         offsets = {
-            "x": [],
-            "y": [],
+            band: _calculate_offset(reference[band], target[band], subset=subset, max_iter=max_iter) for band in bands
         }
-        for band in bands:
-            x_offset, y_offset = _calculate_offset(reference[band], target[band])
-            offsets["x"].append(x_offset)
-            offsets["y"].append(y_offset)
-
-        # Calculate the average offset
-        x_offset = np.mean(offsets["x"])
-        y_offset = np.mean(offsets["y"])
-
-        dbg_msg = f"Average offset: x_offset={x_offset}, y_offset={y_offset}"
-        for i in range(len(bands)):
-            dbg_msg += f"\n- Band {bands[i]}: x_offset={offsets['x'][i]}, y_offset={offsets['y'][i]}"
-        logger.debug(dbg_msg)
-        print(dbg_msg)
-        return x_offset, y_offset
+        return offsets
 
 
 def align(
@@ -321,10 +511,13 @@ def align(
     target_mask: xr.DataArray | None = None,
     reference_mask: xr.DataArray | None = None,
     max_invalid_ratio: float = 0.01,
+    max_iter: int = 5,
+    min_reliability: float = 30.0,
+    max_offset: float = 10.0,
     resample_to: Literal["reference", "target"] | None = None,
-    return_offsets: bool = False,
+    return_offset: bool = False,
     inplace: bool = False,
-) -> tuple[xr.Dataset | xr.DataArray, tuple[int, int]] | xr.Dataset | xr.DataArray:
+) -> tuple[xr.Dataset | xr.DataArray, OffsetInfo | dict[str, OffsetInfo]] | xr.Dataset | xr.DataArray:
     """Align a target to an reference using the AROSICS algorithm.
 
     Note:
@@ -362,22 +555,27 @@ def align(
         max_invalid_ratio (float): The maximum ratio of invalid pixels in the target and reference subset masks.
             Is not used if the masks are not provided.
             Defaults to 0.01.
+        max_iter (int): The maximum number of iterations to find the offset. Defaults to 5.
+        min_reliability (float): The minimum reliability (in %) of the offset to consider it valid.
+            Defaults to 30.0.
+        max_offset (float): The maximum offset in pixels to consider the offset valid.
+            Defaults to 10.0.
         resample_to (Literal["reference", "target"] | None): The dataset to resample the other dataset to.
             If "reference", the target dataset is resampled to the reference dataset.
             If "target", the reference dataset is resampled to the target dataset.
             Defaults to None.
             If None, no resampling is done.
             This assumes that the pixel grids of the target and reference datasets are already aligned.
-        return_offsets (bool): If True, returns the offsets instead of aligning the target dataset.
+        return_offset (bool): If True, returns the offsets instead of aligning the target dataset.
         inplace (bool): If True, modifies the target dataset in place.
 
     Returns:
-        tuple[xr.Dataset | xr.DataArray, tuple[int, int]] | xr.Dataset | xr.DataArray:
+        tuple[xr.Dataset | xr.DataArray, OffsetInfo | dict[str, OffsetInfo]] | xr.Dataset | xr.DataArray:
             The aligned target dataset or dataarray.
-            If return_offsets is True, also returns the offsets in x and y direction as a tuple.
+            If return_offset is True, also returns the offsets in x and y direction as a tuple.
 
     """
-    x_offset, y_offset = get_offsets(
+    offset_info = get_offsets(
         target,
         reference,
         bands=bands,
@@ -386,17 +584,38 @@ def align(
         target_mask=target_mask,
         reference_mask=reference_mask,
         max_invalid_ratio=max_invalid_ratio,
+        max_iter=max_iter,
         resample_to=resample_to,
     )
 
-    # Apply the offset to the original target dataset
+    # Case: DataArray
+    if isinstance(offset_info, OffsetInfo):
+        if not offset_info.is_valid(max_offset=max_offset, min_reliability=min_reliability):
+            logger.warning("No valid offset found. Returning the original target dataset.")
+            return target, offset_info
+        x_offset = offset_info.x_offset
+        y_offset = offset_info.y_offset
+
+    # Case: Dataset
+    else:
+        # Resolve the best offset from multiple bands
+        x_offset, y_offset = _xy_from_multiple(
+            offset_info,
+            max_offset=max_offset,
+            min_reliability=min_reliability,
+        )
+
+    if x_offset == 0 and y_offset == 0:
+        return target, offset_info
+
+    # Apply the offset to the target dataset
     if not inplace:
         target = target.copy(deep=True)
     target["x"] = target.x + x_offset * target.odc.geobox.resolution.x
     target["y"] = target.y + y_offset * target.odc.geobox.resolution.y
 
-    if return_offsets:
-        return target, (x_offset, y_offset)
+    if return_offset:
+        return target, offset_info
     else:
         return target
 
@@ -619,7 +838,7 @@ def visualize_alignment(  # noqa: C901
         vizs[3] = (fig, axs)
 
     if subset is None:
-        target, reference = _find_suitable_subset(
+        subset = _find_suitable_subset_slices(
             target,
             reference,
             window_size=window_size,
@@ -627,32 +846,25 @@ def visualize_alignment(  # noqa: C901
             reference_mask=reference_mask,
             max_invalid_ratio=max_invalid_ratio,
         )
-        if reference is None or target is None:
-            raise ValueError(
-                "No suitable subset found for alignment. Try decreasing the window size and check the masks."
-            )
-    elif isinstance(subset, dict):
-        reference = reference.isel(x=subset["x"], y=subset["y"])
-        target = target.isel(x=subset["x"], y=subset["y"])
 
-    if subset is None or isinstance(subset, dict):
+    if isinstance(subset, dict):
+        target_window, reference_window = _get_window_subsets(target, reference, subset)
         fig, axs = plt.subplots(2, 2, figsize=(8, 8))
         if both_are_dataarrays:
-            target.plot(ax=axs[0, 0], cmap="gray")
+            target_window.plot(ax=axs[0, 0], cmap="gray")
             axs[0, 0].set_title("Target - Subset for Alignment")
-            reference.plot(ax=axs[0, 1], cmap="gray")
+            reference_window.plot(ax=axs[0, 1], cmap="gray")
             axs[0, 1].set_title("Reference - Subset for Alignment")
-            target_mask.loc[{"x": target.x, "y": target.y}]
         else:
-            target[bands[0]].plot(ax=axs[0, 0], cmap="gray")
+            target_window[bands[0]].plot(ax=axs[0, 0], cmap="gray")
             axs[0, 0].set_title(f"Target {bands[0]} - Subset for Alignment")
-            reference[bands[0]].plot(ax=axs[0, 1], cmap="gray")
+            reference_window[bands[0]].plot(ax=axs[0, 1], cmap="gray")
             axs[0, 1].set_title(f"Reference {bands[0]} - Subset for Alignment")
         if target_mask is not None:
-            target_mask.sel(x=target.x, y=target.y).plot(ax=axs[1, 0], vmin=0, vmax=1)
+            target_mask.sel(x=target_window.x, y=target_window.y).plot(ax=axs[1, 0], vmin=0, vmax=1)
             axs[1, 0].set_title("Target Mask - Subset for Alignment")
         if reference_mask is not None:
-            reference_mask.sel(x=reference.x, y=reference.y).plot(ax=axs[1, 1], vmin=0, vmax=1)
+            reference_mask.sel(x=reference_window.x, y=reference_window.y).plot(ax=axs[1, 1], vmin=0, vmax=1)
             axs[1, 1].set_title("Reference Mask - Subset for Alignment")
         vizs[4] = (fig, axs)
 
@@ -697,7 +909,6 @@ def visualize_alignment(  # noqa: C901
         dbg_msg = f"Average offset: x_offset={x_offset}, y_offset={y_offset}"
         for i in range(len(bands)):
             dbg_msg += f"\n- Band {bands[i]}: x_offset={offsets['x'][i]}, y_offset={offsets['y'][i]}"
-        print(dbg_msg)
 
     target_orig["x"] = target_orig.x + x_offset * target_orig.odc.geobox.resolution.x
     target_orig["y"] = target_orig.y + y_offset * target_orig.odc.geobox.resolution.y
