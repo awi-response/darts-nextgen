@@ -18,6 +18,8 @@ from pystac import Item
 from pystac_client import Client
 from stopuhr import stopwatch
 
+from darts_acquisition.utils.copernicus import init_copernicus
+
 logger = logging.getLogger(__name__.replace("darts_", "darts."))
 
 
@@ -280,6 +282,7 @@ def load_s2_from_stac(
     bands_mapping: dict = {"B02_10m": "blue", "B03_10m": "green", "B04_10m": "red", "B08_10m": "nir"},
     scale_and_offset: bool | tuple[float, float] = True,
     cache: Path | None = None,
+    aws_profile_name: str = "default",
 ) -> xr.Dataset:
     """Load a Sentinel-2 scene from the Copernicus STAC API and return it as an xarray dataset.
 
@@ -324,6 +327,7 @@ def load_s2_from_stac(
         with stopwatch(f"Downloading data from STAC for {s2id=}", printer=logger.debug):
             # We can't use xpystac here, because they enforce chunking of 1024x1024, which results in long loading times
             # and a potential AWS limit error.
+            init_copernicus(profile_name=aws_profile_name)
             ds_s2 = stac_load(
                 [s2item],
                 bands=bands,
@@ -496,6 +500,7 @@ def match_s2ids_from_geodataframe_stac(
     max_cloud_cover: int = 20,
     min_intersects: float = 0.7,
     simplify_geometry: float | Literal[False] = False,
+    save_scores: Path | None = None,
 ) -> dict[int, Item]:
     """Match items from a GeoDataFrame with Sentinel-2 items from the STAC API based on a date range.
 
@@ -509,6 +514,7 @@ def match_s2ids_from_geodataframe_stac(
             using the `simplify` method of geopandas. If False, no simplification will be done.
             This may become useful for large / weird AOIs which are too large for the STAC API.
             Defaults to False.
+        save_scores (Path | None, optional): If provided, the scores will be saved to this path as a Parquet file.
 
     Raises:
         ValueError: If the 'date' column is not present or not of type datetime.
@@ -526,6 +532,7 @@ def match_s2ids_from_geodataframe_stac(
         aoi["geometry"] = aoi.geometry.simplify(simplify_geometry)
 
     matches = {}
+    scores = []
     for i, row in aoi.iterrows():
         intersects = row.geometry.__geo_interface__
         start_date = (row["date"] - pd.Timedelta(days=day_range)).strftime("%Y-%m-%d")
@@ -544,6 +551,7 @@ def match_s2ids_from_geodataframe_stac(
             [item.to_dict() for item in intersecting_items.values()],
             crs="EPSG:4326",
         )
+        intersecting_items_gdf["footprint_index"] = i
         intersecting_items_gdf["s2id"] = list(intersecting_items.keys())
         # Some item geometries might be invalid (probably because of the arctic circle)
         # We will drop those items, since they cannot be used for intersection calculations
@@ -606,5 +614,10 @@ def match_s2ids_from_geodataframe_stac(
         # Get the s2id with the lowest score
         best_item = intersecting_items_gdf.loc[intersecting_items_gdf["score"].idxmin()]
         matches[i] = intersecting_items[best_item["s2id"]]
+        scores.append(intersecting_items_gdf)
+
+    if save_scores:
+        scores_df = gpd.GeoDataFrame(pd.concat(scores))
+        scores_df.to_parquet(save_scores)
 
     return matches

@@ -6,8 +6,6 @@ from math import ceil, sqrt
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal
 
-from darts.utils.copernicus import init_copernicus
-
 logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
@@ -62,44 +60,6 @@ def _parse_date(row):
         return pd.to_datetime(row["image_id"].split("_")[0], format="%Y%m%d", utc=True)
 
 
-def align_s2_to_planet(
-    data_dir: Path,
-    labels_dir: Path,
-    s2_cache_dir: Path | None = None,
-):
-    import geopandas as gpd
-    import pandas as pd
-    from darts_acquisition.planet import load_planet_scene
-    from darts_acquisition.s2 import load_s2_from_stac, match_s2ids_from_geodataframe_stac
-
-    init_copernicus()
-
-    footprints = (gpd.read_file(footprints_file) for footprints_file in labels_dir.glob("*/ImageFootprints*.gpkg"))
-    footprints = gpd.GeoDataFrame(pd.concat(footprints, ignore_index=True))
-    footprints["date"] = footprints.apply(_parse_date, axis=1)
-    fpaths = {fpath.stem: fpath for fpath in _planet_legacy_path_gen(data_dir)}
-    footprints["fpath"] = footprints.image_id.map(fpaths)
-
-    matches = match_s2ids_from_geodataframe_stac(
-        aoi=footprints,
-        day_range=7,
-        max_cloud_cover=10,
-        simplify_geometry=0.1,
-    )
-    footprints["s2_item"] = footprints.index.map(matches)
-
-    for i, row in footprints.iterrows():
-        if row["s2_item"] is None:
-            logger.warning(f"No matching Sentinel-2 item found for {row['image_id']}.")
-            continue
-
-        s2_item = row["s2_item"]
-        logger.info(f"Found matching Sentinel-2 item {s2_item.id} for {row['image_id']}.")
-
-        s2ds = load_s2_from_stac(s2_item, cache=s2_cache_dir)
-        planetds = load_planet_scene(row.fpath)
-
-
 def preprocess_s2_train_data(
     *,
     labels_dir: Path,
@@ -115,6 +75,9 @@ def preprocess_s2_train_data(
     device: Literal["cuda", "cpu", "auto"] | int | None = None,
     ee_project: str | None = None,
     ee_use_highvolume: bool = True,
+    matching_day_range: int = 7,
+    matching_max_cloud_cover: int = 10,
+    matching_min_intersects: float = 0.7,
     tpi_outer_radius: int = 100,
     tpi_inner_radius: int = 0,
     patch_size: int = 1024,
@@ -122,6 +85,7 @@ def preprocess_s2_train_data(
     exclude_nopositive: bool = False,
     exclude_nan: bool = True,
     mask_erosion_size: int = 3,
+    save_matching_scores: bool = False,
 ):
     """Preprocess Planet data for training.
 
@@ -184,6 +148,13 @@ def preprocess_s2_train_data(
         ee_project (str, optional): The Earth Engine project ID or number to use. May be omitted if
             project is defined within persistent API credentials obtained via `earthengine authenticate`.
         ee_use_highvolume (bool, optional): Whether to use the high volume server (https://earthengine-highvolume.googleapis.com).
+            Defaults to True.
+        matching_day_range (int, optional): The day range to use for matching S2 scenes to Planet footprints.
+            Defaults to 7.
+        matching_max_cloud_cover (int, optional): The maximum cloud cover percentage to use for matching S2 scenes
+            to Planet footprints. Defaults to 10.
+        matching_min_intersects (float, optional): The minimum intersection percentage to use for matching S2 scenes
+            to Planet footprints. Defaults to 0.7.
         tpi_outer_radius (int, optional): The outer radius of the annulus kernel for the tpi calculation
             in m. Defaults to 100m.
         tpi_inner_radius (int, optional): The inner radius of the annulus kernel for the tpi calculation
@@ -195,7 +166,7 @@ def preprocess_s2_train_data(
         exclude_nan (bool, optional): Whether to exclude patches where the input data has nan values.
             Defaults to True.
         mask_erosion_size (int, optional): The size of the disk to use for mask erosion and the edge-cropping.
-            Defaults to 10.
+            Defaults to 3.
 
     """
     current_time = time.strftime("%Y-%m-%d_%H-%M-%S")
@@ -233,18 +204,14 @@ def preprocess_s2_train_data(
     from darts_segmentation.utils import Bands
     from darts_utils.tilecache import XarrayCacheManager
     from odc.geo.geom import Geometry
-    from odc.stac import configure_rio
     from pystac import Item
     from rich.progress import track
 
-    from darts.utils.copernicus import init_copernicus
     from darts.utils.cuda import decide_device
     from darts.utils.earthengine import init_ee
 
     device = decide_device(device)
-    init_copernicus()
     init_ee(ee_project, ee_use_highvolume)
-    configure_rio(cloud_defaults=True, aws={"aws_unsigned": True})
     logger.info("Configured Rasterio")
 
     labels = (gpd.read_file(labels_file) for labels_file in labels_dir.glob("*/TrainingLabel*.gpkg"))
@@ -252,6 +219,7 @@ def preprocess_s2_train_data(
 
     footprints = (gpd.read_file(footprints_file) for footprints_file in labels_dir.glob("*/ImageFootprints*.gpkg"))
     footprints = gpd.GeoDataFrame(pd.concat(footprints, ignore_index=True))
+    footprints["date"] = footprints.apply(_parse_date, axis=1)
     if planet_data_dir is not None:
         fpaths = {fpath.stem: fpath for fpath in _planet_legacy_path_gen(planet_data_dir)}
         footprints["fpath"] = footprints.image_id.map(fpaths)
@@ -259,9 +227,11 @@ def preprocess_s2_train_data(
     # 1. Step: find S2 scenes that intersect with the Planet footprints
     matches = match_s2ids_from_geodataframe_stac(
         aoi=footprints,
-        day_range=7,
-        max_cloud_cover=10,
+        day_range=matching_day_range,
+        max_cloud_cover=matching_max_cloud_cover,
+        min_intersects=matching_min_intersects,
         simplify_geometry=0.1,
+        save_scores=train_data_dir / "matching-scores.parquet" if save_matching_scores else None,
     )
     footprints["s2_item"] = footprints.index.map(matches)
 
@@ -346,11 +316,13 @@ def preprocess_s2_train_data(
                             target_mask=s2ds.quality_data_mask == 2,
                             reference_mask=planet_mask.quality_data_mask == 2,
                             resample_to="target",
-                            return_offsets=True,
+                            window_size=128,
+                            return_offset=True,
                             inplace=True,
+                            bands=["red", "green", "blue", "nir"],
                         )
-                        s2ds.attrs["offset_x"] = offsets[0]
-                        s2ds.attrs["offset_y"] = offsets[1]
+                        s2ds.attrs["offset_x"] = offsets.x_offset
+                        s2ds.attrs["offset_y"] = offsets.y_offset
                         logger.debug(f"Aligned S2 dataset to Planet dataset with offsets {offsets}.")
                     except Exception:
                         logger.error(
@@ -362,7 +334,7 @@ def preprocess_s2_train_data(
                 s2ds = s2ds.odc.crop(geom, apply_mask=True)
 
                 # Preprocess as usual
-                arctidem_res = 2
+                arctidem_res = 10
                 arcticdem_buffer = ceil(tpi_outer_radius / arctidem_res * sqrt(2))
                 arcticdem = load_arcticdem(
                     s2ds.odc.geobox, arcticdem_dir, resolution=arctidem_res, buffer=arcticdem_buffer
