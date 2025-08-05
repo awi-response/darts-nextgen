@@ -3,23 +3,24 @@
 In the training dataset preparation, all bands available from the preprocessing will be included into the train dataset.
 They are normalised and clipped to the range [0, 1], by hard-coded normalisation factors and offsets.
 When training, a subset of available bands can be selected, on which the model should be trained.
+This enables the possibility to quickly test different band combinations and their influence on the model performance without the need to preprocess the data again.
+
 The information about which bands used for training is the written into the model checkpoint.
 This information is then used to select the bands for inference.
 
-## Current State
-
-- Values & ranges after preprocessing
-- Training Dataset preprocessing normalisation
-- What is stored in the model
-- How that is applied during inference
-
-## Future
+## Representations states
 
 Split up the data representation into three different representations:
 
 - **Disk**: Data is stored in the most efficient way, e.g. uint16 for Sentinel 2, uint8 for TCVIS
 - **Memory**: Data is stored in the most convenient and correct way for visualisation purposes. This should be equal to the original data representation. E.g. [-1, 1] float for NDVI
-- **Model**: Data ist normalised to [0, 1] for training and inference
+- **Model**: Data ist normalised to [0, 1] for training and inference and is always `float32`
+
+!!! note "Memory representation exeptions"
+
+    The memory representation is not always the same as the original data representation.
+    For example, Satellite data like Sentinel 2 is originally stored as `uint16`, however, we also want to account for NaN values in the data.
+    Therefore, the memory representation of Sentinel 2 data is `float32` instead, but with the same range as the original data.
 
 Therefore the data convertion happens in two different places of the pipeline:
 
@@ -35,26 +36,44 @@ Therefore the data convertion happens in two different places of the pipeline:
 
 !!! note "Terminology"
 
-    Because the data can have 3 different representations, instead of the usual two states (encoded and decoded), the terminology also changes a little.
-    When talking about one of the convertions Disk -> Memory -> Model, the following applies to the traditional terminology:
-
-    - **Encoded**: The data on the left side of the arrow.
-    - **Decoded**: The data on the right side of the arrow.
-    
-    So, in the case of a convertion from disk to memory, the encoded data is the data in disk-representation and the decoded data is the data in memory-representation.
-    In case of the convertion from memory to model, the encoded data is the data in memory-representation and the decoded data is the data in model-representation.
-
-    However, outside of the context of convertions, we may use a different terminology:
+    Because the data can have 3 different representations, it becomes unclear what is meant by "encoded" and "decoded".
+    In general, the "Memory" representation is always the "true" and therefore "decoded" representation.
+    However, outside of the context of convertions, we may use a following terminology:
 
     - **Encoded**: The data in the representation that is used for caching and exports, i.e. disk-representation.
     - **Decoded**: The data in the representation that is used for working and visualisation, i.e. memory-representation.
     - **Normalised**: The data in the representation that is used for training and inference, i.e. model-representation.
 
-### Implementation plan
+| DataVariable             | shape  | dtype (memory) | dtype(disk) | valid-range | disk-range | no-data (disk) | attrs                         | source                  | note |
+| ------------------------ | ------ | -------------- | ----------- | ----------- | ---------- | -------------- | ----------------------------- | ----------------------- | ---- |
+| `blue`                   | (x, y) | float32        | uint16      |             |            |                | data_source, long_name, units | PLANET / S2             |      |
+| `green`                  | (x, y) | float32        | uint16      |             |            |                | data_source, long_name, units | PLANET / S2             |      |
+| `red`                    | (x, y) | float32        | uint16      |             |            |                | data_source, long_name, units | PLANET / S2             |      |
+| `nir`                    | (x, y) | float32        | uint16      |             |            |                | data_source, long_name, units | PLANET / S2             |      |
+| `dem`                    | (x, y) | float32        |             | [0,[        |            |                | data_source, long_name, units | SmartGeocubes           |      |
+| `dem_datamask`           | (x, y) | bool           | bool        | True/False  | True/False | False          | data_source, long_name, units | SmartGeocubes           |      |
+| `tc_brightness`          | (x, y) | uint8          | uint8       | [0, 255]    | [0, 255]   | -              | data_source, long_name        | EarthEngine             |      |
+| `tc_greenness`           | (x, y) | uint8          | uint8       | [0, 255]    | [0, 255]   | -              | data_source, long_name        | EarthEngine             |      |
+| `tc_wetness`             | (x, y) | uint8          | uint8       | [0, 255]    | [0, 255]   | -              | data_source, long_name        | EarthEngine             |      |
+| `ndvi`                   | (x, y) | float32        | uint16      | [-1, 1]     | [0, 20000] |                | data_source, long_name        | Preprocessing           |      |
+| `relative_elevation`     | (x, y) | float32        |             |             |            |                | data_source, long_name, units | Preprocessing           |      |
+| `slope`                  | (x, y) | float32        |             | [0, 90]     |            |                | data_source, long_name        | Preprocessing           |      |
+| `aspect`                 | (x, y) | float32        |             | [0, 360]    |            |                | data_source, long_name        | Preprocessing           |      |
+| `hillshade`              | (x, y) | float32        |             | [0, 1]      |            |                | data_source, long_name        | Preprocessing           |      |
+| `curvature`              | (x, y) | float32        |             |             |            |                | data_source, long_name        | Preprocessing           |      |
+| `probabilities`          | (x, y) | float32        |             | [0, 1]      |            |                | long_name                     | Ensemble / Segmentation |      |
+| `probabilities-model-X*` | (x, y) | float32        |             | [0, 1]      |            |                | long_name                     | Ensemble / Segmentation |      |
+| `probabilities_percent`  | (x, y) | uint8          |             | [0, 100]    |            | 255            | long_name, units              | Postprocessing          |      |
+| `binarized_segmentation` | (x, y) |                |             | 0/1         |            | -              | long_name                     | Postprocessing          |      |
 
-All Disk <-> Memory convertion should be done via [xarray through their CF convention layer](https://docs.xarray.dev/en/stable/user-guide/io.html#reading-encoded-data) (`decode_cf=True`)
-For that, the attributes `_FillValue`, `scale_factor`, and `add_offset` should be set by the module which creates that data.
-This also includes the Cache-Manager, even if it just reads the data from disk, because these attributes getting lost at read.
+- `*` = Model name, e.g. `probabilities-model-UNet`, `probabilities-model-ResNet`, etc.
+- The `no-data` value in memory for `float32` is always `nan`.
+
+## Implementation Details
+
+All Disk <-> Memory convertion are be done via [xarray through their CF convention layer](https://docs.xarray.dev/en/stable/user-guide/io.html#reading-encoded-data) (`decode_cf=True`)
+For that, the attributes `_FillValue`, `scale_factor`, and `add_offset` are set by a helper module `darts_utils.bands.BandLoader`.
+This helper is used by the Cache-Manager and the export module to ensure that the data is always in the correct representation.
 
 !!! danger "_FillValue"
 
@@ -70,46 +89,11 @@ This also includes the Cache-Manager, even if it just reads the data from disk, 
     >>> "After reading without _FillValue: dtype=uint16, attrs={'data_source': 'planet', 'long_name': 'NDVI'}"
     ```
 
-### Disk representation
+### Scale and Offset
 
-!!! info
+The scale and offset can be simply derived from the disk-range:
 
-    This only applies to caching and exports of the data, not to the sources of the data.
-
-| DataVariable             | shape  | dtype   | valid-range | no-data | attrs                         | source                  | note |
-| ------------------------ | ------ | ------- | ----------- | ------- | ----------------------------- | ----------------------- | ---- |
-| `blue`                   | (x, y) | uint16  | [0,3000+]   | 0       | data_source, long_name, units | PLANET / S2             |      |
-| `green`                  | (x, y) | uint16  | [0,3000+]   | 0       | data_source, long_name, units | PLANET / S2             |      |
-| `red`                    | (x, y) | uint16  | [0,3000+]   | 0       | data_source, long_name, units | PLANET / S2             |      |
-| `nir`                    | (x, y) | uint16  | [0,3000+]   | 0       | data_source, long_name, units | PLANET / S2             |      |
-| `dem`                    | (x, y) | float32 | [0,[        | nan     | data_source, long_name, units | SmartGeocubes           |      |
-| `dem_datamask`           | (x, y) | bool    | True/False  | False   | data_source, long_name, units | SmartGeocubes           |      |
-| `tc_brightness`          | (x, y) | uint8   | [0, 255]    | -       | data_source, long_name        | EarthEngine             |      |
-| `tc_greenness`           | (x, y) | uint8   | [0, 255]    | -       | data_source, long_name        | EarthEngine             |      |
-| `tc_wetness`             | (x, y) | uint8   | [0, 255]    | -       | data_source, long_name        | EarthEngine             |      |
-| `ndvi`                   | (x, y) | uint16  | [0, 20000]  | 0       | data_source, long_name        | Preprocessing           |      |
-| `relative_elevation`     | (x, y) | int16   |             | 0       | data_source, long_name, units | Preprocessing           |      |
-| `slope`                  | (x, y) | float32 | [0, 90]     | nan     | data_source, long_name        | Preprocessing           |      |
-| `aspect`                 | (x, y) | float32 | [0, 360]    | nan     | data_source, long_name        | Preprocessing           |      |
-| `hillshade`              | (x, y) | float32 | [0, 1]      | nan     | data_source, long_name        | Preprocessing           |      |
-| `curvature`              | (x, y) | float32 |             | nan     | data_source, long_name        | Preprocessing           |      |
-| `probabilities`          | (x, y) | float32 |             | nan     | long_name                     | Ensemble / Segmentation |      |
-| `probabilities-model-X*` | (x, y) | float32 |             | nan     | long_name                     | Ensemble / Segmentation |      |
-| `probabilities_percent`  | (x, y) | uint8   | [0, 100]    | 255     | long_name, units              | Postprocessing          |      |
-| `binarized_segmentation` | (x, y) | uint8   | 0/1         | -       | long_name                     | Postprocessing          |      |
-
-TODO: Speak with Jonas and Ingmar about how we want to store things.
-
-### Memory representation
-
-The following scale and offset values are used for the normalisation:
-
-TODO
-
-### Model representation
-
-The model representation of each band is normalised to the range `[0, 1]` and uses `float32`.
-In addition to the convertion, the values are clipped to the range `[0, 1]` to avoid outliers.
-The following scale and offset values are used for the normalisation:
-
-TODO
+```py
+offset = disk_range[0]
+scale = disk_range[1] - disk_range[0]
+```
