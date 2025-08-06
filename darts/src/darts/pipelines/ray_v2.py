@@ -136,6 +136,8 @@ class _BaseRayPipeline(ABC):
         import ray
 
         mem_config = configure_ray_memory()
+        logger.debug("mem config")
+        logger.debug(f"{mem_config}")
 
         logger.debug(f"\nMemory Configuration:")
         logger.debug(f"System Total: {mem_config['system_total_memory_gb']:.1f} GB")
@@ -197,6 +199,10 @@ class _BaseRayPipeline(ABC):
                                 # Spilling
                                 "max_io_workers": min(20, os.cpu_count()),
                                 "min_spilling_size": 500 * 1024 * 1024,
+                                # Add these to ensure metrics are exposed:
+                                "metrics_export_port": 8080,  # Explicit port for Prometheus
+                                #this did not work
+                                # "disable_usage_stats": False,  # Ensure stats are reported
                                 },
             )
         else:
@@ -681,6 +687,8 @@ class AOISentinel2RayPipeline(_BaseRayPipeline):
         from darts.pipelines._ray_wrapper import RayDataset
 
         s2id: str = tileinfo["tilekey"]
+        print("calling load s2 from gee")
+        print(s2id, 'was s2id')
         tile = load_s2_from_gee(s2id, cache=self.input_cache)
         tile = RayDataset(dataset=tile)
         return {"tile": tile, **tileinfo}
