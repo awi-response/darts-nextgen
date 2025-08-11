@@ -102,9 +102,6 @@ class _BaseRayPipeline(ABC):
 
         from darts.utils.cuda import get_default_network_interface
 
-        ray_wrapper_logger = logging.getLogger('darts.pipelines._ray_wrapper')
-        logger.debug(f"Raywrapper logger {ray_wrapper_logger}")
-
         current_network_interface = get_default_network_interface()
         logger.debug(f"Current network interface {current_network_interface}")
 

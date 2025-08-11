@@ -7,11 +7,8 @@ from typing import Literal
 
 logger = logging.getLogger(__name__)
 
-# TODO set or get network values add here
-import netifaces
-
-
 def get_default_network_interface():
+    import netifaces
     """
     Get the name of the default network interface that has a default route.
     Returns 'ens3' if found, otherwise tries common interface names.
