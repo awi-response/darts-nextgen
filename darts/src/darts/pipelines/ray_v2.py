@@ -194,7 +194,9 @@ class _BaseRayPipeline(ABC):
                 "cuda_available": torch.cuda.is_available(),
                 "device_count": torch.cuda.device_count(),
                 "current_device": torch.cuda.current_device(),
+                "env_vars": {k: v for k, v in os.environ.items() if "CUDA" in k or "NVIDIA" in k}
             }
+
 
         # Test before pipeline execution
         gpu_status = ray.get(debug_gpu.remote())
