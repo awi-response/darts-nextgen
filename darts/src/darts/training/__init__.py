@@ -7,3 +7,4 @@ from darts.training.preprocess_planet_v2_nina import (
 from darts.training.preprocess_planet_v2_pingo import (
     preprocess_planet_train_data_pingo as preprocess_planet_train_data_pingo,
 )
+from darts.training.preprocess_sentinel2_v2 import preprocess_s2_train_data as preprocess_s2_train_data

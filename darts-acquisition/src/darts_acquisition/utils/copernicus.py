@@ -3,7 +3,7 @@
 import logging
 import os
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger(__name__.replace("darts_", "darts."))
 
 
 def init_copernicus(profile_name: str = "default"):
@@ -36,13 +36,13 @@ def init_copernicus(profile_name: str = "default"):
 
     odc.stac.configure_rio(
         cloud_defaults=True,
-        verbose=True,
+        verbose=False,
         aws={
             "profile_name": profile_name,
             "aws_access_key_id": credentials.access_key,
             "aws_secret_access_key": credentials.secret_key,
             "region_name": "default",
-            "endpoint_url": "eodata.ams.dataspace.copernicus.eu",
+            "endpoint_url": "eodata.dataspace.copernicus.eu",
         },
         AWS_VIRTUAL_HOSTING=False,
     )

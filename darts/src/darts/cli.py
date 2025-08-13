@@ -32,6 +32,7 @@ from darts.training import (
     preprocess_planet_train_data,
     preprocess_planet_train_data_for_nina,
     preprocess_planet_train_data_pingo,
+    preprocess_s2_train_data,
 )
 from darts.utils.bench import benchviz
 from darts.utils.config import ConfigParser
@@ -108,6 +109,7 @@ app.command(group=pipeline_group)(benchviz)
 app.command(group=train_group)(preprocess_planet_train_data)
 app.command(group=train_group)(preprocess_planet_train_data_pingo)
 app.command(group=train_group)(preprocess_planet_train_data_for_nina)
+app.command(group=train_group)(preprocess_s2_train_data)
 app.command(group=train_group)(train_smp)
 app.command(group=train_group)(test_smp)
 app.command(group=train_group)(convert_lightning_checkpoint)
