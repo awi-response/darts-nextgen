@@ -10,10 +10,7 @@ from xrspatial.utils import ArrayTypeFunctionMapping, cuda_args, ngjit, not_impl
 try:
     import cupy
 except ImportError:
-
-    class cupy:  # noqa: D101, N801
-        ndarray = False
-
+    cupy = None
 
 RADIAN = 180 / np.pi
 
@@ -58,7 +55,7 @@ def _run_gpu(arr, d, out):
             out[i, j] = (aoi_max - aoi_min) / aoi_max
 
 
-def _run_cupy(data: cupy.ndarray, d: int) -> cupy.ndarray:
+def _run_cupy(data, d: int):
     data = data.astype(cupy.float32)
     griddim, blockdim = cuda_args(data.shape)
     out = cupy.empty(data.shape, dtype="float32")
@@ -69,12 +66,23 @@ def _run_cupy(data: cupy.ndarray, d: int) -> cupy.ndarray:
 
 def _run_dask_numpy(data: da.Array, d: int) -> da.Array:
     data = data.astype(np.float32)
-    _func = partial(_run_numpy, d=d)
+    _func = partial(_run_numpy, d=d)  # noqa: RUF052
     out = data.map_overlap(_func, depth=(d, d), boundary=np.nan, meta=np.array(()))
     return out
 
 
 def dissection_index(agg: xr.DataArray, window_size: int = 3, name: str | None = "dissection_index") -> xr.DataArray:
+    """Compute the dissection index of a 2D array.
+
+    Args:
+        agg (xr.DataArray): The input data array.
+        window_size (int, optional): The size of the window to use for the computation. Defaults to 3.
+        name (str | None, optional): The name of the output data array. Defaults to "dissection_index".
+
+    Returns:
+        xr.DataArray: The dissection index of the input data array.
+
+    """
     mapper = ArrayTypeFunctionMapping(
         numpy_func=_run_numpy,
         dask_func=_run_dask_numpy,

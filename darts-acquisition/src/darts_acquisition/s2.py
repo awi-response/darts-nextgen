@@ -301,6 +301,8 @@ def load_s2_from_stac(
             Defaults to True.
         cache (Path | None, optional): The path to the cache directory. If None, no caching will be done.
             Defaults to None.
+        aws_profile_name (str, optional): The name of the AWS profile to use for authentication.
+            Defaults to "default".
 
     Returns:
         xr.Dataset: The loaded dataset

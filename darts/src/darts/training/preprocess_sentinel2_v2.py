@@ -61,7 +61,7 @@ def _parse_date(row):
         return pd.to_datetime(row["image_id"].split("_")[0], format="%Y%m%d", utc=True)
 
 
-def preprocess_s2_train_data(
+def preprocess_s2_train_data(  # noqa: C901
     *,
     labels_dir: Path,
     train_data_dir: Path,
@@ -171,6 +171,7 @@ def preprocess_s2_train_data(
             Defaults to True.
         mask_erosion_size (int, optional): The size of the disk to use for mask erosion and the edge-cropping.
             Defaults to 3.
+        save_matching_scores (bool, optional): Whether to save the matching scores. Defaults to False.
 
     """
     current_time = time.strftime("%Y-%m-%d_%H-%M-%S")
