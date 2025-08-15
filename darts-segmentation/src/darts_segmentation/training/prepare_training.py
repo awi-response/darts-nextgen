@@ -76,15 +76,19 @@ def create_labels(
     # Rasterize the labels
     if len(labels) > 0:
         labels["id"] = labels.index
-        labels_rasterized = 1 - make_geocube(labels, measurements=["id"], like=tile).id.isnull()
+        labels_rasterized = 1 - make_geocube(labels, measurements=["id"], like=tile["quality_data_mask"]).id.isnull()
     else:
         labels_rasterized = xr.zeros_like(tile["quality_data_mask"])
 
     # Rasterize the extent if provided
     if extent is not None:
         extent["id"] = extent.index
-        extent_rasterized = 1 - make_geocube(extent, measurements=["id"], like=tile).id.isnull()
+        extent_rasterized = 1 - make_geocube(extent, measurements=["id"], like=tile["quality_data_mask"]).id.isnull()
         labels_rasterized = labels_rasterized.where(extent_rasterized, 2)
+
+    # For some reason it can happen that labels_rasterized ha not proeprly rounded axes
+    labels_rasterized["x"] = labels_rasterized.x.round(3)
+    labels_rasterized["y"] = labels_rasterized.y.round(3)
 
     # Filter out low-quality and no-data values (class 2 -> best quality)
     quality_mask = tile["quality_data_mask"] == 2

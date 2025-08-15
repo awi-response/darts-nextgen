@@ -501,7 +501,7 @@ def match_s2ids_from_geodataframe_stac(
     min_intersects: float = 0.7,
     simplify_geometry: float | Literal[False] = False,
     save_scores: Path | None = None,
-) -> dict[int, Item]:
+) -> dict[int, Item | None]:
     """Match items from a GeoDataFrame with Sentinel-2 items from the STAC API based on a date range.
 
     Args:
@@ -520,7 +520,9 @@ def match_s2ids_from_geodataframe_stac(
         ValueError: If the 'date' column is not present or not of type datetime.
 
     Returns:
-        dict[int, Item]: A dictionary mapping each row to its best matching Sentinel-2 item.
+        dict[int, Item | None]: A dictionary mapping each row to its best matching Sentinel-2 item.
+            The keys are the indices of the rows in the GeoDataFrame, and the values are the matching Sentinel-2 items.
+            If no matching item is found, the value will be None.
 
     """
     # Check weather the "date" column is present and of type datetime

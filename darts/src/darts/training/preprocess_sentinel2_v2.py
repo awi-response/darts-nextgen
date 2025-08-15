@@ -1,5 +1,6 @@
 """PLANET preprocessing functions for training with the v2 data preprocessing."""
 
+import json
 import logging
 import time
 from math import ceil, sqrt
@@ -68,8 +69,9 @@ def preprocess_s2_train_data(
     tcvis_dir: Path,
     admin_dir: Path,
     planet_data_dir: Path | None = None,
-    input_cache: Path | None = None,
+    s2_download_cache: Path | None = None,
     preprocess_cache: Path | None = None,
+    matching_cache: Path | None = None,
     force_preprocess: bool = False,
     append: bool = True,
     device: Literal["cuda", "cpu", "auto"] | int | None = None,
@@ -137,8 +139,10 @@ def preprocess_s2_train_data(
             The planet data is used to align the Sentinel-2 data to the Planet data, spatially.
             Can be set to None if no alignment is wished.
             Defaults to None.
-        input_cache (Path): The directory to use for caching the input data. Defaults to None.
+        s2_download_cache (Path): The directory to use for caching the raw downloaded sentinel 2 data. Defaults to None.
         preprocess_cache (Path, optional): The directory to store the preprocessed data. Defaults to None.
+        matching_cache (Path, optional): The path to a file where the matchings are stored.
+            Note: this is different from the matching scores.
         force_preprocess (bool, optional): Whether to force the preprocessing of the data. Defaults to False.
         append (bool, optional): Whether to append the data to the existing data. Defaults to True.
         device (Literal["cuda", "cpu"] | int, optional): The device to run the model on.
@@ -219,20 +223,34 @@ def preprocess_s2_train_data(
 
     footprints = (gpd.read_file(footprints_file) for footprints_file in labels_dir.glob("*/ImageFootprints*.gpkg"))
     footprints = gpd.GeoDataFrame(pd.concat(footprints, ignore_index=True))
+    footprints["geometry"] = footprints["geometry"].simplify(0.001)  # Simplify to reduce compute
     footprints["date"] = footprints.apply(_parse_date, axis=1)
     if planet_data_dir is not None:
         fpaths = {fpath.stem: fpath for fpath in _planet_legacy_path_gen(planet_data_dir)}
         footprints["fpath"] = footprints.image_id.map(fpaths)
 
-    # 1. Step: find S2 scenes that intersect with the Planet footprints
-    matches = match_s2ids_from_geodataframe_stac(
-        aoi=footprints,
-        day_range=matching_day_range,
-        max_cloud_cover=matching_max_cloud_cover,
-        min_intersects=matching_min_intersects,
-        simplify_geometry=0.1,
-        save_scores=train_data_dir / "matching-scores.parquet" if save_matching_scores else None,
-    )
+    # Find S2 scenes that intersect with the Planet footprints
+    if matching_cache is None or not matching_cache.exists():
+        matches = match_s2ids_from_geodataframe_stac(
+            aoi=footprints,
+            day_range=matching_day_range,
+            max_cloud_cover=matching_max_cloud_cover,
+            min_intersects=matching_min_intersects,
+            simplify_geometry=0.001,
+            save_scores=train_data_dir / "matching-scores.parquet" if save_matching_scores else None,
+        )
+        if matching_cache is not None:
+            matches_serializable = {k: v.to_dict() if isinstance(v, Item) else "None" for k, v in matches.items()}
+            with matching_cache.open("w") as f:
+                json.dump(matches_serializable, f)
+            logger.info(f"Saved matching scores to {matching_cache}")
+            del matches_serializable  # Free memory
+    else:
+        logger.info(f"Loading matching scores from {matching_cache}")
+        with matching_cache.open("r") as f:
+            matches_serializable = json.load(f)
+        matches = {k: Item.from_dict(v) if v != "None" else None for k, v in matches_serializable.items()}
+        del matches_serializable  # Free memory
     footprints["s2_item"] = footprints.index.map(matches)
 
     # Filter out footprints without a matching S2 item
@@ -275,7 +293,8 @@ def preprocess_s2_train_data(
         device=device,
         append=append,
     )
-    cache_manager = XarrayCacheManager(preprocess_cache / "planet_v2")
+    preprocess_cache = None if preprocess_cache is None else preprocess_cache / "s2_v2"
+    cache_manager = XarrayCacheManager(preprocess_cache)
 
     if append and (train_data_dir / "metadata.parquet").exists():
         metadata = gpd.read_parquet(train_data_dir / "metadata.parquet")
@@ -294,7 +313,7 @@ def preprocess_s2_train_data(
         s2_id = s2_item.id
         planet_id = footprint.image_id
         try:
-            logger.info(f"Processing sample {s2_id}_{planet_id} ({i + 1} of {len(footprints)})")
+            logger.info(f"Processing sample {s2_id=} -> {planet_id=} ({i + 1} of {len(footprints)})")
 
             if planet_data_dir is not None and (
                 not footprint.fpath or (not footprint.fpath.exists() and not cache_manager.exists(planet_id))
@@ -303,7 +322,7 @@ def preprocess_s2_train_data(
                 continue
 
             def _get_tile():
-                s2ds = load_s2_from_stac(s2_item, cache=input_cache)
+                s2ds = load_s2_from_stac(s2_item, cache=s2_download_cache)
 
                 # 2. Align S2 data to Planet data if planet_data_dir is provided
                 if planet_data_dir is not None:
@@ -320,17 +339,25 @@ def preprocess_s2_train_data(
                             return_offset=True,
                             inplace=True,
                             bands=["red", "green", "blue", "nir"],
+                            round_axes=0,
                         )
-                        s2ds.attrs["offset_x"] = offsets.x_offset
-                        s2ds.attrs["offset_y"] = offsets.y_offset
+                        s2ds.attrs["offset_x"] = offsets.x_offset or float("nan")
+                        s2ds.attrs["offset_y"] = offsets.y_offset or float("nan")
                         logger.debug(f"Aligned S2 dataset to Planet dataset with offsets {offsets}.")
+
+                        offsets_fpath = train_data_dir / "offsets" / f"{planet_id}_offsets.json"
+                        offsets_fpath.parent.mkdir(parents=True, exist_ok=True)
+                        offsets_df = offsets.to_dataframe()
+                        offsets_df["planet_id"] = planet_id
+                        offsets_df["s2_id"] = s2_id
+                        offsets_df.to_parquet(offsets_fpath)
                     except Exception:
                         logger.error(
                             f"Could not align {s2_id} to {planet_id}. Continue without alignment...", exc_info=True
                         )
 
                 # Crop to footprint geometry
-                geom = Geometry(footprints.iloc[0].geometry, crs=footprints.crs)
+                geom = Geometry(footprint.geometry, crs=footprints.crs)
                 s2ds = s2ds.odc.crop(geom, apply_mask=True)
 
                 # Preprocess as usual
@@ -353,7 +380,7 @@ def preprocess_s2_train_data(
 
             with timer("Loading tile"):
                 tile = cache_manager.get_or_create(
-                    identifier=f"{s2_id}_{planet_id}",
+                    identifier=f"preprocess-s2train-v2-{s2_id}_{planet_id}",
                     creation_func=_get_tile,
                     force=force_preprocess,
                 )
@@ -373,19 +400,21 @@ def preprocess_s2_train_data(
                         "planet_id": planet_id,
                         "s2_id": s2_id,
                         "fpath": footprint.fpath,
-                        "offset_x": tile.attrs.get("offset_x", 0),
-                        "offset_y": tile.attrs.get("offset_y", 0),
+                        "offset_x": tile.attrs.get("offset_x", float("nan")),
+                        "offset_y": tile.attrs.get("offset_y", float("nan")),
                     },
                 )
 
-            logger.info(f"Processed sample {s2_id}_{planet_id} ({i + 1} of {len(footprints)})")
+            logger.info(f"Processed sample {s2_id=} -> {planet_id=} ({i + 1} of {len(footprints)})")
 
         except (KeyboardInterrupt, SystemExit, SystemError):
             logger.info("Interrupted by user.")
             break
 
         except Exception as e:
-            logger.warning(f"Could not process sample {s2_id}_{planet_id} ({i + 1} of {len(footprints)}).\nSkipping...")
+            logger.warning(
+                f"Could not process sample {s2_id=} -> {planet_id=} ({i + 1} of {len(footprints)}).\nSkipping..."
+            )
             logger.exception(e)
 
     builder.finalize(
