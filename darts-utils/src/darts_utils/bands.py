@@ -133,6 +133,26 @@ class BandCodec:
             fill_value=-1,
         )
 
+    @classmethod
+    def optical(cls) -> "BandCodec":
+        """Create a BandCodec for optical satellite imagery.
+
+        Optical imagery bands are represented as `float32` in memory and as `uint16` on disk,
+        with a valid range of (0, 10000) in memory and on disk with 0 as NoData.
+
+        Please see the documentation about bands for caveats with optical data.
+
+        Returns:
+            BandCodec: A BandCodec instance for optical bands.
+
+        """
+        return cls(
+            disk_dtype="uint16",
+            memory_dtype="float32",
+            valid_range=(0, 10000),
+            fill_value=0,
+        )
+
     def validate(self) -> str | None:  # noqa: C901
         """Validate the codec configuration.
 
@@ -332,6 +352,9 @@ class BandLoader:
             codec = self.get(band)
             if codec is None:
                 continue  # Skip bands not in codecs
+            # Only float memory dtypes can be encoded
+            if codec.memory_dtype != "float32" and codec.memory_dtype != "float64":
+                continue
             encodings[band] = {"dtype": codec.disk_dtype}
             if codec.fill_value is not None:
                 encodings[band]["_FillValue"] = codec.fill_value
@@ -341,16 +364,44 @@ class BandLoader:
                 encodings[band]["add_offset"] = codec.offset
         return encodings
 
-    def store(self, dataset: xr.Dataset, path: Path | str) -> None:
+    def crop(self, dataset: xr.Dataset) -> xr.Dataset:
+        """Crop the dataset to the valid range of each band.
+
+        Clips each band in the dataset to its valid range defined in the codec.
+        This is useful for ensuring that the data fits into the encoding.
+
+        !!! warning "Inplace operation"
+
+            This operation happens inplace - hence the data of the input dataset is changed.
+
+        Args:
+            dataset (xr.Dataset): The dataset to crop.
+
+        Returns:
+            xr.Dataset: The cropped dataset.
+
+        """
+        for band in dataset:
+            codec = self.get(band)
+            if codec is None:
+                continue
+            min_val, max_val = codec.valid_range
+            dataset[band] = dataset[band].clip(min=min_val, max=max_val)
+        return dataset
+
+    def store(self, dataset: xr.Dataset, path: Path | str, crop: bool = True) -> None:
         """Store the dataset to a NetCDF file.
 
         Args:
             dataset (xr.Dataset): The dataset to store.
             path (Path | str): The path to the NetCDF file.
+            crop (bool): Whether to crop the dataset to the valid range. This happens inplace! Defaults to True.
 
         """
         path = Path(path)
         encodings = self._get_encodings(dataset)
+        if crop:
+            dataset = self.crop(dataset)
         dataset.to_netcdf(
             path,
             encoding=encodings,
@@ -380,31 +431,83 @@ class BandLoader:
 
 
 # Singleton instance of BandLoader with predefined codecs
-# TODO: Fill this correctly according to documentation as soon as we have everything figured out
 loader = BandLoader(
     {
-        "ndvi": BandCodec.ndi(),
-        "probability": BandCodec.percentage(),
-        "probability_*": BandCodec.percentage(),
-        "nir": BandCodec(
-            disk_dtype="int16",
-            memory_dtype="float32",
-            valid_range=(0.0, 10000.0),
-            scale_factor=1.0,
-            offset=0.0,
-            fill_value=-1,
-        ),
-        "tcvis": BandCodec(
-            disk_dtype="uint8",
-            memory_dtype="uint8",
-            valid_range=(0, 255),
-        ),
-        "qmask": BandCodec(
+        "blue": BandCodec.optical(),
+        "red": BandCodec.optical(),
+        "green": BandCodec.optical(),
+        "nir": BandCodec.optical(),
+        "quality_data_mask": BandCodec(
             disk_dtype="uint8",
             memory_dtype="uint8",
             valid_range=(0, 2),
         ),
-        "mask": BandCodec.bool(),
+        "dem": BandCodec(
+            disk_dtype="float32",
+            memory_dtype="float32",
+            valid_range=(-100, 3000),
+            scale_factor=0.1,
+            offset=-100.0,
+            fill_value=-1,
+        ),
+        "dem_datamask": BandCodec(
+            disk_dtype="bool",
+            memory_dtype="uint8",
+            valid_range=(0, 1),
+        ),
+        "tc_brightness": BandCodec(
+            disk_dtype="uint8",
+            memory_dtype="uint8",
+            valid_range=(0, 255),
+        ),
+        "tc_greenness": BandCodec(
+            disk_dtype="uint8",
+            memory_dtype="uint8",
+            valid_range=(0, 255),
+        ),
+        "tc_wetness": BandCodec(
+            disk_dtype="uint8",
+            memory_dtype="uint8",
+            valid_range=(0, 255),
+        ),
+        "ndvi": BandCodec.ndi(),
+        "relative_elevation": BandCodec(
+            disk_dtype="int16",
+            memory_dtype="float32",
+            valid_range=(-50, 50),
+            scale_factor=100 / 30000,
+            offset=-50.0,
+            fill_value=-1,
+        ),
+        "slope": BandCodec(
+            disk_dtype="int16",
+            memory_dtype="float32",
+            valid_range=(0, 90),
+            scale_factor=1 / 100,
+            offset=0.0,
+            fill_value=-1,
+        ),
+        "aspect": BandCodec(
+            disk_dtype="int16",
+            memory_dtype="float32",
+            valid_range=(0, 360),
+            scale_factor=1 / 10,
+            offset=0.0,
+            fill_value=-1,
+        ),
+        "hillshade": BandCodec(
+            disk_dtype="int16",
+            memory_dtype="float32",
+            valid_range=(0, 1),
+            scale_factor=1 / 10000,
+            offset=0.0,
+            fill_value=-1,
+        ),
+        "curvature": BandCodec.ndi(),  # Has the same properties (valid range is -1, 1) as NDIs
+        "probabilities": BandCodec.percentage(),
+        "probabilities_model_*": BandCodec.percentage(),
+        "binarized_segmentation": BandCodec.bool(),
+        "extent": BandCodec.bool(),
     }
 )
 loader.validate()

@@ -186,7 +186,7 @@ class _BaseBlockPipeline(ABC):
                     tcvis,
                     self.tpi_outer_radius,
                     self.tpi_inner_radius,
-                    self.device,
+                    "cpu",
                 )
 
                 tile.to_netcdf(tmp_dir / f"{tile_id}_preprocessed.nc", mode="w", engine="h5netcdf")

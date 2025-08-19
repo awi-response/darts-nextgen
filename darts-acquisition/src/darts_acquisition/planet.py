@@ -103,9 +103,7 @@ def load_planet_scene(fpath: str | Path) -> xr.Dataset:
 
     # Create a dataset with the bands
     bands = ["blue", "green", "red", "nir"]
-    ds_planet = (
-        planet_da.fillna(0).rio.write_nodata(0).astype("uint16").assign_coords({"band": bands}).to_dataset(dim="band")
-    )
+    ds_planet = planet_da.assign_coords({"band": bands}).to_dataset(dim="band")
     for var in ds_planet.variables:
         ds_planet[var].assign_attrs(
             {
@@ -154,7 +152,13 @@ def load_planet_masks(fpath: str | Path) -> xr.Dataset:
     invalids = da_udm.sel(band=8).fillna(0) != 0
     low_quality = da_udm.sel(band=[2, 3, 4, 5, 6]).max(axis=0) == 1
     high_quality = ~low_quality & ~invalids
-    qa_ds = xr.where(high_quality, 2, 0).where(~low_quality, 1).where(~invalids, 0).to_dataset(name="quality_data_mask")
+    qa_ds = (
+        xr.where(high_quality, 2, 0)
+        .where(~low_quality, 1)
+        .where(~invalids, 0)
+        .to_dataset(name="quality_data_mask")
+        .drop_vars("band")
+    )
     qa_ds["quality_data_mask"].attrs = {
         "data_source": "planet",
         "long_name": "Quality data mask",

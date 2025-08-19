@@ -519,8 +519,8 @@ class AOISentinel2Pipeline(_BasePipeline):
         end_date (str): The end date of the time series in YYYY-MM-DD format.
         max_cloud_cover (int): The maximum cloud cover percentage to use for filtering the Sentinel 2 scenes.
             Defaults to 10.
-        input_cache (Path): The directory to use for caching the input data. Defaults to Path("data/cache/input").
-
+        s2_download_cache (Path): The directory to use for caching the Sentinel 2 download data.
+            Defaults to Path("data/cache/s2gee").
         model_files (Path | list[Path]): The path to the models to use for segmentation.
             Can also be a single Path to only use one model. This implies `write_model_outputs=False`
             If a list is provided, will use an ensemble of the models.
@@ -567,7 +567,7 @@ class AOISentinel2Pipeline(_BasePipeline):
     start_date: str = None
     end_date: str = None
     max_cloud_cover: int = 10
-    input_cache: Path = Path("data/cache/input")
+    s2_download_cache: Path = Path("data/cache/s2gee")
 
     def _arcticdem_resolution(self) -> Literal[10]:
         return 10
@@ -595,7 +595,7 @@ class AOISentinel2Pipeline(_BasePipeline):
     def _load_tile(self, s2id: str) -> "xr.Dataset":
         from darts_acquisition.s2 import load_s2_from_gee
 
-        tile = load_s2_from_gee(s2id, cache=self.input_cache)
+        tile = load_s2_from_gee(s2id, cache=self.s2_download_cache)
         return tile
 
     @staticmethod

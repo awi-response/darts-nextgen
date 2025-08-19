@@ -86,4 +86,7 @@ def load_arcticdem(
     # Change dtype of the datamask to uint8 for later reproject_match
     arcticdem["datamask"] = arcticdem.datamask.astype("uint8")
 
+    # Clip values to -100, 3000 range (see docs about bands)
+    arcticdem["dem"] = arcticdem["dem"].clip(-100, 3000)
+
     return arcticdem

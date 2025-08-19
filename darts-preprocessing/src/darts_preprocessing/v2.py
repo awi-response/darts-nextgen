@@ -91,6 +91,7 @@ def preprocess_arcticdem(
 
     # Apply legacy scaling to tpi
     with xr.set_options(keep_attrs=True):
+        # TODO: Remove this
         ds_arcticdem["tpi"] = (ds_arcticdem.tpi + 50) * 300
     return ds_arcticdem
 

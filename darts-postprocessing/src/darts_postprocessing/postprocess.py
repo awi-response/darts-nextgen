@@ -212,6 +212,7 @@ def prepare_export(
         "long_name": "Extent of the segmentation",
     }
 
+    # TODO: Refactor according to bands
     def _prep_layer(tile, layername, binarized_layer_name):
         # Binarize the segmentation
         tile[binarized_layer_name] = binarize(tile[layername], bin_threshold, min_object_size, mask, device)

@@ -348,6 +348,11 @@ def load_s2_from_stac(
         identifier=f"stac-s2l2a-{s2id}-{''.join(bands_mapping.keys())}", creation_func=_get_tile, force=False
     )
 
+    # TODO: maybe move this inside the cache manager function?
+    # Set values where scl == 0 to NaN in all other bands
+    for band in set(bands_mapping.values()) - {"scl"}:
+        ds_s2[band] = ds_s2[band].where(ds_s2.scl != 0)
+
     ds_s2 = ds_s2.rename_vars(bands_mapping)
     for var in ds_s2.data_vars:
         ds_s2[var].attrs["data_source"] = "s2-stac"
