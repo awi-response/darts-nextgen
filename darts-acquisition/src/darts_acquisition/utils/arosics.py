@@ -145,8 +145,8 @@ def _calculate_scps(reference_window: xr.DataArray, target_window: xr.DataArray)
     # Hence, we turn our images into the frequency domain, compute the cross power spectrum,
     # and then turn it back into the spatial domain.
     # The peak of the result tells us the spatial shift between the two images.
-    ref_freq = fft2(reference_window.astype("complex64"))
-    target_freq = fft2(target_window.astype("complex64"))
+    ref_freq = fft2(reference_window.fillna(0).astype("complex64"))
+    target_freq = fft2(target_window.fillna(0).astype("complex64"))
     eps = np.abs(ref_freq).max() * 1e-15
     with np.errstate(divide="ignore", invalid="ignore"):
         cross_power_spectrum = (ref_freq * target_freq.conj()) / (abs(ref_freq) * abs(target_freq) + eps)
@@ -200,8 +200,26 @@ class MultiOffsetInfo:
     y_offset: float | None
     offset_infos: dict[str, OffsetInfo]
 
-    def is_valid(self):
+    def is_valid(self):  # noqa: D102
         return self.x_offset is not None and self.y_offset is not None
+
+    def to_dataframe(self):  # noqa: D102
+        import pandas as pd
+
+        df = pd.DataFrame.from_records(
+            [
+                {
+                    "band": band,
+                    "x_offset": oi.x_offset,
+                    "y_offset": oi.y_offset,
+                    "ssim_before": oi.ssim_before,
+                    "ssim_after": oi.ssim_after,
+                    "shift_reliability": oi.shift_reliability,
+                }
+                for band, oi in self.offset_infos.items()
+            ]
+        )
+        return df
 
     @classmethod
     def _from_offsets(
@@ -214,7 +232,7 @@ class MultiOffsetInfo:
         # 0. Filter invalids
         # 1. Check if all offsets are (almost) equal (within a single pixel) -> take mean
         # 2. Check if all offsets are somewhat close (low std) -> take weighted mean based on reliability
-        # 3. Use best offset based on reliability and ssim improvement
+        # 3. Use best offset based on reliability
         for band, oi in offset_infos.items():
             if not oi.is_valid(max_offset=max_offset, min_reliability=min_reliability):
                 logger.debug(f"{band=} resulted in an invalid offset: {oi}")
@@ -256,7 +274,7 @@ class MultiOffsetInfo:
                 offset_infos=offset_infos,
             )
 
-        # Use the best offset based on reliability and ssim improvement
+        # Use the best offset based on reliability
         best = reliabilities.argmax()
         return MultiOffsetInfo(x_offset=x_offsets[best], y_offset=y_offsets[best], offset_infos=offset_infos)
 
@@ -540,8 +558,9 @@ def align(
     max_offset: float = 10.0,
     resample_to: Literal["reference", "target"] | None = None,
     return_offset: bool = False,
+    round_axes: int | Literal[False] = 3,
     inplace: bool = False,
-) -> tuple[xr.Dataset | xr.DataArray, OffsetInfo | dict[str, OffsetInfo]] | xr.Dataset | xr.DataArray:
+) -> tuple[xr.Dataset | xr.DataArray, OffsetInfo | MultiOffsetInfo] | xr.Dataset | xr.DataArray:
     """Align a target to an reference using the AROSICS algorithm.
 
     Note:
@@ -590,11 +609,16 @@ def align(
             Defaults to None.
             If None, no resampling is done.
             This assumes that the pixel grids of the target and reference datasets are already aligned.
+        round_axes (int | False): The number of decimal places to round the x and y coordinates of the target dataset.
+            This may be necessary if the applying of offsets results in very small floating point errors
+            that lead to misalignment when using further processing steps.
+            If False, no rounding is done.
+            Defaults to 3.
         return_offset (bool): If True, returns the offsets instead of aligning the target dataset.
         inplace (bool): If True, modifies the target dataset in place.
 
     Returns:
-        tuple[xr.Dataset | xr.DataArray, OffsetInfo | dict[str, OffsetInfo]] | xr.Dataset | xr.DataArray:
+        tuple[xr.Dataset | xr.DataArray, OffsetInfo | MultiOffsetInfo] | xr.Dataset | xr.DataArray:
             The aligned target dataset or dataarray.
             If return_offset is True, also returns the offsets in x and y direction as a tuple.
 
@@ -633,6 +657,10 @@ def align(
         target = target.copy(deep=True)
     target["x"] = target.x + x_offset * target.odc.geobox.resolution.x
     target["y"] = target.y + y_offset * target.odc.geobox.resolution.y
+
+    if round_axes is not False:
+        target["x"] = target.x.round(round_axes)
+        target["y"] = target.y.round(round_axes)
 
     if return_offset:
         return target, offset_info

@@ -119,9 +119,10 @@ class XarrayCacheManager:
             xr.Dataset: The Dataset (either loaded from cache or newly created)
 
         """
-        logger.debug(f"Checking cache for {identifier} ({force=})")
         cached_dataset = None if force else self.load_from_cache(identifier)
-        logger.debug(f"Cache hit: {cached_dataset is not None}")
+        if not force:
+            logger.debug(f"Cache hit for '{identifier}': {cached_dataset is not None}")
+
         if cached_dataset is not None:
             return cached_dataset
 

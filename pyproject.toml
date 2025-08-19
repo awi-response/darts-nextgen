@@ -26,7 +26,7 @@ dependencies = [
     "odc-stac[botocore]>=0.3.10",
     "smart-geocubes[stac,gee]>=0.0.8",
     "toml>=0.10.2",
-    "zarr>=3.0.8",
+    "zarr>=3.0.8,<3.1.0",
     # Processing
     "albumentations>=1.4.21",
     "scikit-image>=0.20",

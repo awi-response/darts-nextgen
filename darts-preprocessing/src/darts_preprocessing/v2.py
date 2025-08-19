@@ -137,6 +137,13 @@ def preprocess_v2(
         # Should be uint8 before and after reprojection.
         ds_tcvis = ds_tcvis.odc.reproject(ds_merged.odc.geobox, resampling="cubic")
 
+    # !: Reprojecting with f64 coordinates and values behind the decimal point can result in a coordinate missmatch:
+    # E.g. ds_merged has x coordinates [2.123, ...] then is can happen that the
+    # reprojected ds_tcvis coordinates are [2.12300001, ...]
+    # This results is all-nan assigments later when adding the variables of the reprojected dataset to the original
+    assert (ds_merged.x == ds_tcvis.x).all(), "x coordinates do not match! See code comment above"
+    assert (ds_merged.y == ds_tcvis.y).all(), "y coordinates do not match! See code comment above"
+
     ds_merged["tc_brightness"] = ds_tcvis.tc_brightness
     ds_merged["tc_greenness"] = ds_tcvis.tc_greenness
     ds_merged["tc_wetness"] = ds_tcvis.tc_wetness
@@ -144,6 +151,9 @@ def preprocess_v2(
     # Calculate TPI and slope from ArcticDEM
     with stopwatch("Reprojecting ArcticDEM", printer=logger.debug):
         ds_arcticdem = ds_arcticdem.odc.reproject(ds_merged.odc.geobox.buffered(tpi_outer_radius), resampling="cubic")
+
+    assert (ds_merged.x == ds_arcticdem.x).all(), "x coordinates do not match! See code comment above"
+    assert (ds_merged.y == ds_arcticdem.y).all(), "y coordinates do not match! See code comment above"
 
     azimuth = 225  # Default azimuth for hillshade calculation
     angle_altitude = 25  # Default angle altitude for hillshade calculation
