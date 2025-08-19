@@ -191,9 +191,42 @@ class _BaseRayPipeline(ABC):
 
         else:
             logger.debug(f"Initialize with {self.num_cpus} cpus and devices {self.devices}")
-            # TODO how to handle the devices properly? 
+            # TODO how to handle the devices properly?
+            # Convert devices to appropriate format for Ray
+            if self.devices is not None:
+                # If devices is a list of GPU indices, convert to comma-separated string
+                if isinstance(self.devices, list):
+                    cuda_visible_devices = ",".join(str(device) for device in self.devices)
+                    num_gpus = len(self.devices)
+                else:
+                    cuda_visible_devices = str(self.devices)
+                    num_gpus = 1
+            else:
+                cuda_visible_devices = ""
+                num_gpus = 0
 
-
+            # Initialize Ray with specified resources
+            ray_context = ray.init(
+                num_cpus=self.num_cpus,
+                num_gpus=num_gpus,
+                ignore_reinit_error=True,
+                include_dashboard=True,
+                runtime_env={"env_vars": {
+                    "CUDA_VISIBLE_DEVICES": cuda_visible_devices,
+                    "NCCL_DEBUG": "INFO",
+                    "NCCL_SOCKET_IFNAME": current_network_interface,
+                }},
+                _system_config={
+                    "worker_register_timeout_seconds": 60,
+                    "metrics_report_interval_ms": 1000,
+                    "enable_metrics_collection": True,
+                },
+            )
+            # Log resource information
+            logger.debug(f"Ray initialized with context: {ray_context}")
+            logger.info(f"Ray Dashboard URL: {ray_context.dashboard_url}")
+            logger.debug(f"Cluster resources: {ray.cluster_resources()}")
+            logger.debug(f"Available resources: {ray.available_resources()}")
 
         @ray.remote(num_gpus=0.1)
         def debug_gpu():
