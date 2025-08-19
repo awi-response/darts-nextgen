@@ -3,6 +3,7 @@
 import json
 import logging
 import os
+import sys
 import time
 from abc import ABC, abstractmethod
 from dataclasses import asdict, dataclass, field
@@ -135,7 +136,8 @@ class _BaseRayPipeline(ABC):
             # First initialization - let Ray autodetect all resources
             initial_context = ray.init(
                 ignore_reinit_error=True,
-                include_dashboard=True
+                include_dashboard=True,
+                runtime_env={"python": sys.executable}
             )
 
             # Give Ray a moment to discover all resources
@@ -166,11 +168,14 @@ class _BaseRayPipeline(ABC):
                     num_cpus=final_cpus,
                     num_gpus=final_gpus,
                     include_dashboard=True,
-                    runtime_env={"env_vars": {
-                        "CUDA_VISIBLE_DEVICES": "0",
-                        "NCCL_DEBUG": "INFO",
-                        "NCCL_SOCKET_IFNAME": current_network_interface,
-                    }},
+                    runtime_env={
+                            "env_vars": {
+                            "CUDA_VISIBLE_DEVICES": "0",
+                            "NCCL_DEBUG": "INFO",
+                            "NCCL_SOCKET_IFNAME": current_network_interface,
+                        },
+                        "python": sys.executable
+                    },
                     _system_config={"worker_register_timeout_seconds": 60,
                                     "metrics_report_interval_ms": 1000,  # Faster metric updates
                                     "enable_metrics_collection": True,
@@ -211,11 +216,14 @@ class _BaseRayPipeline(ABC):
                 num_gpus=num_gpus,
                 ignore_reinit_error=True,
                 include_dashboard=True,
-                runtime_env={"env_vars": {
-                    "CUDA_VISIBLE_DEVICES": cuda_visible_devices,
-                    "NCCL_DEBUG": "INFO",
-                    "NCCL_SOCKET_IFNAME": current_network_interface,
-                }},
+                runtime_env={
+                    "env_vars": {
+                        "CUDA_VISIBLE_DEVICES": cuda_visible_devices,
+                        "NCCL_DEBUG": "INFO",
+                        "NCCL_SOCKET_IFNAME": current_network_interface,
+                    },
+                    "python":sys.executable
+                },
                 _system_config={
                     "worker_register_timeout_seconds": 60,
                     "metrics_report_interval_ms": 1000,
@@ -228,6 +236,7 @@ class _BaseRayPipeline(ABC):
             logger.debug(f"Cluster resources: {ray.cluster_resources()}")
             logger.debug(f"Available resources: {ray.available_resources()}")
 
+
         @ray.remote(num_gpus=0.1)
         def debug_gpu():
             import torch
@@ -238,10 +247,19 @@ class _BaseRayPipeline(ABC):
                 "env_vars": {k: v for k, v in os.environ.items() if "CUDA" in k or "NVIDIA" in k}
             }
 
+        @ray.remote
+        def debug_cuda():
+            import torch
+            return {
+                "cuda_available": torch.cuda.is_available(),
+                "device_count": torch.cuda.device_count(),
+                "current_device": torch.cuda.current_device(),
+                "env_vars": {k: v for k, v in os.environ.items() if "CUDA" in k or "NVIDIA" in k}
+            }
 
         # Test before pipeline execution
-        gpu_status = ray.get(debug_gpu.remote())
-        logger.debug(f"Worker GPU status using debug gpu: {gpu_status}")
+        # gpu_status = ray.get(debug_gpu.remote())
+        # logger.debug(f"Worker GPU status using debug gpu: {gpu_status}")
 
         # Initlize ee in every worker
         @ray.remote
@@ -261,21 +279,12 @@ class _BaseRayPipeline(ABC):
         logger.info(f"Initializing {num_workers} Ray workers with Earth Engine.")
         ray.get([init_worker.remote() for _ in range(num_workers)])
 
-        @ray.remote
-        def debug_cuda():
-            import torch
-            return {
-                "cuda_available": torch.cuda.is_available(),
-                "device_count": torch.cuda.device_count(),
-                "current_device": torch.cuda.current_device(),
-                "env_vars": {k: v for k, v in os.environ.items() if "CUDA" in k or "NVIDIA" in k}
-            }
 
         # Call it right after worker init
-        logger.info("Testing CUDA availability in workers using debug cuda...")
-        debug_results = ray.get([debug_cuda.remote() for _ in range(min(3, num_workers))])  # Test first 3 workers
-        for i, result in enumerate(debug_results):
-            logger.debug(f"Worker {i} CUDA status: {result}")
+        # logger.info("Testing CUDA availability in workers using debug cuda...")
+        # debug_results = ray.get([debug_cuda.remote() for _ in range(min(3, num_workers))])  # Test first 3 workers
+        # for i, result in enumerate(debug_results):
+        #     logger.debug(f"Worker {i} CUDA status: {result}")
 
         import smart_geocubes
         from darts_export import missing_outputs
