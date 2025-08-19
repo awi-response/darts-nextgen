@@ -332,7 +332,7 @@ class _BaseRayPipeline(ABC):
         # Ray data pipeline
         # TODO: setup device stuff correctly
         ds = ray.data.from_items(tileinfo)
-        ds = ds.map(self._load_tile, num_cpus=0.5, concurrency=safe_cpus // 2)
+        ds = ds.map(self._load_tile, num_cpus=1)
         ds = ds.map(
             _load_aux,
             fn_kwargs={
@@ -342,7 +342,6 @@ class _BaseRayPipeline(ABC):
                 "tcvis_dir": self.tcvis_dir,
             },
             num_cpus=1,
-            concurrency= safe_cpus // 4
         )
         ds = ds.map(
             _preprocess_ray,
@@ -353,7 +352,7 @@ class _BaseRayPipeline(ABC):
             },
             num_cpus=1,
             num_gpus=0.1,
-            concurrency=2,
+            concurrency=4,
         )
         ds = ds.map(
             _RayEnsembleV1,
