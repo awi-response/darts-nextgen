@@ -22,7 +22,7 @@ It is recommended to read the [overview](https://awi-response.github.io/darts-ne
     cd darts-nextgen
     ```
 
-2. Install the required dependencies:
+2. Install the required dependencies using uv:
 
     ```sh
     uv sync --extra cuda126 --extra training
@@ -30,10 +30,36 @@ It is recommended to read the [overview](https://awi-response.github.io/darts-ne
 
     > For other installation options, e.g. using conda, see the [installation guide](https://awi-response.github.io/darts-nextgen/latest/guides/installation/).
 
-3. Run the Sentinel 2 based pipeline on an area of interest:
+3.  Install the required dependencies using pixi
+
+start by running this command:
+
+`pixi shell -e cuda128`
+
+then 
+
+`uv sync --extra cuda128 --extra torchdeps --extra cuda12deps
+`
+
+and finally 
+
+`source .venv/bin/activate`  
+        
+4. Run the Sentinel 2 based pipeline on an area of interest:
+
+    If using the uv environment
 
     ```sh
     uv run darts run-sequential-aoi-sentinel2-pipeline \
+      --aoi-shapefile path/to/your/aoi.geojson \
+      --model-files path/to/your/model/checkpoint \
+      --start-date 2024-07 \
+      --end-date 2024-09
+    ```
+   
+    If using the pixi shell, leave off the 'uv run'
+    ```sh
+    darts run-sequential-aoi-sentinel2-pipeline \
       --aoi-shapefile path/to/your/aoi.geojson \
       --model-files path/to/your/model/checkpoint \
       --start-date 2024-07 \
