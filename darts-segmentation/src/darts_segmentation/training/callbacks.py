@@ -70,7 +70,7 @@ class BinarySegmentationMetrics(Callback):
     def __init__(
         self,
         *,
-        bands: Bands,
+        bands: list[str],
         val_set: str = "val",
         test_set: str = "test",
         plot_every_n_val_epochs: int = 5,
@@ -99,7 +99,7 @@ class BinarySegmentationMetrics(Callback):
         self.val_set = val_set
         self.test_set = test_set
         self.plot_every_n_val_epochs = plot_every_n_val_epochs
-        self.band_names = bands.names
+        self.band_names = bands
         self.is_crossval = is_crossval
         self.batch_size = batch_size
         self.patch_size = patch_size
@@ -443,7 +443,7 @@ class BinarySegmentationPreview(Callback):
     def __init__(
         self,
         *,
-        bands: Bands,
+        bands: list[str],
         val_set: str = "val",
         test_set: str = "test",
         plot_every_n_val_epochs: int = 5,
@@ -463,7 +463,7 @@ class BinarySegmentationPreview(Callback):
         self.val_set = val_set
         self.test_set = test_set
         self.plot_every_n_val_epochs = plot_every_n_val_epochs
-        self.band_names = bands.names
+        self.band_names = bands
 
     def is_val_plot_epoch(self, current_epoch: int, check_val_every_n_epoch: int | None) -> bool:
         """Check if the current epoch is an epoch where validation samples should be plotted.

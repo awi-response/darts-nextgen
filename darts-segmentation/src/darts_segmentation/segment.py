@@ -82,10 +82,13 @@ class SMPSegmenter:
         self.config["model"] |= {"encoder_weights": None}
         self.model = smp.create_model(**self.config["model"])
         self.model.to(self.device)
-        statedict = ckpt["state_dict"]
-        # Lightning Checkpoints are prefixed with "model." -> we need to remove them
-        if any(key.startswith("model.") for key in statedict.keys()):
-            # Statedict has model. prefix before every weight. We need to remove them. This is an in-place function
+
+        # Legacy version
+        if "statedict" in ckpt.keys():
+            statedict = ckpt["statedict"]
+        else:
+            statedict = ckpt["state_dict"]
+            # Lightning Checkpoints are prefixed with "model." -> we need to remove them. This is an in-place function
             torch.nn.modules.utils.consume_prefix_in_state_dict_if_present(statedict, "model.")
         self.model.load_state_dict(statedict)
         self.model.eval()

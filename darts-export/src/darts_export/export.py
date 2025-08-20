@@ -18,7 +18,10 @@ def _export_raster(tile: xr.Dataset, name: str, out_dir: Path, fname: str | None
         fname = name
     fpath = out_dir / f"{fname}.tif"
     with stopwatch(f"Exporting {name} to {fpath.resolve()}", printer=logger.debug):
-        tile[name].rio.to_raster(fpath, driver="GTiff", compress="LZW", tags=tags)
+        if tile[name].dtype == "bool":
+            tile[name].astype("uint8").rio.to_raster(fpath, driver="GTiff", compress="LZW", tags=tags)
+        else:
+            tile[name].rio.to_raster(fpath, driver="GTiff", compress="LZW", tags=tags)
 
 
 def _export_vector(tile: xr.Dataset, name: str, out_dir: Path, fname: str | None = None):
