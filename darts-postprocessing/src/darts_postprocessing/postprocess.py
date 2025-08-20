@@ -123,6 +123,7 @@ def binarize(
 
     # Where the output from the ensemble / segmentation is nan turn it into 0, else threshold it
     # Also, where there was no valid input data, turn it into 0
+    # Using uint8 for further processing
     binarized = (probs.fillna(0) > threshold).astype("uint8")
 
     # Remove objects at which overlap with either the edge of the tile or the noData mask
@@ -150,8 +151,8 @@ def binarize(
             binarized.astype(bool).expand_dims("batch", 0).values, min_size=min_object_size
         )[0]
 
-    # Convert back to int8
-    binarized = binarized.astype("uint8")
+    # Convert back to bool
+    binarized = binarized.astype("bool")
 
     return binarized
 
@@ -208,38 +209,25 @@ def prepare_export(
     if quality_level > 0:
         mask = erode_mask(mask, mask_erosion_size, device, edge_size=edge_erosion_size)  # 0=positive, 1=negative
     tile["extent"] = mask.copy()
-    tile["extent"].attrs = {
-        "long_name": "Extent of the segmentation",
-    }
+    tile["extent"].attrs = {"long_name": "Extent of the segmentation"}
 
-    # TODO: Refactor according to bands
-    def _prep_layer(tile, layername, binarized_layer_name):
+    def _prep_layer(tile: xr.Dataset, subset: str | None = None):
+        layername = "probabilities" if subset is None else f"probabilities-{subset}"
+        binarized_layername = "binarized_segmentation" if subset is None else f"binarized_segmentation-{subset}"
+
+        # Mask the segmentation
+        tile[layername] = tile[layername].where(mask)
+
         # Binarize the segmentation
-        tile[binarized_layer_name] = binarize(tile[layername], bin_threshold, min_object_size, mask, device)
-        tile[binarized_layer_name].attrs = {
-            "long_name": "Binarized Segmentation",
-        }
-
-        # Convert the probabilities to uint8
-        # Same but this time with 255 as no-data
-        # But first check if this step was already run
-        if tile[layername].max() > 1:
-            return tile
-
-        intprobs = (tile[layername] * 100).fillna(255).astype("uint8")
-        tile[layername] = xr.where(mask, intprobs, 255)
-        tile[layername].attrs = {
-            "long_name": "Probabilities",
-            "units": "%",
-        }
-        tile[layername] = tile[layername].rio.write_nodata(255)
+        tile[binarized_layername] = binarize(tile[layername], bin_threshold, min_object_size, mask, device)
+        tile[binarized_layername].attrs = {"long_name": "Binarized Segmentation"}
         return tile
 
-    tile = _prep_layer(tile, "probabilities", "binarized_segmentation")
+    tile = _prep_layer(tile)
 
     # get the names of the model probabilities if available
     # for example 'tcvis' from 'probabilities-tcvis'
     for ensemble_subset in ensemble_subsets:
-        tile = _prep_layer(tile, f"probabilities-{ensemble_subset}", f"binarized_segmentation-{ensemble_subset}")
+        tile = _prep_layer(tile, ensemble_subset)
 
     return tile

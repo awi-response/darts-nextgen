@@ -12,6 +12,8 @@ def _get_dtype_min_max(dtype: str) -> tuple[int | float, int | float]:
         return np.iinfo(dtype).min, np.iinfo(dtype).max
     elif dtype.startswith("float"):
         return np.finfo(dtype).min, np.finfo(dtype).max
+    elif dtype == "bool":
+        return 0, 1
     else:
         raise ValueError(f"Unsupported dtype: {dtype}")
 
@@ -61,6 +63,14 @@ class BandCodec:
     scale_factor: float | None = None
     offset: float | None = None
     fill_value: float | int | None = None
+
+    @property
+    def disk_range(self) -> tuple[float | int, float | int]:
+        """Range of the disk representation."""
+        return (
+            (self.valid_range[0] - (self.offset or 0)) / (self.scale_factor or 1),
+            (self.valid_range[1] - (self.offset or 0)) / (self.scale_factor or 1),
+        )
 
     @property
     def norm_factor(self) -> float:
@@ -134,6 +144,23 @@ class BandCodec:
         )
 
     @classmethod
+    def tc(cls) -> "BandCodec":
+        """Create a BandCodec for tcvis data.
+
+        TCVis bands are represented as `uint8` in memory and on dask, utilizing the complete 0-255 range.
+        There are no NoData values.
+
+        Returns:
+            BandCodec: A BandCodec instance for TCVis bands.
+
+        """
+        return cls(
+            disk_dtype="uint8",
+            memory_dtype="uint8",
+            valid_range=(0, 255),
+        )
+
+    @classmethod
     def optical(cls) -> "BandCodec":
         """Create a BandCodec for optical satellite imagery.
 
@@ -201,8 +228,6 @@ class BandCodec:
                     "(should be between 0 and 1)"
                 )
         else:
-            if self.memory_dtype != self.disk_dtype:
-                return "Boolean bands must have memory and disk dtype 'bool'"
             # For boolean bands, valid range is always (False, True)
             if self.valid_range != (False, True):
                 return "Boolean bands must have valid range (False, True)"
@@ -227,7 +252,7 @@ class BandCodec:
 
 
 @dataclass
-class BandLoader:
+class BandManager:
     """Meta class for loading, storing and encoding xarray datasets based on band codecs.
 
     Supports wildcard patterns for band names, e.g. "probabilities_*"
@@ -258,10 +283,10 @@ class BandLoader:
                     raise KeyError(f"Band '{selector}' not found in codecs.")
             return codec
 
-        return BandLoader({band: self.codecs[band] for band in selector if band in self.codecs})
+        return BandManager({band: self.codecs[band] for band in selector if band in self.codecs})
 
     def __contains__(self, band: str) -> bool:
-        """Check if a band is present in the loader.
+        """Check if a band is present in the manager.
 
         Args:
             band (str): The band name to check.
@@ -273,10 +298,10 @@ class BandLoader:
         return band in self.codecs
 
     def __iter__(self):
-        """Iterate over the bands in the loader.
+        """Iterate over the bands in the manager.
 
         Yields:
-            str: The band names in the loader.
+            str: The band names in the manager.
 
         """
         yield from self.codecs
@@ -297,7 +322,7 @@ class BandLoader:
             return None
 
     def validate(self):
-        """Validate all codecs in the loader.
+        """Validate all codecs in the manager.
 
         Iterates through all codecs and checks if they are valid.
 
@@ -342,7 +367,9 @@ class BandLoader:
                 dataset[band] = dataset[band].astype("float32")
                 continue
             codec = self.codecs[band]  # Safe because we checked above
-            dataset[band] = ((dataset[band] - codec.norm_offset) / codec.norm_factor).astype("float32").fillna(0.0)
+            dataset[band] = (
+                ((dataset[band] - codec.norm_offset) / codec.norm_factor).astype("float32").fillna(0.0).clip(0.0, 1.0)
+            )
         return dataset
 
     def _get_encodings(self, dataset: xr.Dataset) -> dict[str, dict[str, str | float | int]]:
@@ -389,7 +416,7 @@ class BandLoader:
             dataset[band] = dataset[band].clip(min=min_val, max=max_val)
         return dataset
 
-    def store(self, dataset: xr.Dataset, path: Path | str, crop: bool = True) -> None:
+    def to_netcdf(self, dataset: xr.Dataset, path: Path | str, crop: bool = True) -> None:
         """Store the dataset to a NetCDF file.
 
         Args:
@@ -408,7 +435,7 @@ class BandLoader:
             engine="h5netcdf",
         )
 
-    def load(self, path: Path | str) -> xr.Dataset:
+    def open(self, path: Path | str) -> xr.Dataset:
         """Load a dataset from a NetCDF file.
 
         Args:
@@ -418,7 +445,7 @@ class BandLoader:
             xr.Dataset: The loaded dataset.
 
         """
-        dataset = xr.open_dataset(path, engine="h5netcdf", decode_cf=True).load()
+        dataset = xr.open_dataset(path, engine="h5netcdf", decode_coords="all").load()
         # Change the dtypes to the memory representation
         for band in dataset:
             codec = self.get(band)
@@ -430,8 +457,8 @@ class BandLoader:
         return dataset
 
 
-# Singleton instance of BandLoader with predefined codecs
-loader = BandLoader(
+# Singleton instance of BandManager with predefined codecs
+manager = BandManager(
     {
         "blue": BandCodec.optical(),
         "red": BandCodec.optical(),
@@ -455,21 +482,9 @@ loader = BandLoader(
             memory_dtype="uint8",
             valid_range=(0, 1),
         ),
-        "tc_brightness": BandCodec(
-            disk_dtype="uint8",
-            memory_dtype="uint8",
-            valid_range=(0, 255),
-        ),
-        "tc_greenness": BandCodec(
-            disk_dtype="uint8",
-            memory_dtype="uint8",
-            valid_range=(0, 255),
-        ),
-        "tc_wetness": BandCodec(
-            disk_dtype="uint8",
-            memory_dtype="uint8",
-            valid_range=(0, 255),
-        ),
+        "tc_brightness": BandCodec.tc(),
+        "tc_greenness": BandCodec.tc(),
+        "tc_wetness": BandCodec.tc(),
         "ndvi": BandCodec.ndi(),
         "relative_elevation": BandCodec(
             disk_dtype="int16",
@@ -505,9 +520,10 @@ loader = BandLoader(
         ),
         "curvature": BandCodec.ndi(),  # Has the same properties (valid range is -1, 1) as NDIs
         "probabilities": BandCodec.percentage(),
-        "probabilities_model_*": BandCodec.percentage(),
+        "probabilities-*": BandCodec.percentage(),
         "binarized_segmentation": BandCodec.bool(),
+        "binarized_segmentation-*": BandCodec.bool(),
         "extent": BandCodec.bool(),
     }
 )
-loader.validate()
+manager.validate()

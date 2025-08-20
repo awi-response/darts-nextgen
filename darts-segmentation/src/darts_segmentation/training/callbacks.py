@@ -42,7 +42,6 @@ from darts_segmentation.metrics import (
     BinaryInstanceRecall,
 )
 from darts_segmentation.training.viz import plot_sample
-from darts_segmentation.utils import Bands
 
 logger = logging.getLogger(__name__.replace("darts_", "darts."))
 

@@ -147,7 +147,6 @@ def preprocess_planet_train_data_for_nina(
     from darts_acquisition import load_arcticdem, load_planet_masks, load_planet_scene, load_tcvis
     from darts_preprocessing import preprocess_v2
     from darts_segmentation.training.prepare_training import TrainDatasetBuilder
-    from darts_segmentation.utils import Bands
     from darts_utils.cuda import free_cupy
     from darts_utils.tilecache import XarrayCacheManager
     from odc.stac import configure_rio
@@ -166,24 +165,22 @@ def preprocess_planet_train_data_for_nina(
     labels = gpd.read_file(data_dir / "DELINEATED_POLYGONS_Y2_Planet2024.geojson")
     labels["id"] = [1] * len(labels)
 
-    # We hardcode these because they depend on the preprocessing used
-    bands = Bands.from_dict(
-        {
-            "red": (1 / 3000, 0.0),
-            "green": (1 / 3000, 0.0),
-            "blue": (1 / 3000, 0.0),
-            "nir": (1 / 3000, 0.0),
-            "ndvi": (1 / 20000, 0.0),
-            "relative_elevation": (1 / 30000, 0.0),
-            "slope": (1 / 90, 0.0),
-            "aspect": (1 / 360, 0.0),
-            "hillshade": (1.0, 0.0),
-            "curvature": (1 / 10, 0.5),  # TODO: Do we even want shift?
-            "tc_brightness": (1 / 255, 0.0),
-            "tc_greenness": (1 / 255, 0.0),
-            "tc_wetness": (1 / 255, 0.0),
-        }
-    )
+    # We hardcode these since they depend on the preprocessing we use
+    bands = [
+        "red",
+        "green",
+        "blue",
+        "nir",
+        "ndvi",
+        "relative_elevation",
+        "slope",
+        "aspect",
+        "hillshade",
+        "curvature",
+        "tc_brightness",
+        "tc_greenness",
+        "tc_wetness",
+    ]
 
     builder = TrainDatasetBuilder(
         train_data_dir=train_data_dir,

@@ -6,6 +6,8 @@ from typing import Any
 
 import xarray as xr
 
+from darts_utils.bands import manager
+
 logger = logging.getLogger(__name__.replace("darts_", "darts."))
 
 
@@ -59,11 +61,12 @@ class XarrayCacheManager:
         cache_path = self.cache_dir / f"{identifier}.nc"
         return cache_path.exists()
 
-    def load_from_cache(self, identifier: str) -> xr.Dataset | None:
+    def load_from_cache(self, identifier: str, use_band_manager: bool = True) -> xr.Dataset | None:
         """Load a Dataset from cache if it exists.
 
         Args:
             identifier (str): Unique identifier for the cached file
+            use_band_manager (bool): If True, uses the band manager to load the data. Defaults to True.
 
         Returns:
             xr.Dataset | None: Dataset if found in cache, otherwise None
@@ -75,15 +78,19 @@ class XarrayCacheManager:
         cache_path = self.cache_dir / f"{identifier}.nc"
         if not cache_path.exists():
             return None
-        dataset = xr.open_dataset(cache_path, engine="h5netcdf").set_coords("spatial_ref")
+        if use_band_manager:
+            dataset = manager.open(cache_path)
+        else:
+            dataset = xr.open_dataset(cache_path, engine="h5netcdf", decode_coords="all")
         return dataset
 
-    def save_to_cache(self, dataset: xr.Dataset, identifier: str) -> bool:
+    def save_to_cache(self, dataset: xr.Dataset, identifier: str, use_band_manager: bool = True) -> bool:
         """Save a Dataset to cache.
 
         Args:
             dataset (xr.Dataset): Dataset to cache
             identifier (str): Unique identifier for the cached file
+            use_band_manager (bool): If True, uses the band manager to save the data. Defaults to True.
 
         Returns:
             bool: Success of operation
@@ -95,7 +102,10 @@ class XarrayCacheManager:
         self.cache_dir.mkdir(exist_ok=True, parents=True)
         cache_path = self.cache_dir / f"{identifier}.nc"
         logger.debug(f"Caching {identifier=} to {cache_path}")
-        dataset.to_netcdf(cache_path, engine="h5netcdf")
+        if use_band_manager:
+            manager.to_netcdf(dataset, cache_path)
+        else:
+            dataset.to_netcdf(cache_path, engine="h5netcdf")
         return True
 
     def get_or_create(
@@ -103,6 +113,7 @@ class XarrayCacheManager:
         identifier: str,
         creation_func: callable,
         force: bool,
+        use_band_manager: bool = True,
         *args: tuple[Any, ...],
         **kwargs: dict[str, Any],
     ) -> xr.Dataset:
@@ -112,6 +123,7 @@ class XarrayCacheManager:
             identifier (str): Unique identifier for the cached file
             creation_func (callable): Function to create the Dataset if not cached
             force (bool): If True, forces reprocessing even if cached
+            use_band_manager (bool): If True, uses the band manager save and load the data. Defaults to True.
             *args: Arguments to pass to creation_func
             **kwargs: Keyword arguments to pass to creation_func
 
@@ -119,7 +131,7 @@ class XarrayCacheManager:
             xr.Dataset: The Dataset (either loaded from cache or newly created)
 
         """
-        cached_dataset = None if force else self.load_from_cache(identifier)
+        cached_dataset = None if force else self.load_from_cache(identifier, use_band_manager)
         if not force:
             logger.debug(f"Cache hit for '{identifier}': {cached_dataset is not None}")
 
@@ -128,5 +140,5 @@ class XarrayCacheManager:
 
         dataset = creation_func(*args, **kwargs)
         if cached_dataset is None:
-            self.save_to_cache(dataset, identifier)
+            self.save_to_cache(dataset, identifier, use_band_manager)
         return dataset

@@ -516,7 +516,7 @@ class AOISentinel2BlockPipeline(_BaseBlockPipeline):
 
     @cached_property
     def _s2ids(self) -> list[str]:
-        from darts_acquisition.s2 import get_s2ids_from_geodataframe_ee
+        from darts_acquisition import get_s2ids_from_geodataframe_ee
 
         return sorted(
             get_s2ids_from_geodataframe_ee(self.aoi_shapefile, self.start_date, self.end_date, self.max_cloud_cover)
@@ -535,7 +535,7 @@ class AOISentinel2BlockPipeline(_BaseBlockPipeline):
         return out
 
     def _load_tile(self, s2id: str) -> "xr.Dataset":
-        from darts_acquisition.s2 import load_s2_from_gee
+        from darts_acquisition import load_s2_from_gee
 
         tile = load_s2_from_gee(s2id, cache=self.input_cache)
         return tile

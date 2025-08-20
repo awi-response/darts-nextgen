@@ -29,7 +29,8 @@ The data convertion happens in three different places of the pipeline:
 - _Disk -> Memory_:
   - Cache-Manager where data is loaded from a cache NetCDF file into memory.
     This should be handled via xarray, which follows the CF conventions.
-  - Export functions
+  - Training-Preprocessors
+  - NOT in the export -> The export is handled manually
 - _Memory -> Model_: In the segmentation module, right before the data is transformed into PyTorch tensors for inference.
   For training, this is done before writing the data into the training dataset to save compute power and enable better caching.
 - _Model -> Memory_: Never happens, the output propabilities are exported as is.
@@ -48,34 +49,36 @@ The data convertion happens in three different places of the pipeline:
     - **Decoded**: The data in the representation that is used for working and visualisation, i.e. memory-representation.
     - **Normalised**: The data in the representation that is used for training and inference, i.e. model-representation.
 
-| DataVariable             | shape  | dtype (memory) | dtype(disk) | valid-range  | disk-range | no-data (disk) | attrs                               | source                  | note                                           |
-| ------------------------ | ------ | -------------- | ----------- | ------------ | ---------- | -------------- | ----------------------------------- | ----------------------- | ---------------------------------------------- |
-| `blue`                   | (x, y) | float32        | uint16      | [0, 10000]   | [0, 65535] | 0              | data_source, long_name, units       | PLANET / S2             |                                                |
-| `green`                  | (x, y) | float32        | uint16      | [0, 10000]   | [0, 65535] | 0              | data_source, long_name, units       | PLANET / S2             |                                                |
-| `red`                    | (x, y) | float32        | uint16      | [0, 10000]   | [0, 65535] | 0              | data_source, long_name, units       | PLANET / S2             |                                                |
-| `nir`                    | (x, y) | float32        | uint16      | [0, 10000]   | [0, 65535] | 0              | data_source, long_name, units       | PLANET / S2             |                                                |
-| `quality_data_mask`      | (x, y) | uint8          | uint8       | {0, 1, 2}    | {0, 1, 2}  | -              | data_source, long_name, description | PLANET / S2             | 0 = Invalid, 1 = Low Quality, 2 = High Quality |
-| `dem`                    | (x, y) | float32        | int16       | [-100, 3000] | [0, 31000] | -1             | data_source, long_name, units       | SmartGeocubes           |                                                |
-| `dem_datamask`           | (x, y) | uint8          | bool        | 0/1          | False/True | -              | data_source, long_name, units       | SmartGeocubes           |                                                |
-| `tc_brightness`          | (x, y) | uint8          | uint8       | [0, 255]     | [0, 255]   | -              | data_source, long_name              | EarthEngine             |                                                |
-| `tc_greenness`           | (x, y) | uint8          | uint8       | [0, 255]     | [0, 255]   | -              | data_source, long_name              | EarthEngine             |                                                |
-| `tc_wetness`             | (x, y) | uint8          | uint8       | [0, 255]     | [0, 255]   | -              | data_source, long_name              | EarthEngine             |                                                |
-| `ndvi`                   | (x, y) | float32        | int16       | [-1, 1]      | [0, 20000] | -1             | data_source, long_name              | Preprocessing           |                                                |
-| `relative_elevation`     | (x, y) | float32        | int16       | [-50, 50]    | [0, 30000] | -1             | data_source, long_name, units       | Preprocessing           |                                                |
-| `slope`                  | (x, y) | float32        | int16       | [0, 90]      | [0, 9000]  | -1             | data_source, long_name              | Preprocessing           |                                                |
-| `aspect`                 | (x, y) | float32        | int16       | [0, 360]     | [0, 3600]  | -1             | data_source, long_name              | Preprocessing           |                                                |
-| `hillshade`              | (x, y) | float32        | int16       | [0, 1]       | [0, 10000] | -1             | data_source, long_name              | Preprocessing           |                                                |
-| `curvature`              | (x, y) | float32        | int16       | [-1, 1]      | [0, 20000] | -1             | data_source, long_name              | Preprocessing           |                                                |
-| `probabilities`          | (x, y) | float32        | uint8       | [0, 1]       | [0, 100]   | 255            | long_name                           | Ensemble / Segmentation |                                                |
-| `probabilities-model-X*` | (x, y) | float32        | uint8       | [0, 1]       | [0, 100]   | 255            | long_name                           | Ensemble / Segmentation |                                                |
-| `binarized_segmentation` | (x, y) | bool           | bool        | False/True   | False/True | -              | long_name                           | Postprocessing          |                                                |
-| `extent`                 | (x, y) | bool           | bool        | False/True   | False/True | -              | long_name                           | Postprocessing          |                                                |
+| DataVariable                | shape  | dtype (memory) | dtype(disk) | valid-range  | disk-range | no-data (disk) | attrs                               | source                  | note                                           |
+| --------------------------- | ------ | -------------- | ----------- | ------------ | ---------- | -------------- | ----------------------------------- | ----------------------- | ---------------------------------------------- |
+| `blue`                      | (x, y) | float32        | uint16      | [0, 10000]   | [0, 65535] | 0              | data_source, long_name, units       | PLANET / S2             |                                                |
+| `green`                     | (x, y) | float32        | uint16      | [0, 10000]   | [0, 65535] | 0              | data_source, long_name, units       | PLANET / S2             |                                                |
+| `red`                       | (x, y) | float32        | uint16      | [0, 10000]   | [0, 65535] | 0              | data_source, long_name, units       | PLANET / S2             |                                                |
+| `nir`                       | (x, y) | float32        | uint16      | [0, 10000]   | [0, 65535] | 0              | data_source, long_name, units       | PLANET / S2             |                                                |
+| `quality_data_mask`         | (x, y) | uint8          | uint8       | {0, 1, 2}    | {0, 1, 2}  | -              | data_source, long_name, description | PLANET / S2             | 0 = Invalid, 1 = Low Quality, 2 = High Quality |
+| `dem`                       | (x, y) | float32        | int16       | [-100, 3000] | [0, 31000] | -1             | data_source, long_name, units       | SmartGeocubes           |                                                |
+| `dem_datamask`              | (x, y) | uint8          | bool        | 0/1          | False/True | -              | data_source, long_name, units       | SmartGeocubes           |                                                |
+| `tc_brightness`             | (x, y) | uint8          | uint8       | [0, 255]     | [0, 255]   | -              | data_source, long_name              | EarthEngine             |                                                |
+| `tc_greenness`              | (x, y) | uint8          | uint8       | [0, 255]     | [0, 255]   | -              | data_source, long_name              | EarthEngine             |                                                |
+| `tc_wetness`                | (x, y) | uint8          | uint8       | [0, 255]     | [0, 255]   | -              | data_source, long_name              | EarthEngine             |                                                |
+| `ndvi`                      | (x, y) | float32        | int16       | [-1, 1]      | [0, 20000] | -1             | long_name                           | Preprocessing           |                                                |
+| `relative_elevation`        | (x, y) | float32        | int16       | [-50, 50]    | [0, 30000] | -1             | data_source, long_name, units       | Preprocessing           |                                                |
+| `slope`                     | (x, y) | float32        | int16       | [0, 90]      | [0, 9000]  | -1             | data_source, long_name              | Preprocessing           |                                                |
+| `aspect`                    | (x, y) | float32        | int16       | [0, 360]     | [0, 3600]  | -1             | data_source, long_name              | Preprocessing           |                                                |
+| `hillshade`                 | (x, y) | float32        | int16       | [0, 1]       | [0, 10000] | -1             | data_source, long_name              | Preprocessing           |                                                |
+| `curvature`                 | (x, y) | float32        | int16       | [-1, 1]      | [0, 20000] | -1             | data_source, long_name              | Preprocessing           |                                                |
+| `probabilities`             | (x, y) | float32        | uint8       | [0, 1]       | [0, 100]   | 255            | long_name                           | Ensemble / Segmentation |                                                |
+| `probabilities-X*`          | (x, y) | float32        | uint8       | [0, 1]       | [0, 100]   | 255            | long_name                           | Ensemble / Segmentation |                                                |
+| `binarized_segmentation`    | (x, y) | bool           | bool        | False/True   | False/True | -              | long_name                           | Postprocessing          |                                                |
+| `binarized_segmentation-X*` | (x, y) | bool           | bool        | False/True   | False/True | -              | long_name                           | Postprocessing          |                                                |
+| `extent`                    | (x, y) | bool           | bool        | False/True   | False/True | -              | long_name                           | Postprocessing          |                                                |
 
-- `*` = Model name, e.g. `probabilities-model-UNet`, `probabilities-model-ResNet`, etc.
+- `*` = Model name, e.g. `probabilities-tcvis`, `probabilities-notcvis`, etc.
 - The `no-data` value in memory for `float32` is always `nan`.
 - All `bool` disk-encoded values are of course True / False without nans (they are always equal to False).
 - `bool` types before postprocessing must be represented as uint8 in memory for easy reprojection etc.
 - Missing: New DEM Engineered: VRM DI etc.
+- Outdated: `attrs`
 
 !!! danger "Loss of Information"
 
@@ -121,7 +124,7 @@ Since we use mostly a kernel between 10px and 100px, we can expect the valid ran
 ## Implementation Details
 
 All Disk <-> Memory convertion are be done via [xarray through their CF convention layer](https://docs.xarray.dev/en/stable/user-guide/io.html#reading-encoded-data) (`decode_cf=True`)
-For that, the attributes `_FillValue`, `scale_factor`, and `add_offset` are set by a helper module `darts_utils.bands.BandLoader`.
+For that, the attributes `_FillValue`, `scale_factor`, and `add_offset` are set by a helper module `darts_utils.bands.BandManager`.
 This helper is used by the Cache-Manager and the export module to ensure that the data is always in the correct representation.
 
 !!! danger "_FillValue"
@@ -157,3 +160,9 @@ E.g. for NDVI with a `valid_range=(-1.0, 1.0)` and `disk_range=(0, 20000)`:
 > offset, scale
 -1., (2 / 20000) -> -1., 0.0001
 ```
+
+### Legacy support
+
+In order to support legacy models, it is necessary to check which model version was used.
+For this, from now on all checkpoints get a new field `model_version` in their metadata.
+Fortunatly, all previous normalizations are equal to the new ones, hence to remapping needs to be done.

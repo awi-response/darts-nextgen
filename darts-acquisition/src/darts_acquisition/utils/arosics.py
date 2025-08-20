@@ -198,6 +198,7 @@ class MultiOffsetInfo:
 
     x_offset: float | None
     y_offset: float | None
+    avg_reliability: float | None
     offset_infos: dict[str, OffsetInfo]
 
     def is_valid(self):  # noqa: D102
@@ -260,23 +261,34 @@ class MultiOffsetInfo:
         )
         if len(x_offsets) == 0 or len(y_offsets) == 0:
             logger.warning("No valid offsets found. Returning 0.")
-            return MultiOffsetInfo(x_offset=None, y_offset=None, offset_infos=offset_infos)
+            return MultiOffsetInfo(x_offset=None, y_offset=None, avg_reliability=None, offset_infos=offset_infos)
 
         x_max_deviation = abs(x_offsets - x_offsets.mean()).max()
         y_max_deviation = abs(y_offsets - y_offsets.mean()).max()
         if x_max_deviation < 1 and y_max_deviation < 1:
-            return MultiOffsetInfo(x_offset=x_offsets.mean(), y_offset=y_offsets.mean(), offset_infos=offset_infos)
+            return MultiOffsetInfo(
+                x_offset=x_offsets.mean(),
+                y_offset=y_offsets.mean(),
+                avg_reliability=reliabilities.mean(),
+                offset_infos=offset_infos,
+            )
 
         if np.std(x_offsets) < 1 and np.std(y_offsets) < 1:
             return MultiOffsetInfo(
                 x_offset=np.average(x_offsets, weights=reliabilities),
                 y_offset=np.average(y_offsets, weights=reliabilities),
+                avg_reliability=reliabilities.mean(),
                 offset_infos=offset_infos,
             )
 
         # Use the best offset based on reliability
         best = reliabilities.argmax()
-        return MultiOffsetInfo(x_offset=x_offsets[best], y_offset=y_offsets[best], offset_infos=offset_infos)
+        return MultiOffsetInfo(
+            x_offset=x_offsets[best],
+            y_offset=y_offsets[best],
+            avg_reliability=reliabilities.mean(),
+            offset_infos=offset_infos,
+        )
 
 
 def _calculate_offset(

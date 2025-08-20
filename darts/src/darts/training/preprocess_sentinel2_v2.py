@@ -11,6 +11,7 @@ logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     import geopandas as gpd
+    import xarray as xr
 
 
 def _planet_legacy_path_gen(data_dir: Path):
@@ -61,6 +62,42 @@ def _parse_date(row):
         return pd.to_datetime(row["image_id"].split("_")[0], format="%Y%m%d", utc=True)
 
 
+def _align_offsets(
+    tile: "xr.Dataset", footprint: "gpd.GeoSeries", labels: "gpd.GeoDataFrame"
+) -> tuple["gpd.GeoDataFrame", dict[str, float]]:
+    from darts_acquisition import (
+        load_planet_masks,
+        load_planet_scene,
+    )
+    from darts_acquisition.utils.arosics import get_offsets
+
+    assert tile.odc.crs == labels.crs, "Tile and labels must have the same CRS"
+    # Align S2 data to Planet data if planet_data_dir is provided
+    try:
+        planetds = load_planet_scene(footprint.fpath)
+        planet_mask = load_planet_masks(footprint.fpath)
+        offsets_info = get_offsets(
+            tile,
+            planetds.astype("float32") / 3000,
+            bands=["red", "green", "blue", "nir"],
+            window_size=128,
+            target_mask=tile.quality_data_mask == 2,
+            reference_mask=planet_mask.quality_data_mask == 2,
+            resample_to="target",
+        )
+        logger.debug(f"Aligned S2 dataset to Planet dataset with offsets {offsets_info}.")
+        if not offsets_info.is_valid():
+            return labels, {"x_offset": 0, "y_offset": 0}
+        x_offset = (offsets_info.x_offset or 0) * tile.odc.geobox.resolution.x
+        y_offset = (offsets_info.y_offset or 0) * tile.odc.geobox.resolution.y
+        labels["geometry"] = labels.geometry.translate(xoff=-x_offset, yoff=-y_offset)
+        return labels, {"x_offset": x_offset, "y_offset": y_offset, "reliability": offsets_info.avg_reliability}
+
+    except Exception:
+        logger.error("Error while aligning S2 dataset to Planet dataset, continue without alignment", exc_info=True)
+        return labels, {"x_offset": float("nan"), "y_offset": float("nan"), "reliability": float("nan")}
+
+
 def preprocess_s2_train_data(  # noqa: C901
     *,
     labels_dir: Path,
@@ -86,7 +123,6 @@ def preprocess_s2_train_data(  # noqa: C901
     overlap: int = 16,
     exclude_nopositive: bool = False,
     exclude_nan: bool = True,
-    mask_erosion_size: int = 3,
     save_matching_scores: bool = False,
 ):
     """Preprocess Planet data for training.
@@ -169,8 +205,6 @@ def preprocess_s2_train_data(  # noqa: C901
             Defaults to False.
         exclude_nan (bool, optional): Whether to exclude patches where the input data has nan values.
             Defaults to True.
-        mask_erosion_size (int, optional): The size of the disk to use for mask erosion and the edge-cropping.
-            Defaults to 3.
         save_matching_scores (bool, optional): Whether to save the matching scores. Defaults to False.
 
     """
@@ -200,13 +234,15 @@ def preprocess_s2_train_data(  # noqa: C901
     import pandas as pd
     import rich
     import xarray as xr
-    from darts_acquisition import load_arcticdem, load_planet_masks, load_planet_scene, load_tcvis
+    from darts_acquisition import (
+        load_arcticdem,
+        load_s2_from_stac,
+        load_tcvis,
+        match_s2ids_from_geodataframe_stac,
+    )
     from darts_acquisition.admin import download_admin_files
-    from darts_acquisition.s2 import load_s2_from_stac, match_s2ids_from_geodataframe_stac
-    from darts_acquisition.utils.arosics import align
     from darts_preprocessing import preprocess_v2
     from darts_segmentation.training.prepare_training import TrainDatasetBuilder
-    from darts_segmentation.utils import Bands
     from darts_utils.tilecache import XarrayCacheManager
     from odc.geo.geom import Geometry
     from pystac import Item
@@ -250,7 +286,7 @@ def preprocess_s2_train_data(  # noqa: C901
         logger.info(f"Loading matching scores from {matching_cache}")
         with matching_cache.open("r") as f:
             matches_serializable = json.load(f)
-        matches = {k: Item.from_dict(v) if v != "None" else None for k, v in matches_serializable.items()}
+        matches = {int(k): Item.from_dict(v) if v != "None" else None for k, v in matches_serializable.items()}
         del matches_serializable  # Free memory
     footprints["s2_item"] = footprints.index.map(matches)
 
@@ -264,24 +300,22 @@ def preprocess_s2_train_data(  # noqa: C901
         download_admin_files(admin_dir)
     admin2 = gpd.read_file(admin2_fpath)
 
-    # We hardcode these because they depend on the preprocessing used
-    bands = Bands.from_dict(
-        {
-            "red": (1 / 3000, 0.0),
-            "green": (1 / 3000, 0.0),
-            "blue": (1 / 3000, 0.0),
-            "nir": (1 / 3000, 0.0),
-            "ndvi": (1 / 20000, 0.0),
-            "relative_elevation": (1 / 30000, 0.0),
-            "slope": (1 / 90, 0.0),
-            "aspect": (1 / 360, 0.0),
-            "hillshade": (1.0, 0.0),
-            "curvature": (1 / 10, 0.5),  # TODO: Do we even want shift?
-            "tc_brightness": (1 / 255, 0.0),
-            "tc_greenness": (1 / 255, 0.0),
-            "tc_wetness": (1 / 255, 0.0),
-        }
-    )
+    # We hardcode these since they depend on the preprocessing we use
+    bands = [
+        "red",
+        "green",
+        "blue",
+        "nir",
+        "ndvi",
+        "relative_elevation",
+        "slope",
+        "aspect",
+        "hillshade",
+        "curvature",
+        "tc_brightness",
+        "tc_greenness",
+        "tc_wetness",
+    ]
 
     builder = TrainDatasetBuilder(
         train_data_dir=train_data_dir,
@@ -290,7 +324,6 @@ def preprocess_s2_train_data(  # noqa: C901
         bands=bands,
         exclude_nopositive=exclude_nopositive,
         exclude_nan=exclude_nan,
-        mask_erosion_size=mask_erosion_size,
         device=device,
         append=append,
     )
@@ -325,38 +358,6 @@ def preprocess_s2_train_data(  # noqa: C901
             def _get_tile():
                 s2ds = load_s2_from_stac(s2_item, cache=s2_download_cache)
 
-                # 2. Align S2 data to Planet data if planet_data_dir is provided
-                if planet_data_dir is not None:
-                    try:
-                        planetds = load_planet_scene(footprint.fpath)
-                        planet_mask = load_planet_masks(footprint.fpath)
-                        s2ds, offsets = align(
-                            s2ds,
-                            planetds.astype("float32") / 3000,
-                            target_mask=s2ds.quality_data_mask == 2,
-                            reference_mask=planet_mask.quality_data_mask == 2,
-                            resample_to="target",
-                            window_size=128,
-                            return_offset=True,
-                            inplace=True,
-                            bands=["red", "green", "blue", "nir"],
-                            round_axes=0,
-                        )
-                        s2ds.attrs["offset_x"] = offsets.x_offset or float("nan")
-                        s2ds.attrs["offset_y"] = offsets.y_offset or float("nan")
-                        logger.debug(f"Aligned S2 dataset to Planet dataset with offsets {offsets}.")
-
-                        offsets_fpath = train_data_dir / "offsets" / f"{planet_id}_offsets.json"
-                        offsets_fpath.parent.mkdir(parents=True, exist_ok=True)
-                        offsets_df = offsets.to_dataframe()
-                        offsets_df["planet_id"] = planet_id
-                        offsets_df["s2_id"] = s2_id
-                        offsets_df.to_parquet(offsets_fpath)
-                    except Exception:
-                        logger.error(
-                            f"Could not align {s2_id} to {planet_id}. Continue without alignment...", exc_info=True
-                        )
-
                 # Crop to footprint geometry
                 geom = Geometry(footprint.geometry, crs=footprints.crs)
                 s2ds = s2ds.odc.crop(geom, apply_mask=True)
@@ -385,11 +386,14 @@ def preprocess_s2_train_data(  # noqa: C901
                     creation_func=_get_tile,
                     force=force_preprocess,
                 )
-
             logger.debug(f"Found tile with size {tile.sizes}")
 
-            footprint_labels = labels[labels.image_id == planet_id]
+            footprint_labels = labels[labels.image_id == planet_id].to_crs(tile.odc.crs)
             region = _get_region_name(footprint, admin2)
+
+            if planet_data_dir is not None:
+                with timer("Align to PLANET"):
+                    footprint_labels, offsets_info = _align_offsets(tile, footprint, footprint_labels)
 
             with timer("Save as patches"):
                 builder.add_tile(
@@ -401,8 +405,7 @@ def preprocess_s2_train_data(  # noqa: C901
                         "planet_id": planet_id,
                         "s2_id": s2_id,
                         "fpath": footprint.fpath,
-                        "offset_x": tile.attrs.get("offset_x", float("nan")),
-                        "offset_y": tile.attrs.get("offset_y", float("nan")),
+                        **offsets_info,
                     },
                 )
 

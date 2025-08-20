@@ -108,7 +108,6 @@ def calculate_topographic_position_index(arcticdem_ds: xr.Dataset, outer_radius:
         "description": "The difference between the elevation of a cell and the mean elevation of the surrounding"
         f"cells {attr_cell_description}",
         "source": "ArcticDEM",
-        "_FillValue": float("nan"),
     }
 
     arcticdem_ds["tpi"] = tpi.compute()
@@ -133,7 +132,6 @@ def calculate_slope(arcticdem_ds: xr.Dataset) -> xr.Dataset:
         "units": "degrees",
         "description": "The slope of the terrain surface in degrees.",
         "source": "ArcticDEM",
-        "_FillValue": float("nan"),
     }
     arcticdem_ds["slope"] = slope_deg.compute()
     return arcticdem_ds
@@ -158,7 +156,6 @@ def calculate_hillshade(arcticdem_ds: xr.Dataset, azimuth: int = 225, angle_alti
         "units": "",
         "description": f"The hillshade based on azimuth {azimuth} and angle_altitude {angle_altitude}.",
         "source": "ArcticDEM",
-        "_FillValue": float("nan"),
     }
     arcticdem_ds["hillshade"] = hillshade_da.compute()
     return arcticdem_ds
@@ -181,7 +178,6 @@ def calculate_aspect(arcticdem_ds: xr.Dataset) -> xr.Dataset:
         "units": "degrees",
         "description": "The compass direction that the slope faces, in degrees clockwise from north.",
         "source": "ArcticDEM",
-        "_FillValue": float("nan"),
     }
     arcticdem_ds["aspect"] = aspect_deg.compute()
     return arcticdem_ds
@@ -204,7 +200,6 @@ def calculate_curvature(arcticdem_ds: xr.Dataset) -> xr.Dataset:
         "units": "",
         "description": "The curvature of the terrain surface.",
         "source": "ArcticDEM",
-        "_FillValue": float("nan"),
     }
     arcticdem_ds["curvature"] = curvature_da.compute()
     return arcticdem_ds
@@ -258,7 +253,6 @@ def calculate_terrain_ruggedness_index(arcticdem_ds: xr.Dataset, neighborhood_si
             f" cells within a square kernel of radius {neighborhood_size} cells."
         ),
         "source": "ArcticDEM",
-        "_FillValue": float("nan"),
     }
 
     arcticdem_ds["tri"] = tri.compute()
@@ -327,7 +321,6 @@ def calculate_vector_ruggedness_measure(arcticdem_ds: xr.Dataset, neighborhood_s
             "Values range from 0 (smooth) to 1 (most rugged)."
         ),
         "source": "ArcticDEM",
-        "_FillValue": float("nan"),
     }
 
     arcticdem_ds["vrm"] = vrm.compute()
@@ -359,7 +352,6 @@ def calculate_dissection_index(arcticdem_ds: xr.Dataset, neighborhood_size: int)
             "Values range from 0 (smooth) to 1 (most rugged)."
         ),
         "source": "ArcticDEM",
-        "_FillValue": float("nan"),
     }
 
     arcticdem_ds["di"] = di.compute()
