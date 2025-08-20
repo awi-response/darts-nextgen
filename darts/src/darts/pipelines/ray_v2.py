@@ -236,31 +236,6 @@ class _BaseRayPipeline(ABC):
             logger.debug(f"Cluster resources: {ray.cluster_resources()}")
             logger.debug(f"Available resources: {ray.available_resources()}")
 
-
-        @ray.remote(num_gpus=0.1)
-        def debug_gpu():
-            import torch
-            return {
-                "cuda_available": torch.cuda.is_available(),
-                "device_count": torch.cuda.device_count(),
-                "current_device": torch.cuda.current_device(),
-                "env_vars": {k: v for k, v in os.environ.items() if "CUDA" in k or "NVIDIA" in k}
-            }
-
-        @ray.remote
-        def debug_cuda():
-            import torch
-            return {
-                "cuda_available": torch.cuda.is_available(),
-                "device_count": torch.cuda.device_count(),
-                "current_device": torch.cuda.current_device(),
-                "env_vars": {k: v for k, v in os.environ.items() if "CUDA" in k or "NVIDIA" in k}
-            }
-
-        # Test before pipeline execution
-        # gpu_status = ray.get(debug_gpu.remote())
-        # logger.debug(f"Worker GPU status using debug gpu: {gpu_status}")
-
         # Initlize ee in every worker
         @ray.remote
         def init_worker():
@@ -278,13 +253,6 @@ class _BaseRayPipeline(ABC):
         num_workers = int(ray.cluster_resources().get("CPU", 1))
         logger.info(f"Initializing {num_workers} Ray workers with Earth Engine.")
         ray.get([init_worker.remote() for _ in range(num_workers)])
-
-
-        # Call it right after worker init
-        # logger.info("Testing CUDA availability in workers using debug cuda...")
-        # debug_results = ray.get([debug_cuda.remote() for _ in range(min(3, num_workers))])  # Test first 3 workers
-        # for i, result in enumerate(debug_results):
-        #     logger.debug(f"Worker {i} CUDA status: {result}")
 
         import smart_geocubes
         from darts_export import missing_outputs
