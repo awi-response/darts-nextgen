@@ -51,6 +51,7 @@ def load_tcvis(
         ```
 
     """  # noqa: E501
+    assert ".icechunk" == data_dir.suffix, f"Data directory {data_dir} must have an .icechunk suffix!"
     accessor = smart_geocubes.TCTrend(data_dir, create_icechunk_storage=False)
 
     # We want to assume that the datacube is already created to be save in a multi-process environment

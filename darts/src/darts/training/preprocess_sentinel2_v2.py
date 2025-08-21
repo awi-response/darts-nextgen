@@ -91,11 +91,16 @@ def _align_offsets(
         x_offset = (offsets_info.x_offset or 0) * tile.odc.geobox.resolution.x
         y_offset = (offsets_info.y_offset or 0) * tile.odc.geobox.resolution.y
         labels["geometry"] = labels.geometry.translate(xoff=-x_offset, yoff=-y_offset)
-        return labels, {"x_offset": x_offset, "y_offset": y_offset, "reliability": offsets_info.avg_reliability}
+        return labels, {
+            "x_offset": x_offset,
+            "y_offset": y_offset,
+            "reliability": offsets_info.avg_reliability,
+            "ssim_improvement": offsets_info.avg_ssim_improvement,
+        }
 
     except Exception:
         logger.error("Error while aligning S2 dataset to Planet dataset, continue without alignment", exc_info=True)
-        return labels, {"x_offset": float("nan"), "y_offset": float("nan"), "reliability": float("nan")}
+        return labels, {}
 
 
 def preprocess_s2_train_data(  # noqa: C901
@@ -327,7 +332,6 @@ def preprocess_s2_train_data(  # noqa: C901
         device=device,
         append=append,
     )
-    preprocess_cache = None if preprocess_cache is None else preprocess_cache / "s2_v2"
     cache_manager = XarrayCacheManager(preprocess_cache)
 
     if append and (train_data_dir / "metadata.parquet").exists():
@@ -346,13 +350,16 @@ def preprocess_s2_train_data(  # noqa: C901
 
         s2_id = s2_item.id
         planet_id = footprint.image_id
+        info_id = f"{s2_id=} -> {planet_id=} ({i + 1} of {len(footprints)})"
         try:
-            logger.info(f"Processing sample {s2_id=} -> {planet_id=} ({i + 1} of {len(footprints)})")
+            logger.info(f"Processing sample {info_id}")
 
             if planet_data_dir is not None and (
                 not footprint.fpath or (not footprint.fpath.exists() and not cache_manager.exists(planet_id))
             ):
-                logger.warning(f"Footprint image {planet_id} at {footprint.fpath} does not exist. Skipping...")
+                logger.warning(
+                    f"Footprint image {planet_id} at {footprint.fpath} does not exist. Skipping sample {info_id}..."
+                )
                 continue
 
             def _get_tile():
@@ -361,6 +368,9 @@ def preprocess_s2_train_data(  # noqa: C901
                 # Crop to footprint geometry
                 geom = Geometry(footprint.geometry, crs=footprints.crs)
                 s2ds = s2ds.odc.crop(geom, apply_mask=True)
+                # Crop above will change all dtypes to float32 -> change them back for s2_scl and qa mask
+                s2ds["s2_scl"] = s2ds["s2_scl"].fillna(0.0).astype("uint8")
+                s2ds["quality_data_mask"] = s2ds["quality_data_mask"].fillna(0.0).astype("uint8")
 
                 # Preprocess as usual
                 arctidem_res = 10
@@ -388,6 +398,11 @@ def preprocess_s2_train_data(  # noqa: C901
                 )
             logger.debug(f"Found tile with size {tile.sizes}")
 
+            # Skip if the size is too small
+            if tile.sizes["x"] < patch_size or tile.sizes["y"] < patch_size:
+                logger.info(f"Skipping sample {info_id} due to small size {tile.sizes}.")
+                continue
+
             footprint_labels = labels[labels.image_id == planet_id].to_crs(tile.odc.crs)
             region = _get_region_name(footprint, admin2)
 
@@ -409,17 +424,21 @@ def preprocess_s2_train_data(  # noqa: C901
                     },
                 )
 
-            logger.info(f"Processed sample {s2_id=} -> {planet_id=} ({i + 1} of {len(footprints)})")
+            logger.info(f"Processed sample {info_id}")
 
         except (KeyboardInterrupt, SystemExit, SystemError):
             logger.info("Interrupted by user.")
             break
 
         except Exception as e:
-            logger.warning(
-                f"Could not process sample {s2_id=} -> {planet_id=} ({i + 1} of {len(footprints)}).\nSkipping..."
-            )
+            logger.warning(f"Could not process sample {info_id}. Skipping...")
             logger.exception(e)
+
+    timer.summary()
+
+    if len(builder) == 0:
+        logger.warning("No samples were processed. Exiting...")
+        return
 
     builder.finalize(
         {
@@ -433,4 +452,3 @@ def preprocess_s2_train_data(  # noqa: C901
             "tpi_inner_radius": tpi_inner_radius,
         }
     )
-    timer.summary()

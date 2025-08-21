@@ -180,6 +180,25 @@ class BandCodec:
             fill_value=0,
         )
 
+    @classmethod
+    def mask(cls, vmax: int) -> "BandCodec":
+        """Create a BandCodec for non-binary masks.
+
+        Assumes the mask always start with 0
+
+        Args:
+            vmax (int): Maximum value of the mask
+
+        Returns:
+            BandCodec: A BandCodec instance for non-binary masks.
+
+        """
+        return cls(
+            disk_dtype="uint8",
+            memory_dtype="uint8",
+            valid_range=(0, vmax),
+        )
+
     def validate(self) -> str | None:  # noqa: C901
         """Validate the codec configuration.
 
@@ -379,6 +398,9 @@ class BandManager:
             codec = self.get(band)
             if codec is None:
                 continue  # Skip bands not in codecs
+            assert codec.memory_dtype == dataset[band].dtype, (
+                f"Memory dtype mismatch for {band}: expected {codec.memory_dtype} but got {dataset[band].dtype}"
+            )
             # Only float memory dtypes can be encoded
             if codec.memory_dtype != "float32" and codec.memory_dtype != "float64":
                 continue
@@ -445,7 +467,7 @@ class BandManager:
             xr.Dataset: The loaded dataset.
 
         """
-        dataset = xr.open_dataset(path, engine="h5netcdf", decode_coords="all").load()
+        dataset = xr.open_dataset(path, engine="h5netcdf", decode_coords="all", decode_cf=True).load()
         # Change the dtypes to the memory representation
         for band in dataset:
             codec = self.get(band)
@@ -464,11 +486,14 @@ manager = BandManager(
         "red": BandCodec.optical(),
         "green": BandCodec.optical(),
         "nir": BandCodec.optical(),
-        "quality_data_mask": BandCodec(
-            disk_dtype="uint8",
-            memory_dtype="uint8",
-            valid_range=(0, 2),
-        ),
+        "B02_10m": BandCodec.optical(),
+        "B03_10m": BandCodec.optical(),
+        "B04_10m": BandCodec.optical(),
+        "B08_10m": BandCodec.optical(),
+        "SCL_20m": BandCodec.mask(11),
+        "s2_scl": BandCodec.mask(11),
+        "planet_udm": BandCodec.mask(8),
+        "quality_data_mask": BandCodec.mask(2),
         "dem": BandCodec(
             disk_dtype="float32",
             memory_dtype="float32",
@@ -477,7 +502,7 @@ manager = BandManager(
             offset=-100.0,
             fill_value=-1,
         ),
-        "dem_datamask": BandCodec(
+        "arcticdem_data_mask": BandCodec(
             disk_dtype="bool",
             memory_dtype="uint8",
             valid_range=(0, 1),

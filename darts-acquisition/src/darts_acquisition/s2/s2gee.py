@@ -44,7 +44,7 @@ def load_s2_from_gee(
     logger.debug(f"Loading Sentinel-2 tile {s2id=} from GEE")
 
     if "SCL" not in bands_mapping.keys():
-        bands_mapping["SCL"] = "scl"
+        bands_mapping["SCL"] = "s2_scl"
 
     img = img.select(list(bands_mapping.keys()))
 
@@ -71,7 +71,7 @@ def load_s2_from_gee(
 
     ds_s2 = ds_s2.rename_vars(bands_mapping)
 
-    for band in set(bands_mapping.values()) - {"scl"}:
+    for band in set(bands_mapping.values()) - {"s2_scl"}:
         ds_s2[band].attrs["data_source"] = "s2-gee"
         ds_s2[band].attrs["long_name"] = f"Sentinel 2 {band.capitalize()}"
         ds_s2[band].attrs["units"] = "Reflectance"
@@ -83,11 +83,11 @@ def load_s2_from_gee(
     # This workaround is quite computational expensive, but it works for now
     # TODO: Find other solutions for this problem!
     with stopwatch(f"Fixing nan values in {s2id=}", printer=logger.debug):
-        for band in set(bands_mapping.values()) - {"scl"}:
+        for band in set(bands_mapping.values()) - {"s2_scl"}:
             ds_s2["quality_data_mask"] = xr.where(ds_s2[band].isnull(), 0, ds_s2["quality_data_mask"])
             ds_s2[band] = ds_s2[band].fillna(0)
-            # Turn real nan values (scl is nan) into invalid data
-            ds_s2[band] = ds_s2[band].where(~ds_s2["scl"].isnull())
+            # Turn real nan values (s2_scl is nan) into invalid data
+            ds_s2[band] = ds_s2[band].where(~ds_s2["s2_scl"].isnull())
 
     ds_s2.attrs["s2_tile_id"] = s2id
     ds_s2.attrs["tile_id"] = s2id

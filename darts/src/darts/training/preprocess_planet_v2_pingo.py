@@ -53,7 +53,6 @@ def preprocess_planet_train_data_pingo(
     overlap: int = 16,
     exclude_nopositive: bool = False,
     exclude_nan: bool = True,
-    mask_erosion_size: int = 3,
 ):
     """Preprocess Planet data for training.
 
@@ -121,8 +120,6 @@ def preprocess_planet_train_data_pingo(
             Defaults to False.
         exclude_nan (bool, optional): Whether to exclude patches where the input data has nan values.
             Defaults to True.
-        mask_erosion_size (int, optional): The size of the disk to use for mask erosion and the edge-cropping.
-            Defaults to 10.
 
     """
     current_time = time.strftime("%Y-%m-%d_%H-%M-%S")
@@ -204,7 +201,6 @@ def preprocess_planet_train_data_pingo(
         bands=bands,
         exclude_nopositive=exclude_nopositive,
         exclude_nan=exclude_nan,
-        mask_erosion_size=mask_erosion_size,
         device=device,
     )
     cache_manager = XarrayCacheManager(preprocess_cache / "planet_v2")
@@ -213,11 +209,14 @@ def preprocess_planet_train_data_pingo(
         footprints.iterrows(), description="Processing samples", total=len(footprints), console=rich.get_console()
     ):
         planet_id = footprint.image_id
+        info_id = f"{planet_id=} ({i + 1} of {len(footprint)})"
         try:
-            logger.debug(f"Processing sample {planet_id} ({i + 1} of {len(footprints)})")
+            logger.debug(f"Processing sample {info_id}")
 
             if not footprint.fpath or (not footprint.fpath.exists() and not cache_manager.exists(planet_id)):
-                logger.warning(f"Footprint image {planet_id} at {footprint.fpath} does not exist. Skipping...")
+                logger.warning(
+                    f"Footprint image '{planet_id}' at {footprint.fpath} does not exist. Skipping {info_id}..."
+                )
                 continue
 
             def _get_tile():
@@ -265,15 +264,21 @@ def preprocess_planet_train_data_pingo(
                     },
                 )
 
-            logger.info(f"Processed sample {planet_id} ({i + 1} of {len(footprints)})")
+            logger.info(f"Processed sample {info_id}")
 
         except (KeyboardInterrupt, SystemExit, SystemError):
             logger.info("Interrupted by user.")
             break
 
         except Exception as e:
-            logger.warning(f"Could not process sample {planet_id} ({i + 1} of {len(footprints)}). \nSkipping...")
+            logger.warning(f"Could not process sample {info_id} . Skipping...")
             logger.exception(e)
+
+    timer.summary()
+
+    if len(builder) == 0:
+        logger.warning("No samples were processed. Exiting...")
+        return
 
     builder.finalize(
         {
@@ -287,4 +292,3 @@ def preprocess_planet_train_data_pingo(
             "tpi_inner_radius": tpi_inner_radius,
         }
     )
-    timer.summary()

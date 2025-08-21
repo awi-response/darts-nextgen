@@ -87,9 +87,9 @@ def create_labels(
         extent_rasterized = 1 - make_geocube(extent, measurements=["id"], like=tile["quality_data_mask"]).id.isnull()
         labels_rasterized = labels_rasterized.where(extent_rasterized, 2)
 
-    # For some reason it can happen that labels_rasterized has not properly rounded axes
-    labels_rasterized["x"] = labels_rasterized.x.round(3)
-    labels_rasterized["y"] = labels_rasterized.y.round(3)
+    # Because rasterio use different floats, it can happen that the axes are not properly aligned
+    labels_rasterized["x"] = tile.x
+    labels_rasterized["y"] = tile.y
 
     # Filter out low-quality and no-data values (class 2 -> best quality)
     quality_mask = tile["quality_data_mask"] == 2
@@ -240,6 +240,9 @@ class TrainDatasetBuilder:
                 "When appending to an existing dataset, the 'x' and 'y' arrays must already exist."
                 "Did you set append=True by accident?"
             )
+
+    def __len__(self):  # noqa: D105
+        return len(self._metadata)
 
     def add_tile(
         self,

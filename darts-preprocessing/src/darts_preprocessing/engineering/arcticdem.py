@@ -98,6 +98,9 @@ def calculate_topographic_position_index(arcticdem_ds: xr.Dataset, outer_radius:
         attr_cell_description = f"within a circle at a distance of {outer_radius} cells away from the focal cell."
         logger.debug(f"Calculating Topographic Position Index with circle kernel of {outer_radius} cells.")
 
+    # Change dtype of kernel to float32 since we don't need the precision and f32 is faster
+    kernel = kernel.astype("float32")
+
     if has_cuda_and_cupy() and arcticdem_ds.cupy.is_cupy:
         kernel = cp.asarray(kernel)
 
@@ -235,6 +238,9 @@ def calculate_terrain_ruggedness_index(arcticdem_ds: xr.Dataset, neighborhood_si
     kernel = convolution.custom_kernel(kernel)
     logger.debug(f"Calculating Terrain Ruggedness Index with square kernel of radius {neighborhood_size} cells.")
 
+    # Change dtype of kernel to float32 since we don't need the precision and f32 is faster
+    kernel = kernel.astype("float32")
+
     if has_cuda_and_cupy() and arcticdem_ds.cupy.is_cupy:
         kernel = cp.asarray(kernel)
 
@@ -298,6 +304,9 @@ def calculate_vector_ruggedness_measure(arcticdem_ds: xr.Dataset, neighborhood_s
     # Create convolution kernel for focal sum
     kernel = np.ones((neighborhood_size.pixel, neighborhood_size.pixel), dtype=float) / neighborhood_size.pixel**2
     kernel = convolution.custom_kernel(kernel)
+
+    # Change dtype of kernel to float32 since we don't need the precision and f32 is faster
+    kernel = kernel.astype("float32")
 
     if has_cuda_and_cupy() and arcticdem_ds.cupy.is_cupy:
         kernel = cp.asarray(kernel)

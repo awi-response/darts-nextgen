@@ -63,7 +63,7 @@ def load_s2_from_stac(
     s2id = s2item.id if isinstance(s2item, Item) else s2item
 
     if "SCL_20m" not in bands_mapping.keys():
-        bands_mapping["SCL_20m"] = "scl"
+        bands_mapping["SCL_20m"] = "s2_scl"
 
     def _get_tile():
         nonlocal s2item
@@ -97,7 +97,10 @@ def load_s2_from_stac(
         ds_s2.attrs["time"] = str(ds_s2.time.values[0])
         ds_s2 = ds_s2.isel(time=0).drop_vars("time")
 
-        # Set values where scl == 0 to NaN in all other bands
+        # Because of the resampling to 10m, the SCL is a float -> fix it
+        ds_s2["SCL_20m"] = ds_s2["SCL_20m"].astype("uint8")
+
+        # Set values where SCL_20m == 0 to NaN in all other bands
         # This way the data is similar to data from gee or planet data
         for band in set(bands_mapping.keys()) - {"SCL_20m"}:
             if ds_s2[band].dtype == "float32":
@@ -110,7 +113,7 @@ def load_s2_from_stac(
     )
 
     ds_s2 = ds_s2.rename_vars(bands_mapping)
-    for band in set(bands_mapping.values()) - {"scl"}:
+    for band in set(bands_mapping.values()) - {"s2_scl"}:
         ds_s2[band].attrs["data_source"] = "s2-stac"
         ds_s2[band].attrs["long_name"] = f"Sentinel-2 {band.capitalize()}"
         ds_s2[band].attrs["units"] = "Reflectance"

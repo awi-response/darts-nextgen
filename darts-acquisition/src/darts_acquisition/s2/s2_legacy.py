@@ -122,7 +122,7 @@ def load_s2_masks(fpath: str | Path, reference_geobox: GeoBox) -> xr.Dataset:
     # Match crs
     da_scl = da_scl.rio.write_crs(reference_geobox.crs)
 
-    da_scl = xr.Dataset({"scl": da_scl.sel(band=1).fillna(0).drop_vars("band").astype("uint8")})
+    da_scl = xr.Dataset({"s2_scl": da_scl.sel(band=1).fillna(0).drop_vars("band").astype("uint8")})
     da_scl = convert_masks(da_scl)
 
     return da_scl

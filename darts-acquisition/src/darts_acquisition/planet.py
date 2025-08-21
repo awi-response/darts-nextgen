@@ -147,8 +147,7 @@ def load_planet_masks(fpath: str | Path) -> xr.Dataset:
         raise FileNotFoundError(f"No matching UDM-2 TIFF files found in {fpath.resolve()} (.glob('*_udm2.tif'))")
 
     # See udm classes here: https://developers.planet.com/docs/data/udm-2/
-    da_udm = xr.open_dataarray(udm_path)
-
+    da_udm = xr.open_dataarray(udm_path).astype("uint8")
     invalids = da_udm.sel(band=8).fillna(0) != 0
     low_quality = da_udm.sel(band=[2, 3, 4, 5, 6]).max(axis=0) == 1
     high_quality = ~low_quality & ~invalids
@@ -156,12 +155,21 @@ def load_planet_masks(fpath: str | Path) -> xr.Dataset:
         xr.where(high_quality, 2, 0)
         .where(~low_quality, 1)
         .where(~invalids, 0)
+        .astype("uint8")
         .to_dataset(name="quality_data_mask")
         .drop_vars("band")
     )
+    qa_ds["planet_udm"] = da_udm
+
     qa_ds["quality_data_mask"].attrs = {
         "data_source": "planet",
         "long_name": "Quality data mask",
         "description": "0 = Invalid, 1 = Low Quality, 2 = High Quality",
     }
+    qa_ds["planet_udm"].attrs = {
+        "data_source": "planet",
+        "long_name": "Planet UDM",
+        "description": "Usable Data Mask",
+    }
+
     return qa_ds

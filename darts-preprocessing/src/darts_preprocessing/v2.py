@@ -89,10 +89,6 @@ def preprocess_arcticdem(
         ds_arcticdem = calculate_aspect(ds_arcticdem)
         ds_arcticdem = calculate_curvature(ds_arcticdem)
 
-    # Apply legacy scaling to tpi
-    with xr.set_options(keep_attrs=True):
-        # TODO: Remove this
-        ds_arcticdem["tpi"] = (ds_arcticdem.tpi + 50) * 300
     return ds_arcticdem
 
 
@@ -180,7 +176,7 @@ def preprocess_v2(
     ds_merged["hillshade"] = ds_arcticdem.hillshade
     ds_merged["aspect"] = ds_arcticdem.aspect
     ds_merged["curvature"] = ds_arcticdem.curvature
-    ds_merged["arcticdem_data_mask"] = ds_arcticdem.datamask
+    ds_merged["arcticdem_data_mask"] = ds_arcticdem.datamask.astype("uint8")
 
     # Update datamask with arcticdem mask
     # with xr.set_options(keep_attrs=True):
