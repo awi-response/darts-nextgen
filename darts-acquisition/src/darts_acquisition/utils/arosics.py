@@ -198,6 +198,9 @@ class MultiOffsetInfo:
 
     x_offset: float | None
     y_offset: float | None
+    avg_reliability: float | None
+    avg_ssim_improvement: float | None
+    offset_reduce_method: Literal["mean", "weighted_mean", "best"] | None
     offset_infos: dict[str, OffsetInfo]
 
     def is_valid(self):  # noqa: D102
@@ -237,46 +240,51 @@ class MultiOffsetInfo:
             if not oi.is_valid(max_offset=max_offset, min_reliability=min_reliability):
                 logger.debug(f"{band=} resulted in an invalid offset: {oi}")
 
-        x_offsets = np.array(
-            [
-                oi.x_offset
-                for oi in offset_infos.values()
-                if oi.is_valid(max_offset=max_offset, min_reliability=min_reliability)
-            ]
-        )
-        y_offsets = np.array(
-            [
-                oi.y_offset
-                for oi in offset_infos.values()
-                if oi.is_valid(max_offset=max_offset, min_reliability=min_reliability)
-            ]
-        )
-        reliabilities = np.array(
-            [
-                oi.shift_reliability
-                for oi in offset_infos.values()
-                if oi.is_valid(max_offset=max_offset, min_reliability=min_reliability)
-            ]
-        )
+        valid_offset_infos = {
+            k: oi
+            for k, oi in offset_infos.items()
+            if oi.is_valid(max_offset=max_offset, min_reliability=min_reliability)
+        }
+
+        x_offsets = np.array([oi.x_offset for oi in valid_offset_infos.values()])
+        y_offsets = np.array([oi.y_offset for oi in valid_offset_infos.values()])
         if len(x_offsets) == 0 or len(y_offsets) == 0:
             logger.warning("No valid offsets found. Returning 0.")
-            return MultiOffsetInfo(x_offset=None, y_offset=None, offset_infos=offset_infos)
-
-        x_max_deviation = abs(x_offsets - x_offsets.mean()).max()
-        y_max_deviation = abs(y_offsets - y_offsets.mean()).max()
-        if x_max_deviation < 1 and y_max_deviation < 1:
-            return MultiOffsetInfo(x_offset=x_offsets.mean(), y_offset=y_offsets.mean(), offset_infos=offset_infos)
-
-        if np.std(x_offsets) < 1 and np.std(y_offsets) < 1:
             return MultiOffsetInfo(
-                x_offset=np.average(x_offsets, weights=reliabilities),
-                y_offset=np.average(y_offsets, weights=reliabilities),
+                x_offset=None,
+                y_offset=None,
+                avg_reliability=None,
+                avg_ssim_improvement=None,
+                offset_reduce_method=None,
                 offset_infos=offset_infos,
             )
 
-        # Use the best offset based on reliability
-        best = reliabilities.argmax()
-        return MultiOffsetInfo(x_offset=x_offsets[best], y_offset=y_offsets[best], offset_infos=offset_infos)
+        reliabilities = np.array([oi.shift_reliability for oi in valid_offset_infos.values()])
+        ssim_improvements = np.array([oi.ssim_after - oi.ssim_before for oi in valid_offset_infos.values()])
+        x_max_deviation = abs(x_offsets - x_offsets.mean()).max()
+        y_max_deviation = abs(y_offsets - y_offsets.mean()).max()
+        if x_max_deviation < 1 and y_max_deviation < 1:
+            x_offset = x_offsets.mean()
+            y_offset = y_offsets.mean()
+            reduce_method = "mean"
+        elif np.std(x_offsets) < 1 and np.std(y_offsets) < 1:
+            x_offset = np.average(x_offsets, weights=reliabilities)
+            y_offset = np.average(y_offsets, weights=reliabilities)
+            reduce_method = "weighted_mean"
+        else:
+            best = reliabilities.argmax()
+            x_offset = x_offsets[best]
+            y_offset = y_offsets[best]
+            reduce_method = "best"
+
+        return MultiOffsetInfo(
+            x_offset=x_offset,
+            y_offset=y_offset,
+            avg_reliability=reliabilities.mean(),
+            avg_ssim_improvement=ssim_improvements.mean(),
+            offset_reduce_method=reduce_method,
+            offset_infos=offset_infos,
+        )
 
 
 def _calculate_offset(

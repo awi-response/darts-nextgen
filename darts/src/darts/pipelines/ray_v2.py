@@ -540,7 +540,7 @@ class AOISentinel2RayPipeline(_BaseRayPipeline):
 
     @cached_property
     def _s2ids(self) -> list[str]:
-        from darts_acquisition.s2 import get_s2ids_from_geodataframe_ee
+        from darts_acquisition import get_s2ids_from_geodataframe_ee
 
         return sorted(
             get_s2ids_from_geodataframe_ee(self.aoi_shapefile, self.start_date, self.end_date, self.max_cloud_cover)
@@ -559,7 +559,7 @@ class AOISentinel2RayPipeline(_BaseRayPipeline):
         return out
 
     def _load_tile(self, tileinfo: RayInputDict) -> "RayDataDict":
-        from darts_acquisition.s2 import load_s2_from_gee
+        from darts_acquisition import load_s2_from_gee
 
         from darts.pipelines._ray_wrapper import RayDataset
 

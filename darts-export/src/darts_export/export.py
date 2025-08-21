@@ -18,7 +18,10 @@ def _export_raster(tile: xr.Dataset, name: str, out_dir: Path, fname: str | None
         fname = name
     fpath = out_dir / f"{fname}.tif"
     with stopwatch(f"Exporting {name} to {fpath.resolve()}", printer=logger.debug):
-        tile[name].rio.to_raster(fpath, driver="GTiff", compress="LZW", tags=tags)
+        if tile[name].dtype == "bool":
+            tile[name].astype("uint8").rio.to_raster(fpath, driver="GTiff", compress="LZW", tags=tags)
+        else:
+            tile[name].rio.to_raster(fpath, driver="GTiff", compress="LZW", tags=tags)
 
 
 def _export_vector(tile: xr.Dataset, name: str, out_dir: Path, fname: str | None = None):
@@ -56,8 +59,12 @@ def _export_binarized(tile: xr.Dataset, out_dir: Path, ensemble_subsets: list[st
 
 
 def _export_probabilities(tile: xr.Dataset, out_dir: Path, ensemble_subsets: list[str] = [], tags={}):
+    tile["probabilities"] = (tile["probabilities"] * 100).fillna(255).astype("uint8").rio.write_nodata(255)
     _export_raster(tile, "probabilities", out_dir, fname="probabilities", tags=tags)
     for ensemble_subset in ensemble_subsets:
+        tile[f"probabilities-{ensemble_subset}"] = (
+            (tile[f"probabilities-{ensemble_subset}"] * 100).fillna(255).astype("uint8").rio.write_nodata(255)
+        )
         _export_raster(
             tile,
             f"probabilities-{ensemble_subset}",
@@ -80,6 +87,7 @@ def _export_metadata(out_dir: Path, metadata: dict):
         json.dump(metadata, fp, indent=2)
 
 
+# TODO: Write a new export function which exports to NetCDF instead of GeoTIFFs for speedups -> Use Band Manager
 @stopwatch.f("Exporting tile", printer=logger.debug, print_kwargs=["bands", "ensemble_subsets"])
 def export_tile(  # noqa: C901
     tile: xr.Dataset,

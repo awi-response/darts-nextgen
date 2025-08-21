@@ -5,7 +5,7 @@ import math
 import pytest
 import torch
 
-from darts_segmentation.utils import create_patches, patch_coords, predict_in_patches
+from darts_segmentation.inference import create_patches, patch_coords, predict_in_patches
 
 test_sizes = [10, 23, 60, 2000]
 test_patch_sizes = [8, 64, 1024]
@@ -26,10 +26,18 @@ def test_patch_prediction(size: int, patch_size: int, overlap: int):
 
     h, w = size, size
     tensor_tiles = torch.rand((3, 1, h, w))
-    prediction = predict_in_patches(model, tensor_tiles, patch_size=patch_size, overlap=overlap)
+    prediction = predict_in_patches(
+        model,
+        tensor_tiles,
+        patch_size=patch_size,
+        overlap=overlap,
+        batch_size=2,
+        reflection=0,
+        device=torch.device("cpu"),
+    )
     prediction_true = torch.sigmoid(2 * tensor_tiles).squeeze(1)
     assert prediction.shape == (3, h, w)
-    torch.testing.assert_allclose(prediction, prediction_true)
+    torch.testing.assert_close(prediction, prediction_true)
 
 
 @pytest.mark.parametrize("size", test_sizes)

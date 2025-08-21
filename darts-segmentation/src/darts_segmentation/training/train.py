@@ -381,7 +381,6 @@ def train_smp(
     from darts_segmentation.training.callbacks import BinarySegmentationMetrics, BinarySegmentationPreview
     from darts_segmentation.training.data import DartsDataModule
     from darts_segmentation.training.module import LitSMP
-    from darts_segmentation.utils import Bands
 
     LoggingManager.apply_logging_handlers("lightning.pytorch", level=logging.INFO)
 
@@ -411,15 +410,18 @@ def train_smp(
     seed_everything(run.random_seed, workers=True, verbose=False)
 
     dataset_config = toml.load(data_config.train_data_dir / "config.toml")["darts"]
-    all_bands = Bands.from_config(dataset_config)
-    bands = all_bands.filter(hparams.bands) if hparams.bands else all_bands
+    bands: list[str] = data_config["bands"]
+    if hparams.bands:
+        # Filter bands by specified
+        bands = [b for b in bands if b in hparams.bands]
+
     config = SMPSegmenterConfig(
         bands=bands,
         model={
             "arch": hparams.model_arch,
             "encoder_name": hparams.model_encoder,
             "encoder_weights": hparams.model_encoder_weights,
-            "in_channels": len(all_bands) if bands is None else len(bands),
+            "in_channels": len(bands),
             "classes": 1,
         },
     )
@@ -452,12 +454,16 @@ def train_smp(
             gamma=hparams.gamma,
             focal_loss_alpha=hparams.focal_loss_alpha,
             focal_loss_gamma=hparams.focal_loss_gamma,
-            # These are only stored in the hparams and are not used
+            # Storing the model / checkpoint version in the hparams
+            model_version="2",
+            # These are only stored in the hparams and are only used as metadata
             run_id=run_id,
             run_name=run_name,
             cv_name=run.cv_name or "none",
             tune_name=run.tune_name or "none",
             random_seed=run.random_seed,
+            datetime=datetime.now(),
+            model_framework="smp",
         )
 
     # Loggers
@@ -647,7 +653,6 @@ def test_smp(
     from darts_segmentation.training.callbacks import BinarySegmentationMetrics
     from darts_segmentation.training.data import DartsDataModule
     from darts_segmentation.training.module import LitSMP
-    from darts_segmentation.utils import Bands
 
     LoggingManager.apply_logging_handlers("lightning.pytorch")
 
@@ -669,8 +674,8 @@ def test_smp(
 
     data_config = toml.load(train_data_dir / "config.toml")["darts"]
 
-    all_bands = Bands.from_config(data_config)
-    bands = all_bands.filter(bands) if bands else all_bands
+    all_bands: list[str] = data_config["bands"]
+    bands = [b for b in all_bands if b in bands] if bands else all_bands
 
     # Data and model
     datamodule = DartsDataModule(

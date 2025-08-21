@@ -11,6 +11,7 @@ import toml
 import torch
 import xarray as xr
 import zarr
+from darts_utils.bands import manager
 from darts_utils.cuda import free_torch
 
 # TODO: move erode_mask to darts_utils, since uasge is not limited to prepare_export
@@ -18,7 +19,7 @@ from geocube.api.core import make_geocube
 from zarr.codecs import BloscCodec
 from zarr.storage import LocalStore
 
-from darts_segmentation.utils import Bands, create_patches
+from darts_segmentation.inference import create_patches
 
 logger = logging.getLogger(__name__.replace("darts_", "darts."))
 
@@ -86,9 +87,9 @@ def create_labels(
         extent_rasterized = 1 - make_geocube(extent, measurements=["id"], like=tile["quality_data_mask"]).id.isnull()
         labels_rasterized = labels_rasterized.where(extent_rasterized, 2)
 
-    # For some reason it can happen that labels_rasterized ha not proeprly rounded axes
-    labels_rasterized["x"] = labels_rasterized.x.round(3)
-    labels_rasterized["y"] = labels_rasterized.y.round(3)
+    # Because rasterio use different floats, it can happen that the axes are not properly aligned
+    labels_rasterized["x"] = tile.x
+    labels_rasterized["y"] = tile.y
 
     # Filter out low-quality and no-data values (class 2 -> best quality)
     quality_mask = tile["quality_data_mask"] == 2
@@ -102,13 +103,12 @@ def create_training_patches(
     tile: xr.Dataset,
     labels: gpd.GeoDataFrame,
     extent: gpd.GeoDataFrame | None,
-    bands: Bands,
+    bands: list[str],
     patch_size: int,
     overlap: int,
     exclude_nopositive: bool,
     exclude_nan: bool,
     device: Literal["cuda", "cpu"] | int,
-    mask_erosion_size: int,
 ) -> tuple[torch.tensor, torch.tensor, list[PatchCoords]]:
     """Create training patches from a tile and labels.
 
@@ -118,20 +118,16 @@ def create_training_patches(
         extent (gpd.GeoDataFrame | None): The extent of the labels.
             The tile will be cropped to this extent.
             If None, the tile will not be cropped.
-        bands (Bands): The bands to be used for training.
+        bands (list[str]): The bands to be used for training.
         patch_size (int): The size of the patches.
         overlap (int): The size of the overlap.
         exclude_nopositive (bool): Whether to exclude patches where the labels do not contain positives.
         exclude_nan (bool): Whether to exclude patches where the input data has nan values.
-        device (Literal["cuda", "cpu"] | int): The device to use for the erosion.
-        mask_erosion_size (int): The size of the disk to use for erosion.
+        device (Literal["cuda", "cpu"] | int): The device to use
 
     Returns:
         tuple[torch.tensor, torch.tensor, list[PatchCoords]]: A tuple containing the input, the labels and the coords.
             The input has the format (C, H, W), the labels (H, W).
-
-    Raises:
-        ValueError: If a band is not found in the preprocessed data.
 
     """
     if len(labels) == 0 and exclude_nopositive:
@@ -140,30 +136,19 @@ def create_training_patches(
 
     # Rasterize the labels
     labels_rasterized = create_labels(tile, labels, extent)
-
-    # Transpose to (H, W)
-    tile = tile.transpose("y", "x")
-    n_bands = len(bands)
     tensor_labels = torch.tensor(labels_rasterized.values, device=device).float()
-    tensor_tile = torch.zeros((n_bands, tile.dims["y"], tile.dims["x"]), device=device)
-    invalid_mask = (tile["quality_data_mask"] == 0).values
-    # This will also order the data into the correct order of bands
-    for i, band in enumerate(bands):
-        if band.name not in tile:
-            raise ValueError(f"Band '{band.name}' not found in the preprocessed data.")
-        band_data = torch.tensor(tile[band.name].values, device=device).float()
-        # Normalize the bands and clip the values
-        band_data = band_data * band.factor + band.offset
-        band_data = band_data.clip(0, 1)
-        # Apply the quality mask
-        band_data[invalid_mask] = float("nan")
-        # Merge with the tile and move back to cpu
-        tensor_tile[i] = band_data
+
+    invalid_mask = (tile["quality_data_mask"] == 0).data
+    tile = tile[bands].transpose("y", "x")
+    tile = manager.normalize(tile)
+    tensor_tile = torch.as_tensor(tile.to_dataarray().data, device=device).float()
+    tensor_tile[:, invalid_mask] = float("nan")  # Set invalid pixels to NaN
 
     assert tensor_tile.dim() == 3, f"Expects tensor_tile to has shape (C, H, W), got {tensor_tile.shape}"
     assert tensor_labels.dim() == 2, f"Expects tensor_labels to has shape (H, W), got {tensor_labels.shape}"
 
     # Create patches
+    n_bands = len(bands)
     tensor_patches = create_patches(tensor_tile.unsqueeze(0), patch_size, overlap)
     tensor_patches = tensor_patches.reshape(-1, n_bands, patch_size, patch_size)
     tensor_labels, tensor_coords = create_patches(
@@ -207,10 +192,9 @@ class TrainDatasetBuilder:
     train_data_dir: Path
     patch_size: int
     overlap: int
-    bands: Bands
+    bands: list[str]
     exclude_nopositive: bool
     exclude_nan: bool
-    mask_erosion_size: int
     device: Literal["cuda", "cpu"] | int
     append: bool = False
 
@@ -257,6 +241,9 @@ class TrainDatasetBuilder:
                 "Did you set append=True by accident?"
             )
 
+    def __len__(self):  # noqa: D105
+        return len(self._metadata)
+
     def add_tile(
         self,
         tile: xr.Dataset,
@@ -294,7 +281,6 @@ class TrainDatasetBuilder:
             exclude_nopositive=self.exclude_nopositive,
             exclude_nan=self.exclude_nan,
             device=self.device,
-            mask_erosion_size=self.mask_erosion_size,
         )
 
         self._zroot["x"].append(x.numpy().astype("float32"))
@@ -351,10 +337,9 @@ class TrainDatasetBuilder:
                 "n_bands": len(self.bands),
                 "exclude_nopositive": self.exclude_nopositive,
                 "exclude_nan": self.exclude_nan,
-                "mask_erosion_size": self.mask_erosion_size,
                 "n_patches": len(metadata),
                 "device": self.device,
-                **self.bands.to_config(),  # keys: bands, band_factors, band_offsets
+                "bands": self.bands,  # keys: bands, band_factors, band_offsets
                 **data_config,
             }
         }
