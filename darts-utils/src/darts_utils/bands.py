@@ -165,7 +165,8 @@ class BandCodec:
         """Create a BandCodec for optical satellite imagery.
 
         Optical imagery bands are represented as `float32` in memory and as `uint16` on disk,
-        with a valid range of (0, 10000) in memory and on disk with 0 as NoData.
+        with a valid range of (0, 6000) in memory and on disk with 0 as NoData.
+        This results in valid reflectance between (-0.1 and 0.5)
 
         Please see the documentation about bands for caveats with optical data.
 
@@ -176,7 +177,7 @@ class BandCodec:
         return cls(
             disk_dtype="uint16",
             memory_dtype="float32",
-            valid_range=(0, 10000),
+            valid_range=(0, 6000),
             fill_value=0,
         )
 

@@ -374,7 +374,7 @@ def train_smp(
     from darts.utils.logging import LoggingManager
     from darts_utils.namegen import generate_counted_name, generate_id
     from lightning.pytorch import seed_everything
-    from lightning.pytorch.callbacks import EarlyStopping, ModelCheckpoint, RichProgressBar
+    from lightning.pytorch.callbacks import EarlyStopping, ModelCheckpoint
     from lightning.pytorch.loggers import CSVLogger, WandbLogger
 
     from darts_segmentation.segment import SMPSegmenterConfig
@@ -410,7 +410,7 @@ def train_smp(
     seed_everything(run.random_seed, workers=True, verbose=False)
 
     dataset_config = toml.load(data_config.train_data_dir / "config.toml")["darts"]
-    bands: list[str] = data_config["bands"]
+    bands: list[str] = dataset_config["bands"]
     if hparams.bands:
         # Filter bands by specified
         bands = [b for b in bands if b in hparams.bands]
@@ -526,8 +526,9 @@ def train_smp(
     ]
     # There is a bug when continuing from a checkpoint and using the RichProgressBar
     # https://github.com/Lightning-AI/pytorch-lightning/issues/20976
-    if training_config.continue_from_checkpoint is None:
-        callbacks.append(RichProgressBar())
+    # Seems like there is also another bug, so disable rich completly
+    # if training_config.continue_from_checkpoint is None:
+    #     callbacks.append(RichProgressBar())
 
     if training_config.early_stopping_patience:
         logger.debug(f"Using EarlyStopping with patience {training_config.early_stopping_patience}")
@@ -672,9 +673,9 @@ def test_smp(
     torch.set_float32_matmul_precision("medium")
     seed_everything(42, workers=True)
 
-    data_config = toml.load(train_data_dir / "config.toml")["darts"]
+    dataset_config = toml.load(train_data_dir / "config.toml")["darts"]
 
-    all_bands: list[str] = data_config["bands"]
+    all_bands: list[str] = dataset_config["bands"]
     bands = [b for b in all_bands if b in bands] if bands else all_bands
 
     # Data and model
@@ -723,7 +724,7 @@ def test_smp(
         BinarySegmentationMetrics(
             bands=bands,
             batch_size=batch_size,
-            patch_size=data_config["patch_size"],
+            patch_size=dataset_config["patch_size"],
         ),
         ThroughputMonitor(batch_size_fn=lambda batch: batch[0].size(0)),
     ]

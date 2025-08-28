@@ -6,6 +6,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 import xarray as xr
+from darts_utils.bands import manager
 from stopuhr import stopwatch
 
 from darts_export import miniviz, vectorization
@@ -87,7 +88,6 @@ def _export_metadata(out_dir: Path, metadata: dict):
         json.dump(metadata, fp, indent=2)
 
 
-# TODO: Write a new export function which exports to NetCDF instead of GeoTIFFs for speedups -> Use Band Manager
 @stopwatch.f("Exporting tile", printer=logger.debug, print_kwargs=["bands", "ensemble_subsets"])
 def export_tile(  # noqa: C901
     tile: xr.Dataset,
@@ -95,6 +95,7 @@ def export_tile(  # noqa: C901
     bands: list[str] = ["probabilities", "binarized", "polygonized", "extent", "thumbnail"],
     ensemble_subsets: list[str] = [],
     metadata: dict = {},
+    debug: bool = False,
 ):
     """Export a tile into a inference dataset, consisting of multiple files.
 
@@ -104,6 +105,7 @@ def export_tile(  # noqa: C901
         bands (list[str], optional): The bands to export. Defaults to ["probabilities"].
         ensemble_subsets (list[str], optional): The ensemble subsets to export. Defaults to [].
         metadata (dict, optional): Metadata to include in the export.
+        debug (bool, optional): Debug mode: will write a .netcdf with all of the tiles contents. Defaults to False.
 
     Raises:
         ValueError: If the band is not found in the tile.
@@ -145,3 +147,6 @@ def export_tile(  # noqa: C901
                     )
                 # Export the band as a raster
                 _export_raster(tile, band, out_dir, tags=raster_tags)
+
+    if debug:
+        manager.to_netcdf(tile, out_dir / "darts_inference_debug.nc", crop=False)
