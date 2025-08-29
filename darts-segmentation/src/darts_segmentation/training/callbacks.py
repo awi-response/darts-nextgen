@@ -70,7 +70,7 @@ class BinarySegmentationMetrics(Callback):
     def __init__(
         self,
         *,
-        bands: list[str],
+        nbands: int,
         val_set: str = "val",
         test_set: str = "test",
         plot_every_n_val_epochs: int = 5,
@@ -81,7 +81,7 @@ class BinarySegmentationMetrics(Callback):
         """Initialize the ValidationCallback.
 
         Args:
-            bands (Bands): List of bands to combine for the visualization.
+            nbands (int): Number of bands used create compute estimates.
             val_set (str, optional): Name of the validation set. Only used for naming the validation metrics.
                 Defaults to "val".
             test_set (str, optional): Name of the test set. Only used for naming the test metrics. Defaults to "test".
@@ -99,7 +99,7 @@ class BinarySegmentationMetrics(Callback):
         self.val_set = val_set
         self.test_set = test_set
         self.plot_every_n_val_epochs = plot_every_n_val_epochs
-        self.band_names = bands
+        self.nbands = nbands
         self.is_crossval = is_crossval
         self.batch_size = batch_size
         self.patch_size = patch_size
@@ -172,7 +172,7 @@ class BinarySegmentationMetrics(Callback):
             def sample_forward():
                 batch = torch.randn(
                     self.batch_size,
-                    len(self.band_names),
+                    self.nbands,
                     self.patch_size,
                     self.patch_size,
                     device="meta",

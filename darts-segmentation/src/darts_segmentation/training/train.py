@@ -410,10 +410,18 @@ def train_smp(
     seed_everything(run.random_seed, workers=True, verbose=False)
 
     dataset_config = toml.load(data_config.train_data_dir / "config.toml")["darts"]
-    bands: list[str] = dataset_config["bands"]
+    # Confusing thing about bands: There is
+    # (1) the available bands derived from the dataset config and
+    # (2) the bands specified in the hyperparameters
+    available_bands: list[str] = dataset_config["bands"]
     if hparams.bands:
-        # Filter bands by specified
-        bands = [b for b in bands if b in hparams.bands]
+        # Assert that all specified bands exist in the dataset_config
+        assert all(b in available_bands for b in hparams.bands), (
+            f"Some specified bands ({hparams.bands}) do not exist in the dataset config ({available_bands})!"
+        )
+        bands = hparams.bands
+    else:
+        bands = available_bands
 
     config = SMPSegmenterConfig(
         bands=bands,
@@ -436,7 +444,7 @@ def train_smp(
         total_folds=data_config.total_folds,
         fold=run.fold,
         subsample=data_config.subsample,
-        bands=hparams.bands,
+        bands=bands,
         augment=hparams.augment,
         num_workers=training_config.num_workers,
         in_memory=data_config.in_memory,
@@ -509,7 +517,7 @@ def train_smp(
             save_top_k=training_config.save_top_k,
         ),
         BinarySegmentationMetrics(
-            bands=bands,
+            nbands=len(bands),
             val_set=f"val{run.fold}",
             plot_every_n_val_epochs=logging_config.plot_every_n_val_epochs,
             is_crossval=bool(run.cv_name),
@@ -583,7 +591,6 @@ def test_smp(
     batch_size: int = 8,
     data_split_method: Literal["random", "region", "sample"] | None = None,
     data_split_by: list[str] | str | float | None = None,
-    bands: list[str] | None = None,
     artifact_dir: Path = Path("artifacts"),
     num_workers: int = 0,
     device_config: DeviceConfig = DeviceConfig(),
@@ -632,7 +639,6 @@ def test_smp(
             Defaults to None.
         data_split_by (list[str] | str | float | None, optional): Select by which seed/regions/samples split.
             Defaults to None.
-        bands (list[str] | None, optional): List of bands to use. Defaults to None.
         artifact_dir (Path, optional): Directory to save artifacts. Defaults to Path("lightning_logs").
         num_workers (int, optional): Number of workers for the DataLoader. Defaults to 0.
         device_config (DeviceConfig, optional): Device and distributed strategy related parameters.
@@ -675,8 +681,19 @@ def test_smp(
 
     dataset_config = toml.load(train_data_dir / "config.toml")["darts"]
 
-    all_bands: list[str] = dataset_config["bands"]
-    bands = [b for b in all_bands if b in bands] if bands else all_bands
+    # Try to infer model checkpoint if not given
+    if model_ckp is None:
+        checkpoint_dir = artifact_dir / f"{run_name}-{run_id}" / "checkpoints"
+        logger.debug(f"No checkpoint provided. Looking for model checkpoint in {checkpoint_dir.resolve()}")
+        model_ckp = max(checkpoint_dir.glob("*.ckpt"), key=lambda x: x.stat().st_mtime)
+    logger.debug(f"Using model checkpoint at {model_ckp.resolve()}")
+    model = LitSMP.load_from_checkpoint(model_ckp)
+
+    available_bands: list[str] = dataset_config["bands"]
+    bands = model.hparams["config"]["bands"]
+    assert all(b in available_bands for b in bands), (
+        f"Some specified bands ({bands}) do not exist in the dataset config ({available_bands})!"
+    )
 
     # Data and model
     datamodule = DartsDataModule(
@@ -687,13 +704,6 @@ def test_smp(
         bands=bands,
         num_workers=num_workers,
     )
-    # Try to infer model checkpoint if not given
-    if model_ckp is None:
-        checkpoint_dir = artifact_dir / f"{run_name}-{run_id}" / "checkpoints"
-        logger.debug(f"No checkpoint provided. Looking for model checkpoint in {checkpoint_dir.resolve()}")
-        model_ckp = max(checkpoint_dir.glob("*.ckpt"), key=lambda x: x.stat().st_mtime)
-    logger.debug(f"Using model checkpoint at {model_ckp.resolve()}")
-    model = LitSMP.load_from_checkpoint(model_ckp)
 
     # Loggers
     trainer_loggers = [
@@ -722,7 +732,7 @@ def test_smp(
     callbacks = [
         RichProgressBar(),
         BinarySegmentationMetrics(
-            bands=bands,
+            nbands=len(bands),
             batch_size=batch_size,
             patch_size=dataset_config["patch_size"],
         ),
