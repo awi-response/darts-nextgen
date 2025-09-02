@@ -133,7 +133,7 @@ class _BasePipeline(ABC):
         from darts_ensemble import EnsembleV1
         from darts_export import export_tile, missing_outputs
         from darts_postprocessing import prepare_export
-        from darts_preprocessing import preprocess_legacy_fast
+        from darts_preprocessing import preprocess_v2
 
         from darts.utils.cuda import decide_device
         from darts.utils.logging import LoggingManager
@@ -193,7 +193,7 @@ class _BasePipeline(ABC):
                 with timer("Loading TCVis", log=False):
                     tcvis = load_tcvis(tile.odc.geobox, self.tcvis_dir)
                 with timer("Preprocessing", log=False):
-                    tile = preprocess_legacy_fast(
+                    tile = preprocess_v2(
                         tile,
                         arcticdem,
                         tcvis,
