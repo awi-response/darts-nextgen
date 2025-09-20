@@ -113,7 +113,10 @@ def load_s2_from_stac(
     )
 
     ds_s2 = ds_s2.rename_vars(bands_mapping)
-    for band in set(bands_mapping.values()) - {"s2_scl"}:
+    optical_bands = [band for name, band in bands_mapping.items() if name.startswith("B")]
+    for band in optical_bands:
+        # Apply scale and offset
+        ds_s2[band] = ds_s2[band].astype("float32") / 10000.0 - 0.1
         ds_s2[band].attrs["data_source"] = "s2-stac"
         ds_s2[band].attrs["long_name"] = f"Sentinel-2 {band.capitalize()}"
         ds_s2[band].attrs["units"] = "Reflectance"

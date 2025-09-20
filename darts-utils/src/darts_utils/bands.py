@@ -160,15 +160,15 @@ class BandCodec:
             valid_range=(0, 255),
         )
 
-    # TODO: Change the code, so that opticals are represented as float -0.1 to 0.5 in memory,
-    # but stored as uint16 on disk
     @classmethod
     def optical(cls) -> "BandCodec":
         """Create a BandCodec for optical satellite imagery.
 
         Optical imagery bands are represented as `float32` in memory and as `uint16` on disk,
-        with a valid range of (0, 6000) in memory and on disk with 0 as NoData.
-        This results in valid reflectance between (-0.1 and 0.5)
+        with a valid range of (-0.1, 0.5), in memory and (0, 6000) on disk with 0 as NoData.
+        Theoretically, the valid range of optical bands is between 0 and 1, but in practice,
+        values above 0.5 are very rare in cloud and snowless regions.
+        Further, the new Sentinel 2 L2A products allow for negative values due to atmospheric correction.
 
         Please see the documentation about bands for caveats with optical data.
 
@@ -179,7 +179,9 @@ class BandCodec:
         return cls(
             disk_dtype="uint16",
             memory_dtype="float32",
-            valid_range=(0, 6000),
+            valid_range=(-0.1, 0.5),
+            scale_factor=1 / 10000,
+            offset=-0.1,
             fill_value=0,
         )
 
@@ -491,18 +493,6 @@ manager = BandManager(
         "red": BandCodec.optical(),
         "green": BandCodec.optical(),
         "nir": BandCodec.optical(),
-        # From Raw Downloads CDSE -> Alias for blue, red, green, nir
-        "B02_10m": BandCodec.optical(),
-        "B03_10m": BandCodec.optical(),
-        "B04_10m": BandCodec.optical(),
-        "B08_10m": BandCodec.optical(),
-        "SCL_20m": BandCodec.mask(11),
-        # From Raw Downloads GEE -> Alias for blue, red, green, nir
-        "B2": BandCodec.optical(),
-        "B3": BandCodec.optical(),
-        "B4": BandCodec.optical(),
-        "B8": BandCodec.optical(),
-        "SCL": BandCodec.mask(11),
         "s2_scl": BandCodec.mask(11),
         "planet_udm": BandCodec.mask(8),
         "quality_data_mask": BandCodec.mask(2),
