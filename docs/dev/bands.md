@@ -49,13 +49,13 @@ The data convertion happens in three different places of the pipeline:
     - **Decoded**: The data in the representation that is used for working and visualisation, i.e. memory-representation.
     - **Normalised**: The data in the representation that is used for training and inference, i.e. model-representation.
 
-| DataVariable (& aliase)     | usage | shape  | dtype (memory) | dtype(disk) | valid-range   | disk-range    | no-data (disk) | attrs                               | source                  | note                                                                                      |
+| DataVariable                | usage | shape  | dtype (memory) | dtype(disk) | valid-range   | disk-range    | no-data (disk) | attrs                               | source                  | note                                                                                      |
 | --------------------------- | ----- | ------ | -------------- | ----------- | ------------- | ------------- | -------------- | ----------------------------------- | ----------------------- | ----------------------------------------------------------------------------------------- |
-| `blue` (`B02_10m`,`B2`)     | inp   | (x, y) | float32        | uint16      | [0, 10000]    | [0, 65535]    | 0              | data_source, long_name, units       | PLANET / S2             |                                                                                           |
-| `green` (`B03_10m`, `B3`)   | inp   | (x, y) | float32        | uint16      | [0, 10000]    | [0, 65535]    | 0              | data_source, long_name, units       | PLANET / S2             |                                                                                           |
-| `red` (`B04_10m`, `B4`)     | inp   | (x, y) | float32        | uint16      | [0, 10000]    | [0, 65535]    | 0              | data_source, long_name, units       | PLANET / S2             |                                                                                           |
-| `nir` (`B08_10m`, `B8`)     | inp   | (x, y) | float32        | uint16      | [0, 10000]    | [0, 65535]    | 0              | data_source, long_name, units       | PLANET / S2             |                                                                                           |
-| `s2_scl` (`SCL_20m`, `SCL`) | qal   | (x, y) | uint8          | uint8       | [0, 11]       | [0, 11]       | -              | data_source, long_name              | S2                      | <https://custom-scripts.sentinel-hub.com/custom-scripts/sentinel-2/scene-classification/> |
+| `blue`                      | inp   | (x, y) | float32        | uint16      | [-0.1, 0.5]   | [0, 65535]    | 0              | data_source, long_name, units       | PLANET / S2             |                                                                                           |
+| `green`                     | inp   | (x, y) | float32        | uint16      | [-0.1, 0.5]   | [0, 65535]    | 0              | data_source, long_name, units       | PLANET / S2             |                                                                                           |
+| `red`                       | inp   | (x, y) | float32        | uint16      | [-0.1, 0.5]   | [0, 65535]    | 0              | data_source, long_name, units       | PLANET / S2             |                                                                                           |
+| `nir`                       | inp   | (x, y) | float32        | uint16      | [-0.1, 0.5]   | [0, 65535]    | 0              | data_source, long_name, units       | PLANET / S2             |                                                                                           |
+| `s2_scl`                    | qal   | (x, y) | uint8          | uint8       | [0, 11]       | [0, 11]       | -              | data_source, long_name              | S2                      | <https://custom-scripts.sentinel-hub.com/custom-scripts/sentinel-2/scene-classification/> |
 | `planet_udm`                | qal   | (x, y) | uint8          | uint8       | [0, 8]        | [0, 8]        | -              |                                     | PLANET                  | <https://docs.planet.com/data/imagery/udm/>                                               |
 | `quality_data_mask`         | qal   | (x, y) | uint8          | uint8       | {0, 1, 2}     | {0, 1, 2}     | -              | data_source, long_name, description | Acquisition             | 0 = Invalid, 1 = Low Quality, 2 = High Quality                                            |
 | `dem`                       | inp   | (x, y) | float32        | int16       | [-100, 3000]  | [0, 31000]    | -1             | data_source, long_name, units       | SmartGeocubes           |                                                                                           |
@@ -75,20 +75,25 @@ The data convertion happens in three different places of the pipeline:
 | `binarized_segmentation-X*` | dbg   | (x, y) | bool           | bool        | {False, True} | {False, True} | -              | long_name                           | Postprocessing          |                                                                                           |
 | `extent`                    | out   | (x, y) | bool           | bool        | {False, True} | {False, True} | -              | long_name                           | Postprocessing          |                                                                                           |
 
+Notes:
+
 - `X*` = Model name, e.g. `probabilities-tcvis`, `probabilities-notcvis`, etc.
 - The `no-data` value in memory for `float32` is always `nan`.
-- All `bool` disk-encoded values are of course True / False without nans (they are always equal to False).
 - `bool` types before postprocessing must be represented as uint8 in memory for easy reprojection etc.
-- Missing: New DEM Engineered: VRM DI etc.
-- Outdated: `attrs`
-- Aliases for optical bands are only used for caching the downloaded data directly after downloading.
-  This way it should be easier to identify potential issues with the raw data.
-  Since caching happens behind the hood of the acquisition module, the pipeline should never see these aliases.
 - Modes of usage:
   - `inp`: (Potential) Input to the model
   - `qal`: Quality Assurance Layer, not used as input to the model, but for masking or filtering
   - `dbg`: Only exported for debugging purposes
   - `out`: Output of the model
+
+!!! warning "Incompleteness"
+
+    `attrs` is outdated.
+    
+    Missing:
+
+    - New DEM Engineered - VRM DI etc.
+    - New Indices - TGI, EXG, GLI etc.
 
 !!! danger "Loss of Information"
 
@@ -96,25 +101,25 @@ The data convertion happens in three different places of the pipeline:
     E.g. when writing the DEM to disk, values larger than 3000m will be clipped to 3000m and the minimum step size between values reduces to 0.1m.
     This is enough for our purposes, but may not be suitable for other applications.
 
-### Optical bands: PLANET vs. Sentinel 2 (GEE) vs. Sentinel 2 (Copernicus)
+### Optical bands: PLANET vs. S2-Harmonized (GEE) vs. Sentinel-2 L2A (Copernicus)
 
-This is complicated: _in theory_ the range of this data is between 0 and 65535 (maximum of uint16), since surface reflectance does not have a defined upper limit.
-However, the satellite sensor has one: e.g. PLANET sensor outputs 12-bit integers, therefore a value of 4095 (2^12 - 1) is the maximum sensor value.
-This value however, is further reprocessed and scaled by an unknown factor (this factor always depends on the specific image metadata).
-Further, PLANET and Sentinel-2 are not color balanced to each other.
-In case of Sentinel-2 L2A the postprocessing shifts values by 1000 to allow encoding of negative reflectance.
-This was introduced in 2022 - Google Earth Engine just reverts the shift for all data after 2022.
-Thus, GEE Sentinel-2 data is lossy.
-Further, GEE Sentinel-2 data is only loaded into GEE once - hence older imagery used different processing than newer imagery.
+This is complicated: _in theory_ the range of this data is between 0 and 1 and measured as surface reflectance.
+However, the values can be negative (e.g. due to atmospheric correction) and larger than 1 (e.g. due to bright surfaces like snow).
+Thus, Copernicus applies a shift of -0.1 to allow for negative values in the Sentinel-2 L2A product.
+This was introduced in 2022 - Google Earth Engine just reverts the shift for all data after 2022 in the S2-Harmonized collection, because they never re-upload the data.
+Once uploaded, the data is fixed and will never change.
+Thus, GEE S2-Harmonized data is lossy.
+The unharmonized dataset in GEE, which is officially deprecated, is not lossy, but spectral values are not comparable between years before and after 2022.
+Further, because data is never re-uploaded, the processing of older imagery is different than newer imagery.
+The data in GEE and in Copernicus is always stored as uint16 values between 0 and 65535 (maximum of uint16) with a scale factor of 10000, just with different offsets.
 
-The storage handling and normalization handling happens with a simplified approach:
+In our pipeline we want to be able to utilize negative values in the model.
+Because most viable (non-snow, non-cloud) values are not larger than 0.5, we decided to use the range [-0.1, 0.5] for the memory representation.
+Of course, this only applies to the normalization before the data is fed into the model, thus calculating indices like NDVI are not limited to this range.
 
-- Even if the _theoretical_ valid data range of the optical data it is assumed that the valid data range is between -1000 and 10000.
-  Hence, values above will be clipped when normalizing, but only then.
-  Therefore, the decoded representation in memory can be larger than 10000 and has dtype float.
-- Normalization happens to be a linear scaling to the range [0, 1] based on the 10000 maximum value.
-  All further quantization etc. happens after normalization.
-- For visualization purposes, it is recommended to crop values to 3000.
+Data which is directly downloaded from either Copernicus or GEE is directly stored in the cache with their own representation.
+This is not documented in the table above and is specific to the acquisition module.
+All data which is output from the acquisition module is always converted to the memory representation.
 
 ### DEM
 

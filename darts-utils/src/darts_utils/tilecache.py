@@ -81,7 +81,9 @@ class XarrayCacheManager:
         if use_band_manager:
             dataset = manager.open(cache_path)
         else:
-            dataset = xr.open_dataset(cache_path, engine="h5netcdf", decode_coords="all")
+            # ! Unknown why, but decode_coords="all" sometimes fails! Falls back to manually set
+            # dataset = xr.open_dataset(path, engine="h5netcdf", decode_coords="all", decode_cf=True).load()
+            dataset = xr.open_dataset(cache_path, engine="h5netcdf").set_coords("spatial_ref").load()
         return dataset
 
     def save_to_cache(self, dataset: xr.Dataset, identifier: str, use_band_manager: bool = True) -> bool:

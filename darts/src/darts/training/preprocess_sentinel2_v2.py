@@ -78,7 +78,7 @@ def _align_offsets(
         planet_mask = load_planet_masks(footprint.fpath)
         offsets_info = get_offsets(
             tile,
-            planetds.astype("float32") / 3000,
+            planetds,
             bands=["red", "green", "blue", "nir"],
             window_size=128,
             target_mask=tile.quality_data_mask == 2,

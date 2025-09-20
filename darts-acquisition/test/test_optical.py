@@ -19,10 +19,10 @@ def assert_optical_dataset(tile: xr.Dataset):
     assert "y" in tile.dims
 
     # Check if the dataset contains the correct datatypes
-    assert tile.red.dtype == "uint16"
-    assert tile.green.dtype == "uint16"
-    assert tile.blue.dtype == "uint16"
-    assert tile.nir.dtype == "uint16"
+    assert tile.red.dtype == "float32"
+    assert tile.green.dtype == "float32"
+    assert tile.blue.dtype == "float32"
+    assert tile.nir.dtype == "float32"
     assert tile.quality_data_mask.dtype == "uint8"
 
     # Check for right georefence
@@ -40,6 +40,12 @@ def assert_optical_dataset(tile: xr.Dataset):
     assert "data_source" in tile["quality_data_mask"].attrs
     assert "long_name" in tile["quality_data_mask"].attrs
 
+    # Check if every band is in bound -0.1 to 7
+    # Why 7? Because the max of uint16 is 65535 and 65535/10000 = 6.5535
+    for band in ["red", "green", "blue", "nir"]:
+        assert tile[band].min() >= -0.1, f"{band} min value is {tile[band].min().values}, but should be >= -0.1"
+        assert tile[band].max() <= 7.0, f"{band} max value is {tile[band].max().values}, but should be <= 7.0"
+
 
 def test_load_s2_scene():
     fpath = "./data/input/sentinel2/20210818T223529_20210818T223531_T03WXP"
@@ -53,6 +59,7 @@ def test_load_s2_from_gee():
     ee_project = os.environ.get("EE_PROJECT")
     ee.Authenticate()
     ee.Initialize(project=ee_project)
+    # TODO: Test an image from before 2022-01-25
     s2id = "20240614T211521_20240614T211517_T08WMA"
     tile = load_s2_from_gee(s2id)
     assert_optical_dataset(tile)

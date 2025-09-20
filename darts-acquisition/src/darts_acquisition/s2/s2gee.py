@@ -1,6 +1,7 @@
 """Sentinel-2 related data loading. Should be used temporary and maybe moved to the acquisition package."""
 
 import logging
+from datetime import datetime
 from pathlib import Path
 
 import ee
@@ -38,7 +39,7 @@ def load_s2_from_gee(
     """
     if isinstance(img, str):
         s2id = img
-        img = ee.Image(f"COPERNICUS/S2_SR_HARMONIZED/{s2id}")
+        img = ee.Image(f"COPERNICUS/S2_SR/{s2id}")
     else:
         s2id = img.id().getInfo().split("/")[-1]
     logger.debug(f"Loading Sentinel-2 tile {s2id=} from GEE")
@@ -64,14 +65,23 @@ def load_s2_from_gee(
         return ds_s2
 
     ds_s2 = XarrayCacheManager(cache).get_or_create(
-        identifier=f"gee-s2srh-{s2id}-{''.join(bands_mapping.keys())}",
+        identifier=f"gee-s2sr-{s2id}-{''.join(bands_mapping.keys())}",
         creation_func=_get_tile,
         force=False,
+        use_band_manager=False,
     )
 
     ds_s2 = ds_s2.rename_vars(bands_mapping)
 
-    for band in set(bands_mapping.values()) - {"s2_scl"}:
+    optical_bands = [band for name, band in bands_mapping.items() if name.startswith("B")]
+
+    # Fix new preprocessing offset -> See docs about bands
+    dt = datetime.strptime(ds_s2.attrs["time"], "%Y-%m-%dT%H:%M:%S.%f000")
+    offset = 0.1 if dt >= datetime(2022, 1, 25) else 0.0
+
+    for band in optical_bands:
+        # Apply scale and offset
+        ds_s2[band] = ds_s2[band].astype("float32") / 10000.0 - offset
         ds_s2[band].attrs["data_source"] = "s2-gee"
         ds_s2[band].attrs["long_name"] = f"Sentinel 2 {band.capitalize()}"
         ds_s2[band].attrs["units"] = "Reflectance"
@@ -83,7 +93,7 @@ def load_s2_from_gee(
     # This workaround is quite computational expensive, but it works for now
     # TODO: Find other solutions for this problem!
     with stopwatch(f"Fixing nan values in {s2id=}", printer=logger.debug):
-        for band in set(bands_mapping.values()) - {"s2_scl"}:
+        for band in optical_bands:
             ds_s2["quality_data_mask"] = xr.where(ds_s2[band].isnull(), 0, ds_s2["quality_data_mask"])
             ds_s2[band] = ds_s2[band].fillna(0)
             # Turn real nan values (s2_scl is nan) into invalid data

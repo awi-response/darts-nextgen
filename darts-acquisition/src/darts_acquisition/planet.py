@@ -101,6 +101,9 @@ def load_planet_scene(fpath: str | Path) -> xr.Dataset:
     # Define band names and corresponding indices
     planet_da = xr.open_dataarray(ps_image)
 
+    # Divide by 10000 to get reflectance between 0 and 1
+    planet_da = planet_da.astype("float32") / 10000.0
+
     # Create a dataset with the bands
     bands = ["blue", "green", "red", "nir"]
     ds_planet = planet_da.assign_coords({"band": bands}).to_dataset(dim="band")

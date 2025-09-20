@@ -25,7 +25,7 @@ def thumbnail(tile: xr.Dataset) -> plt.Figure:
     # Add some statistics
     fig, ax = plt.subplots(1, 1, figsize=(10, 10))
     ax.set_title(f"Tile {tile_id} (lowres) [epsg:{tile.odc.crs.epsg}]")
-    rgba = tile.odc.to_rgba(bands=["red", "green", "blue"], vmin=0, vmax=2000)
+    rgba = tile.odc.to_rgba(bands=["red", "green", "blue"], vmin=0, vmax=0.2)
     rgba.plot.imshow(ax=ax)
 
     # Prediction boundaries
