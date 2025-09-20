@@ -149,7 +149,8 @@ def preprocess_v2(
     ds_arcticdem = ds_arcticdem.odc.crop(ds_optical.odc.geobox.extent)
     # For some reason, we need to reindex, because the reproject + crop of the arcticdem sometimes results
     # in floating point errors. These error are at the order of 1e-10, hence, way below millimeter precision.
-    ds_arcticdem = ds_arcticdem.reindex_like(ds_optical)
+    ds_arcticdem["x"] = ds_optical.x
+    ds_arcticdem["y"] = ds_optical.y
 
     ds_optical["dem"] = ds_arcticdem.dem
     ds_optical["relative_elevation"] = ds_arcticdem.tpi
@@ -157,7 +158,6 @@ def preprocess_v2(
     ds_optical["hillshade"] = ds_arcticdem.hillshade
     ds_optical["aspect"] = ds_arcticdem.aspect
     ds_optical["curvature"] = ds_arcticdem.curvature
-    # TODO: Rename datamask to arcticdem_data_mask in the acquisition and change its dtype so it can be cached properly
     ds_optical["arcticdem_data_mask"] = ds_arcticdem.arcticdem_data_mask
 
     return ds_optical
