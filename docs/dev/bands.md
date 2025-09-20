@@ -49,43 +49,46 @@ The data convertion happens in three different places of the pipeline:
     - **Decoded**: The data in the representation that is used for working and visualisation, i.e. memory-representation.
     - **Normalised**: The data in the representation that is used for training and inference, i.e. model-representation.
 
-| DataVariable                | shape  | dtype (memory) | dtype(disk) | valid-range   | disk-range    | no-data (disk) | attrs                               | source                  | note                                                                                      |
-| --------------------------- | ------ | -------------- | ----------- | ------------- | ------------- | -------------- | ----------------------------------- | ----------------------- | ----------------------------------------------------------------------------------------- |
-| `blue`                      | (x, y) | float32        | uint16      | [0, 10000]    | [0, 65535]    | 0              | data_source, long_name, units       | PLANET / S2             |                                                                                           |
-| `green`                     | (x, y) | float32        | uint16      | [0, 10000]    | [0, 65535]    | 0              | data_source, long_name, units       | PLANET / S2             |                                                                                           |
-| `red`                       | (x, y) | float32        | uint16      | [0, 10000]    | [0, 65535]    | 0              | data_source, long_name, units       | PLANET / S2             |                                                                                           |
-| `nir`                       | (x, y) | float32        | uint16      | [0, 10000]    | [0, 65535]    | 0              | data_source, long_name, units       | PLANET / S2             |                                                                                           |
-| `B02_10m`                   | (x, y) | float32        | uint16      | [0, 10000]    | [0, 65535]    | 0              |                                     | S2                      |                                                                                           |
-| `B03_10m`                   | (x, y) | float32        | uint16      | [0, 10000]    | [0, 65535]    | 0              |                                     | S2                      |                                                                                           |
-| `B04_10m`                   | (x, y) | float32        | uint16      | [0, 10000]    | [0, 65535]    | 0              |                                     | S2                      |                                                                                           |
-| `B08_10m`                   | (x, y) | float32        | uint16      | [0, 10000]    | [0, 65535]    | 0              |                                     | S2                      |                                                                                           |
-| `SCL_20m`                   | (x, y) | uint8          | uint8       | [0, 11]       | [0, 11]       | -              |                                     | S2                      | <https://custom-scripts.sentinel-hub.com/custom-scripts/sentinel-2/scene-classification/> |
-| `scl`                       | (x, y) | uint8          | uint8       | [0, 11]       | [0, 11]       | -              | data_source, long_name              | PLANET / S2             |                                                                                           |
-| `planet_udm`                | (x, y) | uint8          | uint8       | [0, 8]        | [0, 8]        | -              |                                     | PLANET                  | <https://docs.planet.com/data/imagery/udm/>                                               |
-| `quality_data_mask`         | (x, y) | uint8          | uint8       | {0, 1, 2}     | {0, 1, 2}     | -              | data_source, long_name, description | Acquisition             | 0 = Invalid, 1 = Low Quality, 2 = High Quality                                            |
-| `dem`                       | (x, y) | float32        | int16       | [-100, 3000]  | [0, 31000]    | -1             | data_source, long_name, units       | SmartGeocubes           |                                                                                           |
-| `arcticdem_data_mask`       | (x, y) | uint8          | bool        | {0, 1}        | {False, True} | -              | data_source, long_name, units       | SmartGeocubes           |                                                                                           |
-| `tc_brightness`             | (x, y) | uint8          | uint8       | [0, 255]      | [0, 255]      | -              | data_source, long_name              | EarthEngine             |                                                                                           |
-| `tc_greenness`              | (x, y) | uint8          | uint8       | [0, 255]      | [0, 255]      | -              | data_source, long_name              | EarthEngine             |                                                                                           |
-| `tc_wetness`                | (x, y) | uint8          | uint8       | [0, 255]      | [0, 255]      | -              | data_source, long_name              | EarthEngine             |                                                                                           |
-| `ndvi`                      | (x, y) | float32        | int16       | [-1, 1]       | [0, 20000]    | -1             | long_name                           | Preprocessing           |                                                                                           |
-| `relative_elevation`        | (x, y) | float32        | int16       | [-50, 50]     | [0, 30000]    | -1             | data_source, long_name, units       | Preprocessing           |                                                                                           |
-| `slope`                     | (x, y) | float32        | int16       | [0, 90]       | [0, 9000]     | -1             | data_source, long_name              | Preprocessing           |                                                                                           |
-| `aspect`                    | (x, y) | float32        | int16       | [0, 360]      | [0, 3600]     | -1             | data_source, long_name              | Preprocessing           |                                                                                           |
-| `hillshade`                 | (x, y) | float32        | int16       | [0, 1]        | [0, 10000]    | -1             | data_source, long_name              | Preprocessing           |                                                                                           |
-| `curvature`                 | (x, y) | float32        | int16       | [-1, 1]       | [0, 20000]    | -1             | data_source, long_name              | Preprocessing           |                                                                                           |
-| `probabilities`             | (x, y) | float32        | uint8       | [0, 1]        | [0, 100]      | 255            | long_name                           | Ensemble / Segmentation |                                                                                           |
-| `probabilities-X*`          | (x, y) | float32        | uint8       | [0, 1]        | [0, 100]      | 255            | long_name                           | Ensemble / Segmentation |                                                                                           |
-| `binarized_segmentation`    | (x, y) | bool           | bool        | {False, True} | {False, True} | -              | long_name                           | Postprocessing          |                                                                                           |
-| `binarized_segmentation-X*` | (x, y) | bool           | bool        | {False, True} | {False, True} | -              | long_name                           | Postprocessing          |                                                                                           |
-| `extent`                    | (x, y) | bool           | bool        | {False, True} | {False, True} | -              | long_name                           | Postprocessing          |                                                                                           |
+| DataVariable (& aliase)     | usage | shape  | dtype (memory) | dtype(disk) | valid-range   | disk-range    | no-data (disk) | attrs                               | source                  | note                                                                                      |
+| --------------------------- | ----- | ------ | -------------- | ----------- | ------------- | ------------- | -------------- | ----------------------------------- | ----------------------- | ----------------------------------------------------------------------------------------- |
+| `blue` (`B02_10m`,`B2`)     | inp   | (x, y) | float32        | uint16      | [0, 10000]    | [0, 65535]    | 0              | data_source, long_name, units       | PLANET / S2             |                                                                                           |
+| `green` (`B03_10m`, `B3`)   | inp   | (x, y) | float32        | uint16      | [0, 10000]    | [0, 65535]    | 0              | data_source, long_name, units       | PLANET / S2             |                                                                                           |
+| `red` (`B04_10m`, `B4`)     | inp   | (x, y) | float32        | uint16      | [0, 10000]    | [0, 65535]    | 0              | data_source, long_name, units       | PLANET / S2             |                                                                                           |
+| `nir` (`B08_10m`, `B8`)     | inp   | (x, y) | float32        | uint16      | [0, 10000]    | [0, 65535]    | 0              | data_source, long_name, units       | PLANET / S2             |                                                                                           |
+| `s2_scl` (`SCL_20m`, `SCL`) | qal   | (x, y) | uint8          | uint8       | [0, 11]       | [0, 11]       | -              | data_source, long_name              | S2                      | <https://custom-scripts.sentinel-hub.com/custom-scripts/sentinel-2/scene-classification/> |
+| `planet_udm`                | qal   | (x, y) | uint8          | uint8       | [0, 8]        | [0, 8]        | -              |                                     | PLANET                  | <https://docs.planet.com/data/imagery/udm/>                                               |
+| `quality_data_mask`         | qal   | (x, y) | uint8          | uint8       | {0, 1, 2}     | {0, 1, 2}     | -              | data_source, long_name, description | Acquisition             | 0 = Invalid, 1 = Low Quality, 2 = High Quality                                            |
+| `dem`                       | inp   | (x, y) | float32        | int16       | [-100, 3000]  | [0, 31000]    | -1             | data_source, long_name, units       | SmartGeocubes           |                                                                                           |
+| `arcticdem_data_mask`       | qal   | (x, y) | uint8          | bool        | {0, 1}        | {False, True} | -              | data_source, long_name, units       | SmartGeocubes           |                                                                                           |
+| `tc_brightness`             | inp   | (x, y) | uint8          | uint8       | [0, 255]      | [0, 255]      | -              | data_source, long_name              | EarthEngine             |                                                                                           |
+| `tc_greenness`              | inp   | (x, y) | uint8          | uint8       | [0, 255]      | [0, 255]      | -              | data_source, long_name              | EarthEngine             |                                                                                           |
+| `tc_wetness`                | inp   | (x, y) | uint8          | uint8       | [0, 255]      | [0, 255]      | -              | data_source, long_name              | EarthEngine             |                                                                                           |
+| `ndvi`                      | inp   | (x, y) | float32        | int16       | [-1, 1]       | [0, 20000]    | -1             | long_name                           | Preprocessing           |                                                                                           |
+| `relative_elevation`        | inp   | (x, y) | float32        | int16       | [-50, 50]     | [0, 30000]    | -1             | data_source, long_name, units       | Preprocessing           |                                                                                           |
+| `slope`                     | inp   | (x, y) | float32        | int16       | [0, 90]       | [0, 9000]     | -1             | data_source, long_name              | Preprocessing           |                                                                                           |
+| `aspect`                    | inp   | (x, y) | float32        | int16       | [0, 360]      | [0, 3600]     | -1             | data_source, long_name              | Preprocessing           |                                                                                           |
+| `hillshade`                 | inp   | (x, y) | float32        | int16       | [0, 1]        | [0, 10000]    | -1             | data_source, long_name              | Preprocessing           |                                                                                           |
+| `curvature`                 | inp   | (x, y) | float32        | int16       | [-1, 1]       | [0, 20000]    | -1             | data_source, long_name              | Preprocessing           |                                                                                           |
+| `probabilities`             | dbg   | (x, y) | float32        | uint8       | [0, 1]        | [0, 100]      | 255            | long_name                           | Ensemble / Segmentation |                                                                                           |
+| `probabilities-X*`          | dbg   | (x, y) | float32        | uint8       | [0, 1]        | [0, 100]      | 255            | long_name                           | Ensemble / Segmentation |                                                                                           |
+| `binarized_segmentation`    | out   | (x, y) | bool           | bool        | {False, True} | {False, True} | -              | long_name                           | Postprocessing          |                                                                                           |
+| `binarized_segmentation-X*` | dbg   | (x, y) | bool           | bool        | {False, True} | {False, True} | -              | long_name                           | Postprocessing          |                                                                                           |
+| `extent`                    | out   | (x, y) | bool           | bool        | {False, True} | {False, True} | -              | long_name                           | Postprocessing          |                                                                                           |
 
-- `*` = Model name, e.g. `probabilities-tcvis`, `probabilities-notcvis`, etc.
+- `X*` = Model name, e.g. `probabilities-tcvis`, `probabilities-notcvis`, etc.
 - The `no-data` value in memory for `float32` is always `nan`.
 - All `bool` disk-encoded values are of course True / False without nans (they are always equal to False).
 - `bool` types before postprocessing must be represented as uint8 in memory for easy reprojection etc.
 - Missing: New DEM Engineered: VRM DI etc.
 - Outdated: `attrs`
+- Aliases for optical bands are only used for caching the downloaded data directly after downloading.
+  This way it should be easier to identify potential issues with the raw data.
+  Since caching happens behind the hood of the acquisition module, the pipeline should never see these aliases.
+- Modes of usage:
+  - `inp`: (Potential) Input to the model
+  - `qal`: Quality Assurance Layer, not used as input to the model, but for masking or filtering
+  - `dbg`: Only exported for debugging purposes
+  - `out`: Output of the model
 
 !!! danger "Loss of Information"
 
@@ -100,12 +103,13 @@ However, the satellite sensor has one: e.g. PLANET sensor outputs 12-bit integer
 This value however, is further reprocessed and scaled by an unknown factor (this factor always depends on the specific image metadata).
 Further, PLANET and Sentinel-2 are not color balanced to each other.
 In case of Sentinel-2 L2A the postprocessing shifts values by 1000 to allow encoding of negative reflectance.
-This was introduced in 2022 - Google Earth Engine just reverts the shift for future processings.
-Hence, GEE and CDSE values are shifted by 1000.
+This was introduced in 2022 - Google Earth Engine just reverts the shift for all data after 2022.
+Thus, GEE Sentinel-2 data is lossy.
+Further, GEE Sentinel-2 data is only loaded into GEE once - hence older imagery used different processing than newer imagery.
 
 The storage handling and normalization handling happens with a simplified approach:
 
-- Even if the _theoretical_ valid data range of the optical data it is assumed that the valid data range is between 0 and 10000.
+- Even if the _theoretical_ valid data range of the optical data it is assumed that the valid data range is between -1000 and 10000.
   Hence, values above will be clipped when normalizing, but only then.
   Therefore, the decoded representation in memory can be larger than 10000 and has dtype float.
 - Normalization happens to be a linear scaling to the range [0, 1] based on the 10000 maximum value.
