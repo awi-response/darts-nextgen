@@ -160,6 +160,8 @@ class BandCodec:
             valid_range=(0, 255),
         )
 
+    # TODO: Change the code, so that opticals are represented as float -0.1 to 0.5 in memory,
+    # but stored as uint16 on disk
     @classmethod
     def optical(cls) -> "BandCodec":
         """Create a BandCodec for optical satellite imagery.
@@ -468,7 +470,9 @@ class BandManager:
             xr.Dataset: The loaded dataset.
 
         """
-        dataset = xr.open_dataset(path, engine="h5netcdf", decode_coords="all", decode_cf=True).load()
+        # ! Unknown why, but decode_coords="all" sometimes fails! Falls back to manually set
+        # dataset = xr.open_dataset(path, engine="h5netcdf", decode_coords="all", decode_cf=True).load()
+        dataset = xr.open_dataset(path, engine="h5netcdf").set_coords("spatial_ref").load()
         # Change the dtypes to the memory representation
         for band in dataset:
             codec = self.get(band)
@@ -487,11 +491,18 @@ manager = BandManager(
         "red": BandCodec.optical(),
         "green": BandCodec.optical(),
         "nir": BandCodec.optical(),
+        # From Raw Downloads CDSE -> Alias for blue, red, green, nir
         "B02_10m": BandCodec.optical(),
         "B03_10m": BandCodec.optical(),
         "B04_10m": BandCodec.optical(),
         "B08_10m": BandCodec.optical(),
         "SCL_20m": BandCodec.mask(11),
+        # From Raw Downloads GEE -> Alias for blue, red, green, nir
+        "B2": BandCodec.optical(),
+        "B3": BandCodec.optical(),
+        "B4": BandCodec.optical(),
+        "B8": BandCodec.optical(),
+        "SCL": BandCodec.mask(11),
         "s2_scl": BandCodec.mask(11),
         "planet_udm": BandCodec.mask(8),
         "quality_data_mask": BandCodec.mask(2),
