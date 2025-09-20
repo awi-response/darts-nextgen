@@ -1,3 +1,4 @@
+# ruff: noqa: D101, D102, D103
 """Simple estimation of panarctic permafrost Sentinel 2 tiles."""
 
 import json
@@ -132,7 +133,15 @@ def estimate(grid_code: str) -> list[S2Stats]:
     return stats
 
 
-def cli(threads: int = 5, workers: int = 4, download: bool = False):
+def cli(threads: int = 5, workers: int = 4, download: bool = False):  # noqa: C901
+    """Download metadata information from the Sentinel 2 STAC API and calculate simple statistics from them.
+
+    Args:
+        threads (int, optional): Number of threads to use for the download. Defaults to 5.
+        workers (int, optional): Number of workers to use for the computation of simplified statistics. Defaults to 4.
+        download (bool, optional): Whether to download missing STAC items. Defaults to False.
+
+    """
     grid_ids = load_grid_ids()
     # Download missing STAC items
     grid_ids_to_download = [gid for gid in grid_ids if not (stac_cache / f"s2stats-{gid}.json").exists()]
