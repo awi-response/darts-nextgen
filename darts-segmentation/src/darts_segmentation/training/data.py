@@ -23,7 +23,6 @@ from torch.utils.data import DataLoader, Dataset
 from zarr.storage import LocalStore
 
 from darts_segmentation.training.augmentations import Augmentation, get_augmentation
-from darts_segmentation.utils import Bands
 
 logger = logging.getLogger(__name__.replace("darts_", "darts."))
 
@@ -209,7 +208,7 @@ class DartsDataModule(L.LightningDataModule):
         total_folds: int = 5,
         fold: int = 0,
         subsample: int | None = None,
-        bands: Bands | list[str] | None = None,
+        bands: list[str] | None = None,
         augment: list[Augmentation] | None = None,  # Not used for val or test
         num_workers: int = 0,
         in_memory: bool = False,
@@ -319,7 +318,6 @@ class DartsDataModule(L.LightningDataModule):
         config_file = data_dir / "config.toml"
         assert config_file.exists(), f"Config file {config_file} not found!"
         data_bands = toml.load(config_file)["darts"]["bands"]
-        bands = bands.names if isinstance(bands, Bands) else bands
         self.bands = [data_bands.index(b) for b in bands] if bands else None
 
         zdir = data_dir / "data.zarr"

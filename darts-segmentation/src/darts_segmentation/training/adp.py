@@ -32,6 +32,9 @@ def _adp(
                 inp = futures[future]
                 try:
                     output = future.result()
+                except (KeyboardInterrupt, SystemError, SystemExit):
+                    executor.shutdown(wait=False, cancel_futures=True)
+                    raise
                 except Exception as e:
                     logger.error(f"Error in {inp}: {e}", exc_info=True)
                     continue

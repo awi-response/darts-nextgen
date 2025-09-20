@@ -5,9 +5,8 @@ from typing import Literal
 
 import odc.geo.xr
 import xarray as xr
-from darts_utils.cuda import free_cupy
+from darts_utils.cuda import DEFAULT_DEVICE, move_to_device, move_to_host
 from stopuhr import stopwatch
-from xrspatial.utils import has_cuda_and_cupy
 
 from darts_preprocessing.engineering.arcticdem import (
     calculate_slope,
@@ -18,21 +17,11 @@ from darts_preprocessing.engineering.indices import calculate_ndvi
 logger = logging.getLogger(__name__.replace("darts_", "darts."))
 
 
-if has_cuda_and_cupy():
-    import cupy as cp  # type: ignore
-    import cupy_xarray  # noqa: F401 # type: ignore
-
-    DEFAULT_DEVICE = "cuda"
-else:
-    DEFAULT_DEVICE = "cpu"
-
-
 @stopwatch.f("Preprocessing arcticdem", printer=logger.debug, print_kwargs=["tpi_outer_radius", "tpi_inner_radius"])
 def preprocess_legacy_arcticdem_fast(
     ds_arcticdem: xr.Dataset,
     tpi_outer_radius: int,
     tpi_inner_radius: int,
-    device: Literal["cuda", "cpu"] | int,
 ) -> xr.Dataset:
     """Preprocess the ArcticDEM data with legacy (DARTS v1) preprocessing steps.
 
@@ -40,51 +29,20 @@ def preprocess_legacy_arcticdem_fast(
         ds_arcticdem (xr.Dataset): The ArcticDEM dataset.
         tpi_outer_radius (int): The outer radius of the annulus kernel for the tpi calculation in number of cells.
         tpi_inner_radius (int): The inner radius of the annulus kernel for the tpi calculation in number of cells.
-        device (Literal["cuda", "cpu"] | int): The device to run the tpi and slope calculations on.
-            If "cuda" take the first device (0), if int take the specified device.
 
     Returns:
         xr.Dataset: The preprocessed ArcticDEM dataset.
 
     """
-    use_gpu = device == "cuda" or isinstance(device, int)
+    ds_arcticdem = calculate_topographic_position_index(ds_arcticdem, tpi_outer_radius, tpi_inner_radius)
+    ds_arcticdem = calculate_slope(ds_arcticdem)
 
-    # Warn user if use_gpu is set but no GPU is available
-    if use_gpu and not has_cuda_and_cupy():
-        logger.warning(
-            f"Device was set to {device}, but GPU acceleration is not available. Calculating TPI and slope on CPU."
-        )
-        use_gpu = False
-
-    # Calculate TPI and slope from ArcticDEM on GPU
-    if use_gpu:
-        device_nr = device if isinstance(device, int) else 0
-        logger.debug(f"Moving arcticdem to GPU:{device}.")
-        # Check if dem is dask, if not persist it, since tpi and slope can't be calculated from cupy-dask arrays
-        if ds_arcticdem.chunks is not None:
-            ds_arcticdem = ds_arcticdem.persist()
-        # Move and calculate on specified device
-        with cp.cuda.Device(device_nr):
-            ds_arcticdem = ds_arcticdem.cupy.as_cupy()
-            ds_arcticdem = calculate_topographic_position_index(ds_arcticdem, tpi_outer_radius, tpi_inner_radius)
-            ds_arcticdem = calculate_slope(ds_arcticdem)
-            ds_arcticdem = ds_arcticdem.cupy.as_numpy()
-            free_cupy()
-
-    # Calculate TPI and slope from ArcticDEM on CPU
-    else:
-        ds_arcticdem = calculate_topographic_position_index(ds_arcticdem, tpi_outer_radius, tpi_inner_radius)
-        ds_arcticdem = calculate_slope(ds_arcticdem)
-
-    # Apply legacy scaling to tpi
-    with xr.set_options(keep_attrs=True):
-        ds_arcticdem["tpi"] = (ds_arcticdem.tpi + 50) * 300
     return ds_arcticdem
 
 
 @stopwatch("Preprocessing", printer=logger.debug)
 def preprocess_legacy_fast(
-    ds_merged: xr.Dataset,
+    ds_optical: xr.Dataset,
     ds_arcticdem: xr.Dataset,
     ds_tcvis: xr.Dataset,
     tpi_outer_radius: int = 100,
@@ -103,7 +61,7 @@ def preprocess_legacy_fast(
     arcticdem data and calculates slope and relative elevation on the fly.
 
     Args:
-        ds_merged (xr.Dataset): The Planet scene optical data or Sentinel 2 scene optical dataset including data_masks.
+        ds_optical (xr.Dataset): The Planet scene optical data or Sentinel 2 scene optical dataset including data_masks.
         ds_arcticdem (xr.Dataset): The ArcticDEM dataset.
         ds_tcvis (xr.Dataset): The TCVIS dataset.
         tpi_outer_radius (int, optional): The outer radius of the annulus kernel for the tpi calculation
@@ -118,35 +76,36 @@ def preprocess_legacy_fast(
         xr.Dataset: The preprocessed dataset.
 
     """
+    # Move to GPU for faster calculations
+    ds_optical = move_to_device(ds_optical, device)
     # Calculate NDVI
-    ds_merged["ndvi"] = calculate_ndvi(ds_merged).ndvi
+    ds_optical["ndvi"] = calculate_ndvi(ds_optical)
+    ds_optical = move_to_host(ds_optical)
 
     # Reproject TCVIS to optical data
     with stopwatch("Reprojecting TCVIS", printer=logger.debug):
-        ds_tcvis = ds_tcvis.odc.reproject(ds_merged.odc.geobox, resampling="cubic")
+        ds_tcvis = ds_tcvis.odc.reproject(ds_optical.odc.geobox, resampling="cubic")
 
-    ds_merged["tc_brightness"] = ds_tcvis.tc_brightness
-    ds_merged["tc_greenness"] = ds_tcvis.tc_greenness
-    ds_merged["tc_wetness"] = ds_tcvis.tc_wetness
+    ds_optical["tc_brightness"] = ds_tcvis.tc_brightness
+    ds_optical["tc_greenness"] = ds_tcvis.tc_greenness
+    ds_optical["tc_wetness"] = ds_tcvis.tc_wetness
 
     # Calculate TPI and slope from ArcticDEM
     with stopwatch("Reprojecting ArcticDEM", printer=logger.debug):
-        ds_arcticdem = ds_arcticdem.odc.reproject(ds_merged.odc.geobox.buffered(tpi_outer_radius), resampling="cubic")
+        ds_arcticdem = ds_arcticdem.odc.reproject(ds_optical.odc.geobox.buffered(tpi_outer_radius), resampling="cubic")
+    # Move to same device as optical
+    ds_arcticdem = move_to_device(ds_arcticdem, device)
+    ds_arcticdem = preprocess_legacy_arcticdem_fast(ds_arcticdem, tpi_outer_radius, tpi_inner_radius)
+    ds_arcticdem = move_to_host(ds_arcticdem)
 
-    ds_arcticdem = preprocess_legacy_arcticdem_fast(ds_arcticdem, tpi_outer_radius, tpi_inner_radius, device)
-    ds_arcticdem = ds_arcticdem.odc.crop(ds_merged.odc.geobox.extent)
+    ds_arcticdem = ds_arcticdem.odc.crop(ds_optical.odc.geobox.extent)
     # For some reason, we need to reindex, because the reproject + crop of the arcticdem sometimes results
     # in floating point errors. These error are at the order of 1e-10, hence, way below millimeter precision.
-    ds_arcticdem = ds_arcticdem.reindex_like(ds_merged)
+    ds_arcticdem = ds_arcticdem.reindex_like(ds_optical)
 
-    ds_merged["dem"] = ds_arcticdem.dem
-    ds_merged["relative_elevation"] = ds_arcticdem.tpi
-    ds_merged["slope"] = ds_arcticdem.slope
-    ds_merged["arcticdem_data_mask"] = ds_arcticdem.datamask
+    ds_optical["dem"] = ds_arcticdem.dem
+    ds_optical["relative_elevation"] = ds_arcticdem.tpi
+    ds_optical["slope"] = ds_arcticdem.slope
+    ds_optical["arcticdem_data_mask"] = ds_arcticdem.arcticdem_data_mask
 
-    # Update datamask with arcticdem mask
-    # with xr.set_options(keep_attrs=True):
-    #     ds_merged["quality_data_mask"] = ds_merged.quality_data_mask * ds_arcticdem.datamask
-    # ds_merged.quality_data_mask.attrs["data_source"] += " + ArcticDEM"
-
-    return ds_merged
+    return ds_optical

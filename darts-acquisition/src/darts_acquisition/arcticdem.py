@@ -69,12 +69,19 @@ def load_arcticdem(
     """  # noqa: E501
     odc.stac.configure_rio(cloud_defaults=True, aws={"aws_unsigned": True})
 
+    assert ".icechunk" == data_dir.suffix, f"Data directory {data_dir} must have an .icechunk suffix!"
+
     match resolution:
         case 2:
+            assert "2m" in data_dir.stem and "32m" not in data_dir.stem, (
+                f"Data directory {data_dir} must have a '2m' in the name!"
+            )
             accessor = smart_geocubes.ArcticDEM2m(data_dir)
         case 10:
+            assert "10m" in data_dir.stem, f"Data directory {data_dir} must have a '10m' in the name!"
             accessor = smart_geocubes.ArcticDEM10m(data_dir)
         case 32:
+            assert "32m" in data_dir.stem, f"Data directory {data_dir} must have a '32m' in the name!"
             accessor = smart_geocubes.ArcticDEM32m(data_dir)
         case _:
             raise ValueError(f"Resolution {resolution} not supported, only 2m, 10m and 32m are supported")
@@ -84,6 +91,12 @@ def load_arcticdem(
     arcticdem = accessor.load(geobox, buffer=buffer, persist=persist)
 
     # Change dtype of the datamask to uint8 for later reproject_match
-    arcticdem["datamask"] = arcticdem.datamask.astype("uint8")
+    arcticdem["arcticdem_data_mask"] = arcticdem.datamask.astype("uint8")
+
+    # Clip values to -100, 3000 range (see docs about bands)
+    arcticdem["dem"] = arcticdem["dem"].clip(-100, 3000)
+
+    # Change dtype of arcticdem to float32 to save memory
+    arcticdem = arcticdem.astype("float32")
 
     return arcticdem

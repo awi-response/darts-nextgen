@@ -42,7 +42,6 @@ from darts_segmentation.metrics import (
     BinaryInstanceRecall,
 )
 from darts_segmentation.training.viz import plot_sample
-from darts_segmentation.utils import Bands
 
 logger = logging.getLogger(__name__.replace("darts_", "darts."))
 
@@ -71,7 +70,7 @@ class BinarySegmentationMetrics(Callback):
     def __init__(
         self,
         *,
-        bands: Bands,
+        nbands: int,
         val_set: str = "val",
         test_set: str = "test",
         plot_every_n_val_epochs: int = 5,
@@ -82,7 +81,7 @@ class BinarySegmentationMetrics(Callback):
         """Initialize the ValidationCallback.
 
         Args:
-            bands (Bands): List of bands to combine for the visualization.
+            nbands (int): Number of bands used create compute estimates.
             val_set (str, optional): Name of the validation set. Only used for naming the validation metrics.
                 Defaults to "val".
             test_set (str, optional): Name of the test set. Only used for naming the test metrics. Defaults to "test".
@@ -100,7 +99,7 @@ class BinarySegmentationMetrics(Callback):
         self.val_set = val_set
         self.test_set = test_set
         self.plot_every_n_val_epochs = plot_every_n_val_epochs
-        self.band_names = bands.names
+        self.nbands = nbands
         self.is_crossval = is_crossval
         self.batch_size = batch_size
         self.patch_size = patch_size
@@ -173,7 +172,7 @@ class BinarySegmentationMetrics(Callback):
             def sample_forward():
                 batch = torch.randn(
                     self.batch_size,
-                    len(self.band_names),
+                    self.nbands,
                     self.patch_size,
                     self.patch_size,
                     device="meta",
@@ -444,7 +443,7 @@ class BinarySegmentationPreview(Callback):
     def __init__(
         self,
         *,
-        bands: Bands,
+        bands: list[str],
         val_set: str = "val",
         test_set: str = "test",
         plot_every_n_val_epochs: int = 5,
@@ -464,7 +463,7 @@ class BinarySegmentationPreview(Callback):
         self.val_set = val_set
         self.test_set = test_set
         self.plot_every_n_val_epochs = plot_every_n_val_epochs
-        self.band_names = bands.names
+        self.band_names = bands
 
     def is_val_plot_epoch(self, current_epoch: int, check_val_every_n_epoch: int | None) -> bool:
         """Check if the current epoch is an epoch where validation samples should be plotted.

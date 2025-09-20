@@ -114,7 +114,7 @@ class _BasePipeline(ABC):
                     config[key] = [str(v.resolve()) if isinstance(v, Path) else v for v in value]
             json.dump(config, f)
 
-        from stopuhr import Chronometer
+        from stopuhr import Chronometer, stopwatch
 
         timer = Chronometer(printer=logger.debug)
 
@@ -133,7 +133,7 @@ class _BasePipeline(ABC):
         from darts_ensemble import EnsembleV1
         from darts_export import export_tile, missing_outputs
         from darts_postprocessing import prepare_export
-        from darts_preprocessing import preprocess_legacy_fast
+        from darts_preprocessing import preprocess_v2
 
         from darts.utils.cuda import decide_device
         from darts.utils.logging import LoggingManager
@@ -193,7 +193,7 @@ class _BasePipeline(ABC):
                 with timer("Loading TCVis", log=False):
                     tcvis = load_tcvis(tile.odc.geobox, self.tcvis_dir)
                 with timer("Preprocessing", log=False):
-                    tile = preprocess_legacy_fast(
+                    tile = preprocess_v2(
                         tile,
                         arcticdem,
                         tcvis,
@@ -262,6 +262,8 @@ class _BasePipeline(ABC):
                     pd.DataFrame(results).to_parquet(self.output_data_dir / f"{current_time}.results.parquet")
                 if len(timer.durations) > 0:
                     timer.export().to_parquet(self.output_data_dir / f"{current_time}.stopuhr.parquet")
+                if len(stopwatch.durations) > 0:
+                    stopwatch.export().to_parquet(self.output_data_dir / f"{current_time}.stopwatch.parquet")
         else:
             logger.info(f"Processed {n_tiles} tiles to {self.output_data_dir.resolve()}.")
             timer.summary(printer=logger.info)
@@ -519,8 +521,8 @@ class AOISentinel2Pipeline(_BasePipeline):
         end_date (str): The end date of the time series in YYYY-MM-DD format.
         max_cloud_cover (int): The maximum cloud cover percentage to use for filtering the Sentinel 2 scenes.
             Defaults to 10.
-        input_cache (Path): The directory to use for caching the input data. Defaults to Path("data/cache/input").
-
+        s2_download_cache (Path): The directory to use for caching the Sentinel 2 download data.
+            Defaults to Path("data/cache/s2gee").
         model_files (Path | list[Path]): The path to the models to use for segmentation.
             Can also be a single Path to only use one model. This implies `write_model_outputs=False`
             If a list is provided, will use an ensemble of the models.
@@ -567,18 +569,36 @@ class AOISentinel2Pipeline(_BasePipeline):
     start_date: str = None
     end_date: str = None
     max_cloud_cover: int = 10
-    input_cache: Path = Path("data/cache/input")
+    s2_source: Literal["gee", "cdse"] = "cdse"
+    s2_download_cache: Path = Path("data/cache/s2gee")
 
     def _arcticdem_resolution(self) -> Literal[10]:
         return 10
 
     @cached_property
     def _s2ids(self) -> list[str]:
-        from darts_acquisition.s2 import get_s2ids_from_geodataframe_ee
+        if self.s2_source == "gee":
+            from darts_acquisition import get_s2ids_from_geodataframe_ee
 
-        return sorted(
-            get_s2ids_from_geodataframe_ee(self.aoi_shapefile, self.start_date, self.end_date, self.max_cloud_cover)
-        )
+            return sorted(
+                get_s2ids_from_geodataframe_ee(
+                    self.aoi_shapefile,
+                    self.start_date,
+                    self.end_date,
+                    self.max_cloud_cover,
+                )
+            )
+        else:
+            from darts_acquisition import get_s2ids_from_geodataframe_stac
+
+            return sorted(
+                get_s2ids_from_geodataframe_stac(
+                    self.aoi_shapefile,
+                    self.start_date,
+                    self.end_date,
+                    self.max_cloud_cover,
+                ).keys()
+            )
 
     def _get_tile_id(self, tilekey):
         # In case of the GEE tilekey is also the s2id
@@ -593,10 +613,14 @@ class AOISentinel2Pipeline(_BasePipeline):
         return out
 
     def _load_tile(self, s2id: str) -> "xr.Dataset":
-        from darts_acquisition.s2 import load_s2_from_gee
+        if self.s2_source == "gee":
+            from darts_acquisition import load_s2_from_gee
 
-        tile = load_s2_from_gee(s2id, cache=self.input_cache)
-        return tile
+            return load_s2_from_gee(s2id, cache=self.s2_download_cache)
+        else:
+            from darts_acquisition import load_s2_from_stac
+
+            return load_s2_from_stac(s2id, cache=self.s2_download_cache)
 
     @staticmethod
     def cli(*, pipeline: "AOISentinel2Pipeline"):

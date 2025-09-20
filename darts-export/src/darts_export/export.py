@@ -6,6 +6,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 import xarray as xr
+from darts_utils.bands import manager
 from stopuhr import stopwatch
 
 from darts_export import miniviz, vectorization
@@ -18,7 +19,10 @@ def _export_raster(tile: xr.Dataset, name: str, out_dir: Path, fname: str | None
         fname = name
     fpath = out_dir / f"{fname}.tif"
     with stopwatch(f"Exporting {name} to {fpath.resolve()}", printer=logger.debug):
-        tile[name].rio.to_raster(fpath, driver="GTiff", compress="LZW", tags=tags)
+        if tile[name].dtype == "bool":
+            tile[name].astype("uint8").rio.to_raster(fpath, driver="GTiff", compress="LZW", tags=tags)
+        else:
+            tile[name].rio.to_raster(fpath, driver="GTiff", compress="LZW", tags=tags)
 
 
 def _export_vector(tile: xr.Dataset, name: str, out_dir: Path, fname: str | None = None):
@@ -56,8 +60,12 @@ def _export_binarized(tile: xr.Dataset, out_dir: Path, ensemble_subsets: list[st
 
 
 def _export_probabilities(tile: xr.Dataset, out_dir: Path, ensemble_subsets: list[str] = [], tags={}):
+    tile["probabilities"] = (tile["probabilities"] * 100).fillna(255).astype("uint8").rio.write_nodata(255)
     _export_raster(tile, "probabilities", out_dir, fname="probabilities", tags=tags)
     for ensemble_subset in ensemble_subsets:
+        tile[f"probabilities-{ensemble_subset}"] = (
+            (tile[f"probabilities-{ensemble_subset}"] * 100).fillna(255).astype("uint8").rio.write_nodata(255)
+        )
         _export_raster(
             tile,
             f"probabilities-{ensemble_subset}",
@@ -87,6 +95,7 @@ def export_tile(  # noqa: C901
     bands: list[str] = ["probabilities", "binarized", "polygonized", "extent", "thumbnail"],
     ensemble_subsets: list[str] = [],
     metadata: dict = {},
+    debug: bool = False,
 ):
     """Export a tile into a inference dataset, consisting of multiple files.
 
@@ -96,6 +105,7 @@ def export_tile(  # noqa: C901
         bands (list[str], optional): The bands to export. Defaults to ["probabilities"].
         ensemble_subsets (list[str], optional): The ensemble subsets to export. Defaults to [].
         metadata (dict, optional): Metadata to include in the export.
+        debug (bool, optional): Debug mode: will write a .netcdf with all of the tiles contents. Defaults to False.
 
     Raises:
         ValueError: If the band is not found in the tile.
@@ -137,3 +147,6 @@ def export_tile(  # noqa: C901
                     )
                 # Export the band as a raster
                 _export_raster(tile, band, out_dir, tags=raster_tags)
+
+    if debug:
+        manager.to_netcdf(tile, out_dir / "darts_inference_debug.nc", crop=False)

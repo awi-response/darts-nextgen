@@ -374,14 +374,13 @@ def train_smp(
     from darts.utils.logging import LoggingManager
     from darts_utils.namegen import generate_counted_name, generate_id
     from lightning.pytorch import seed_everything
-    from lightning.pytorch.callbacks import EarlyStopping, ModelCheckpoint, RichProgressBar
+    from lightning.pytorch.callbacks import EarlyStopping, ModelCheckpoint
     from lightning.pytorch.loggers import CSVLogger, WandbLogger
 
     from darts_segmentation.segment import SMPSegmenterConfig
     from darts_segmentation.training.callbacks import BinarySegmentationMetrics, BinarySegmentationPreview
     from darts_segmentation.training.data import DartsDataModule
     from darts_segmentation.training.module import LitSMP
-    from darts_segmentation.utils import Bands
 
     LoggingManager.apply_logging_handlers("lightning.pytorch", level=logging.INFO)
 
@@ -411,15 +410,26 @@ def train_smp(
     seed_everything(run.random_seed, workers=True, verbose=False)
 
     dataset_config = toml.load(data_config.train_data_dir / "config.toml")["darts"]
-    all_bands = Bands.from_config(dataset_config)
-    bands = all_bands.filter(hparams.bands) if hparams.bands else all_bands
+    # Confusing thing about bands: There is
+    # (1) the available bands derived from the dataset config and
+    # (2) the bands specified in the hyperparameters
+    available_bands: list[str] = dataset_config["bands"]
+    if hparams.bands:
+        # Assert that all specified bands exist in the dataset_config
+        assert all(b in available_bands for b in hparams.bands), (
+            f"Some specified bands ({hparams.bands}) do not exist in the dataset config ({available_bands})!"
+        )
+        bands = hparams.bands
+    else:
+        bands = available_bands
+
     config = SMPSegmenterConfig(
         bands=bands,
         model={
             "arch": hparams.model_arch,
             "encoder_name": hparams.model_encoder,
             "encoder_weights": hparams.model_encoder_weights,
-            "in_channels": len(all_bands) if bands is None else len(bands),
+            "in_channels": len(bands),
             "classes": 1,
         },
     )
@@ -434,7 +444,7 @@ def train_smp(
         total_folds=data_config.total_folds,
         fold=run.fold,
         subsample=data_config.subsample,
-        bands=hparams.bands,
+        bands=bands,
         augment=hparams.augment,
         num_workers=training_config.num_workers,
         in_memory=data_config.in_memory,
@@ -452,12 +462,16 @@ def train_smp(
             gamma=hparams.gamma,
             focal_loss_alpha=hparams.focal_loss_alpha,
             focal_loss_gamma=hparams.focal_loss_gamma,
-            # These are only stored in the hparams and are not used
+            # Storing the model / checkpoint version in the hparams
+            model_version="2",
+            # These are only stored in the hparams and are only used as metadata
             run_id=run_id,
             run_name=run_name,
             cv_name=run.cv_name or "none",
             tune_name=run.tune_name or "none",
             random_seed=run.random_seed,
+            datetime=datetime.now(),
+            model_framework="smp",
         )
 
     # Loggers
@@ -503,7 +517,7 @@ def train_smp(
             save_top_k=training_config.save_top_k,
         ),
         BinarySegmentationMetrics(
-            bands=bands,
+            nbands=len(bands),
             val_set=f"val{run.fold}",
             plot_every_n_val_epochs=logging_config.plot_every_n_val_epochs,
             is_crossval=bool(run.cv_name),
@@ -520,8 +534,9 @@ def train_smp(
     ]
     # There is a bug when continuing from a checkpoint and using the RichProgressBar
     # https://github.com/Lightning-AI/pytorch-lightning/issues/20976
-    if training_config.continue_from_checkpoint is None:
-        callbacks.append(RichProgressBar())
+    # Seems like there is also another bug, so disable rich completly
+    # if training_config.continue_from_checkpoint is None:
+    #     callbacks.append(RichProgressBar())
 
     if training_config.early_stopping_patience:
         logger.debug(f"Using EarlyStopping with patience {training_config.early_stopping_patience}")
@@ -576,7 +591,6 @@ def test_smp(
     batch_size: int = 8,
     data_split_method: Literal["random", "region", "sample"] | None = None,
     data_split_by: list[str] | str | float | None = None,
-    bands: list[str] | None = None,
     artifact_dir: Path = Path("artifacts"),
     num_workers: int = 0,
     device_config: DeviceConfig = DeviceConfig(),
@@ -625,7 +639,6 @@ def test_smp(
             Defaults to None.
         data_split_by (list[str] | str | float | None, optional): Select by which seed/regions/samples split.
             Defaults to None.
-        bands (list[str] | None, optional): List of bands to use. Defaults to None.
         artifact_dir (Path, optional): Directory to save artifacts. Defaults to Path("lightning_logs").
         num_workers (int, optional): Number of workers for the DataLoader. Defaults to 0.
         device_config (DeviceConfig, optional): Device and distributed strategy related parameters.
@@ -647,7 +660,6 @@ def test_smp(
     from darts_segmentation.training.callbacks import BinarySegmentationMetrics
     from darts_segmentation.training.data import DartsDataModule
     from darts_segmentation.training.module import LitSMP
-    from darts_segmentation.utils import Bands
 
     LoggingManager.apply_logging_handlers("lightning.pytorch")
 
@@ -667,10 +679,21 @@ def test_smp(
     torch.set_float32_matmul_precision("medium")
     seed_everything(42, workers=True)
 
-    data_config = toml.load(train_data_dir / "config.toml")["darts"]
+    dataset_config = toml.load(train_data_dir / "config.toml")["darts"]
 
-    all_bands = Bands.from_config(data_config)
-    bands = all_bands.filter(bands) if bands else all_bands
+    # Try to infer model checkpoint if not given
+    if model_ckp is None:
+        checkpoint_dir = artifact_dir / f"{run_name}-{run_id}" / "checkpoints"
+        logger.debug(f"No checkpoint provided. Looking for model checkpoint in {checkpoint_dir.resolve()}")
+        model_ckp = max(checkpoint_dir.glob("*.ckpt"), key=lambda x: x.stat().st_mtime)
+    logger.debug(f"Using model checkpoint at {model_ckp.resolve()}")
+    model = LitSMP.load_from_checkpoint(model_ckp)
+
+    available_bands: list[str] = dataset_config["bands"]
+    bands = model.hparams["config"]["bands"]
+    assert all(b in available_bands for b in bands), (
+        f"Some specified bands ({bands}) do not exist in the dataset config ({available_bands})!"
+    )
 
     # Data and model
     datamodule = DartsDataModule(
@@ -681,13 +704,6 @@ def test_smp(
         bands=bands,
         num_workers=num_workers,
     )
-    # Try to infer model checkpoint if not given
-    if model_ckp is None:
-        checkpoint_dir = artifact_dir / f"{run_name}-{run_id}" / "checkpoints"
-        logger.debug(f"No checkpoint provided. Looking for model checkpoint in {checkpoint_dir.resolve()}")
-        model_ckp = max(checkpoint_dir.glob("*.ckpt"), key=lambda x: x.stat().st_mtime)
-    logger.debug(f"Using model checkpoint at {model_ckp.resolve()}")
-    model = LitSMP.load_from_checkpoint(model_ckp)
 
     # Loggers
     trainer_loggers = [
@@ -716,9 +732,9 @@ def test_smp(
     callbacks = [
         RichProgressBar(),
         BinarySegmentationMetrics(
-            bands=bands,
+            nbands=len(bands),
             batch_size=batch_size,
-            patch_size=data_config["patch_size"],
+            patch_size=dataset_config["patch_size"],
         ),
         ThroughputMonitor(batch_size_fn=lambda batch: batch[0].size(0)),
     ]

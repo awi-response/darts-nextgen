@@ -3,58 +3,140 @@
 In the training dataset preparation, all bands available from the preprocessing will be included into the train dataset.
 They are normalised and clipped to the range [0, 1], by hard-coded normalisation factors and offsets.
 When training, a subset of available bands can be selected, on which the model should be trained.
+This enables the possibility to quickly test different band combinations and their influence on the model performance without the need to preprocess the data again.
+
 The information about which bands used for training is the written into the model checkpoint.
 This information is then used to select the bands for inference.
 
-## Current State
-
-- Values & ranges after preprocessing
-- Training Dataset preprocessing normalisation
-- What is stored in the model
-- How that is applied during inference
-
-## Future
+## Representations states
 
 Split up the data representation into three different representations:
 
 - **Disk**: Data is stored in the most efficient way, e.g. uint16 for Sentinel 2, uint8 for TCVIS
 - **Memory**: Data is stored in the most convenient and correct way for visualisation purposes. This should be equal to the original data representation. E.g. [-1, 1] float for NDVI
-- **Model**: Data ist normalised to [0, 1] for training and inference
+- **Model**: Data ist normalised to [0, 1] for training and inference and is always `float32`
 
-Therefore the data convertion happens in two different places of the pipeline:
+!!! note "Memory representation exeptions"
 
-- Disk -> Memory: Cache-Manager where data is loaded from a cache NetCDF file into memory.
-  This should be handled via xarray, which follows the CF conventions.
-- Memory -> Model: In the segmentation module, right before the data is transformed into PyTorch tensors for inference.
+    The memory representation is not always the same as the original data representation.
+    For example, Satellite data like Sentinel 2 is originally stored as `uint16`, however, we also want to account for NaN values in the data.
+    Therefore, the memory representation of Sentinel 2 data is `float32` instead, but with the same range as the original data and 0 replaced with NaN.
+
+### Specification Details
+
+The data convertion happens in three different places of the pipeline:
+
+- _Disk -> Memory_:
+  - Cache-Manager where data is loaded from a cache NetCDF file into memory.
+    This should be handled via xarray, which follows the CF conventions.
+  - Training-Preprocessors
+  - NOT in the export -> The export is handled manually
+- _Memory -> Model_: In the segmentation module, right before the data is transformed into PyTorch tensors for inference.
   For training, this is done before writing the data into the training dataset to save compute power and enable better caching.
-- Model -> Memory: Never happens, the output propabilities are exported as is.
+- _Model -> Memory_: Never happens, the output propabilities are exported as is.
   Further, the probabilities are only appended to the data in memory-representation.
   Therefore the model-representation only ever exists in the inference or training code.
-- Memory -> Disk: At the export module and with the Cache-Manager when writing cache files.
+- _Memory -> Disk_: At the export module and with the Cache-Manager when writing cache files.
   This is done via xarray, which follows the CF conventions.
 
 !!! note "Terminology"
 
-    Because the data can have 3 different representations, instead of the usual two states (encoded and decoded), the terminology also changes a little.
-    When talking about one of the convertions Disk -> Memory -> Model, the following applies to the traditional terminology:
-
-    - **Encoded**: The data on the left side of the arrow.
-    - **Decoded**: The data on the right side of the arrow.
-    
-    So, in the case of a convertion from disk to memory, the encoded data is the data in disk-representation and the decoded data is the data in memory-representation.
-    In case of the convertion from memory to model, the encoded data is the data in memory-representation and the decoded data is the data in model-representation.
-
-    However, outside of the context of convertions, we may use a different terminology:
+    Because the data can have 3 different representations, it becomes unclear what is meant by "encoded" and "decoded".
+    In general, the "Memory" representation is always the "true" and therefore "decoded" representation.
+    However, outside of the context of convertions, we may use a following terminology:
 
     - **Encoded**: The data in the representation that is used for caching and exports, i.e. disk-representation.
     - **Decoded**: The data in the representation that is used for working and visualisation, i.e. memory-representation.
     - **Normalised**: The data in the representation that is used for training and inference, i.e. model-representation.
 
-### Implementation plan
+| DataVariable (& aliase)     | usage | shape  | dtype (memory) | dtype(disk) | valid-range   | disk-range    | no-data (disk) | attrs                               | source                  | note                                                                                      |
+| --------------------------- | ----- | ------ | -------------- | ----------- | ------------- | ------------- | -------------- | ----------------------------------- | ----------------------- | ----------------------------------------------------------------------------------------- |
+| `blue` (`B02_10m`,`B2`)     | inp   | (x, y) | float32        | uint16      | [0, 10000]    | [0, 65535]    | 0              | data_source, long_name, units       | PLANET / S2             |                                                                                           |
+| `green` (`B03_10m`, `B3`)   | inp   | (x, y) | float32        | uint16      | [0, 10000]    | [0, 65535]    | 0              | data_source, long_name, units       | PLANET / S2             |                                                                                           |
+| `red` (`B04_10m`, `B4`)     | inp   | (x, y) | float32        | uint16      | [0, 10000]    | [0, 65535]    | 0              | data_source, long_name, units       | PLANET / S2             |                                                                                           |
+| `nir` (`B08_10m`, `B8`)     | inp   | (x, y) | float32        | uint16      | [0, 10000]    | [0, 65535]    | 0              | data_source, long_name, units       | PLANET / S2             |                                                                                           |
+| `s2_scl` (`SCL_20m`, `SCL`) | qal   | (x, y) | uint8          | uint8       | [0, 11]       | [0, 11]       | -              | data_source, long_name              | S2                      | <https://custom-scripts.sentinel-hub.com/custom-scripts/sentinel-2/scene-classification/> |
+| `planet_udm`                | qal   | (x, y) | uint8          | uint8       | [0, 8]        | [0, 8]        | -              |                                     | PLANET                  | <https://docs.planet.com/data/imagery/udm/>                                               |
+| `quality_data_mask`         | qal   | (x, y) | uint8          | uint8       | {0, 1, 2}     | {0, 1, 2}     | -              | data_source, long_name, description | Acquisition             | 0 = Invalid, 1 = Low Quality, 2 = High Quality                                            |
+| `dem`                       | inp   | (x, y) | float32        | int16       | [-100, 3000]  | [0, 31000]    | -1             | data_source, long_name, units       | SmartGeocubes           |                                                                                           |
+| `arcticdem_data_mask`       | qal   | (x, y) | uint8          | bool        | {0, 1}        | {False, True} | -              | data_source, long_name, units       | SmartGeocubes           |                                                                                           |
+| `tc_brightness`             | inp   | (x, y) | uint8          | uint8       | [0, 255]      | [0, 255]      | -              | data_source, long_name              | EarthEngine             |                                                                                           |
+| `tc_greenness`              | inp   | (x, y) | uint8          | uint8       | [0, 255]      | [0, 255]      | -              | data_source, long_name              | EarthEngine             |                                                                                           |
+| `tc_wetness`                | inp   | (x, y) | uint8          | uint8       | [0, 255]      | [0, 255]      | -              | data_source, long_name              | EarthEngine             |                                                                                           |
+| `ndvi`                      | inp   | (x, y) | float32        | int16       | [-1, 1]       | [0, 20000]    | -1             | long_name                           | Preprocessing           |                                                                                           |
+| `relative_elevation`        | inp   | (x, y) | float32        | int16       | [-50, 50]     | [0, 30000]    | -1             | data_source, long_name, units       | Preprocessing           |                                                                                           |
+| `slope`                     | inp   | (x, y) | float32        | int16       | [0, 90]       | [0, 9000]     | -1             | data_source, long_name              | Preprocessing           |                                                                                           |
+| `aspect`                    | inp   | (x, y) | float32        | int16       | [0, 360]      | [0, 3600]     | -1             | data_source, long_name              | Preprocessing           |                                                                                           |
+| `hillshade`                 | inp   | (x, y) | float32        | int16       | [0, 1]        | [0, 10000]    | -1             | data_source, long_name              | Preprocessing           |                                                                                           |
+| `curvature`                 | inp   | (x, y) | float32        | int16       | [-1, 1]       | [0, 20000]    | -1             | data_source, long_name              | Preprocessing           |                                                                                           |
+| `probabilities`             | dbg   | (x, y) | float32        | uint8       | [0, 1]        | [0, 100]      | 255            | long_name                           | Ensemble / Segmentation |                                                                                           |
+| `probabilities-X*`          | dbg   | (x, y) | float32        | uint8       | [0, 1]        | [0, 100]      | 255            | long_name                           | Ensemble / Segmentation |                                                                                           |
+| `binarized_segmentation`    | out   | (x, y) | bool           | bool        | {False, True} | {False, True} | -              | long_name                           | Postprocessing          |                                                                                           |
+| `binarized_segmentation-X*` | dbg   | (x, y) | bool           | bool        | {False, True} | {False, True} | -              | long_name                           | Postprocessing          |                                                                                           |
+| `extent`                    | out   | (x, y) | bool           | bool        | {False, True} | {False, True} | -              | long_name                           | Postprocessing          |                                                                                           |
 
-All Disk <-> Memory convertion should be done via [xarray through their CF convention layer](https://docs.xarray.dev/en/stable/user-guide/io.html#reading-encoded-data) (`decode_cf=True`)
-For that, the attributes `_FillValue`, `scale_factor`, and `add_offset` should be set by the module which creates that data.
-This also includes the Cache-Manager, even if it just reads the data from disk, because these attributes getting lost at read.
+- `X*` = Model name, e.g. `probabilities-tcvis`, `probabilities-notcvis`, etc.
+- The `no-data` value in memory for `float32` is always `nan`.
+- All `bool` disk-encoded values are of course True / False without nans (they are always equal to False).
+- `bool` types before postprocessing must be represented as uint8 in memory for easy reprojection etc.
+- Missing: New DEM Engineered: VRM DI etc.
+- Outdated: `attrs`
+- Aliases for optical bands are only used for caching the downloaded data directly after downloading.
+  This way it should be easier to identify potential issues with the raw data.
+  Since caching happens behind the hood of the acquisition module, the pipeline should never see these aliases.
+- Modes of usage:
+  - `inp`: (Potential) Input to the model
+  - `qal`: Quality Assurance Layer, not used as input to the model, but for masking or filtering
+  - `dbg`: Only exported for debugging purposes
+  - `out`: Output of the model
+
+!!! danger "Loss of Information"
+
+    Because we encode almost every variable we work with into a smaller sized representation or into a smaller range, information get's lost.
+    E.g. when writing the DEM to disk, values larger than 3000m will be clipped to 3000m and the minimum step size between values reduces to 0.1m.
+    This is enough for our purposes, but may not be suitable for other applications.
+
+### Optical bands: PLANET vs. Sentinel 2 (GEE) vs. Sentinel 2 (Copernicus)
+
+This is complicated: _in theory_ the range of this data is between 0 and 65535 (maximum of uint16), since surface reflectance does not have a defined upper limit.
+However, the satellite sensor has one: e.g. PLANET sensor outputs 12-bit integers, therefore a value of 4095 (2^12 - 1) is the maximum sensor value.
+This value however, is further reprocessed and scaled by an unknown factor (this factor always depends on the specific image metadata).
+Further, PLANET and Sentinel-2 are not color balanced to each other.
+In case of Sentinel-2 L2A the postprocessing shifts values by 1000 to allow encoding of negative reflectance.
+This was introduced in 2022 - Google Earth Engine just reverts the shift for all data after 2022.
+Thus, GEE Sentinel-2 data is lossy.
+Further, GEE Sentinel-2 data is only loaded into GEE once - hence older imagery used different processing than newer imagery.
+
+The storage handling and normalization handling happens with a simplified approach:
+
+- Even if the _theoretical_ valid data range of the optical data it is assumed that the valid data range is between -1000 and 10000.
+  Hence, values above will be clipped when normalizing, but only then.
+  Therefore, the decoded representation in memory can be larger than 10000 and has dtype float.
+- Normalization happens to be a linear scaling to the range [0, 1] based on the 10000 maximum value.
+  All further quantization etc. happens after normalization.
+- For visualization purposes, it is recommended to crop values to 3000.
+
+### DEM
+
+The highest point in the arctic is approx. 3000m.
+The lowest depends on the geoid used, for arcticdem there are very few values below -10. (i guess)
+Hence, the valid-range scaling is similar to the optical data arbitrary.
+
+For TPI (relative_elevation), the valid-range strongly depends on the kernel used.
+The range increases with larger kernel sizes.
+E.g. some tests with Sentinel 2:
+
+- 2px (20m) kernel: [-3, 3]
+- 10px (100m) kernel: [-40, 20]
+- 100px (1000m) kernel: [-60, 40]
+
+Since we use mostly a kernel between 10px and 100px, we can expect the valid range to be between [-50, 50].
+
+## Implementation Details
+
+All Disk <-> Memory convertion are be done via [xarray through their CF convention layer](https://docs.xarray.dev/en/stable/user-guide/io.html#reading-encoded-data) (`decode_cf=True`)
+For that, the attributes `_FillValue`, `scale_factor`, and `add_offset` are set by a helper module `darts_utils.bands.BandManager`.
+This helper is used by the Cache-Manager and the export module to ensure that the data is always in the correct representation.
 
 !!! danger "_FillValue"
 
@@ -70,46 +152,28 @@ This also includes the Cache-Manager, even if it just reads the data from disk, 
     >>> "After reading without _FillValue: dtype=uint16, attrs={'data_source': 'planet', 'long_name': 'NDVI'}"
     ```
 
-### Disk representation
+### Scale and Offset
 
-!!! info
+The scale and offset for normalization is automatically derived from the `valid-range` parameter of a BandCodec.
 
-    This only applies to caching and exports of the data, not to the sources of the data.
+For disk encoding the following formula can be used to derive the scale and offset manually based on the `valid-range` and the `disk-range`:
 
-| DataVariable             | shape  | dtype   | valid-range | no-data | attrs                         | source                  | note |
-| ------------------------ | ------ | ------- | ----------- | ------- | ----------------------------- | ----------------------- | ---- |
-| `blue`                   | (x, y) | uint16  | [0,3000+]   | 0       | data_source, long_name, units | PLANET / S2             |      |
-| `green`                  | (x, y) | uint16  | [0,3000+]   | 0       | data_source, long_name, units | PLANET / S2             |      |
-| `red`                    | (x, y) | uint16  | [0,3000+]   | 0       | data_source, long_name, units | PLANET / S2             |      |
-| `nir`                    | (x, y) | uint16  | [0,3000+]   | 0       | data_source, long_name, units | PLANET / S2             |      |
-| `dem`                    | (x, y) | float32 | [0,[        | nan     | data_source, long_name, units | SmartGeocubes           |      |
-| `dem_datamask`           | (x, y) | bool    | True/False  | False   | data_source, long_name, units | SmartGeocubes           |      |
-| `tc_brightness`          | (x, y) | uint8   | [0, 255]    | -       | data_source, long_name        | EarthEngine             |      |
-| `tc_greenness`           | (x, y) | uint8   | [0, 255]    | -       | data_source, long_name        | EarthEngine             |      |
-| `tc_wetness`             | (x, y) | uint8   | [0, 255]    | -       | data_source, long_name        | EarthEngine             |      |
-| `ndvi`                   | (x, y) | uint16  | [0, 20000]  | 0       | data_source, long_name        | Preprocessing           |      |
-| `relative_elevation`     | (x, y) | int16   |             | 0       | data_source, long_name, units | Preprocessing           |      |
-| `slope`                  | (x, y) | float32 | [0, 90]     | nan     | data_source, long_name        | Preprocessing           |      |
-| `aspect`                 | (x, y) | float32 | [0, 360]    | nan     | data_source, long_name        | Preprocessing           |      |
-| `hillshade`              | (x, y) | float32 | [0, 1]      | nan     | data_source, long_name        | Preprocessing           |      |
-| `curvature`              | (x, y) | float32 |             | nan     | data_source, long_name        | Preprocessing           |      |
-| `probabilities`          | (x, y) | float32 |             | nan     | long_name                     | Ensemble / Segmentation |      |
-| `probabilities-model-X*` | (x, y) | float32 |             | nan     | long_name                     | Ensemble / Segmentation |      |
-| `probabilities_percent`  | (x, y) | uint8   | [0, 100]    | 255     | long_name, units              | Postprocessing          |      |
-| `binarized_segmentation` | (x, y) | uint8   | 0/1         | -       | long_name                     | Postprocessing          |      |
+```py
+offset = valid_range.min
+scale = (valid_range.max - valid_range.min) / (disk_range.max - disk_range.min)
+```
 
-TODO: Speak with Jonas and Ingmar about how we want to store things.
+E.g. for NDVI with a `valid_range=(-1.0, 1.0)` and `disk_range=(0, 20000)`:
 
-### Memory representation
+```py
+> offset = valid_range.min
+> scale = (valid_range.max - valid_range.min) / (disk_range.max - disk_range.min)
+> offset, scale
+-1., (2 / 20000) -> -1., 0.0001
+```
 
-The following scale and offset values are used for the normalisation:
+### Legacy support
 
-TODO
-
-### Model representation
-
-The model representation of each band is normalised to the range `[0, 1]` and uses `float32`.
-In addition to the convertion, the values are clipped to the range `[0, 1]` to avoid outliers.
-The following scale and offset values are used for the normalisation:
-
-TODO
+In order to support legacy models, it is necessary to check which model version was used.
+For this, from now on all checkpoints get a new field `model_version` in their metadata.
+Fortunatly, all previous normalizations are equal to the new ones, hence to remapping needs to be done.
