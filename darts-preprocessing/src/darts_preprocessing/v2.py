@@ -5,9 +5,8 @@ from typing import Literal
 
 import odc.geo.xr
 import xarray as xr
-from darts_utils.cuda import free_cupy
+from darts_utils.cuda import DEFAULT_DEVICE, move_to_device, move_to_host
 from stopuhr import stopwatch
-from xrspatial.utils import has_cuda_and_cupy
 
 from darts_preprocessing.engineering.arcticdem import (
     calculate_aspect,
@@ -21,13 +20,9 @@ from darts_preprocessing.engineering.indices import calculate_ndvi
 logger = logging.getLogger(__name__.replace("darts_", "darts."))
 
 
-if has_cuda_and_cupy():
-    import cupy as cp  # type: ignore
-    import cupy_xarray  # noqa: F401 # type: ignore
-
-    DEFAULT_DEVICE = "cuda"
-else:
-    DEFAULT_DEVICE = "cpu"
+# TODO: Find a better abstraction for GPU / CPU processing
+# Combine it with persisting Stuff on the GPU for later inference
+# This is currently blocked because the arcticdem needs to be cropped after the processing happened
 
 
 @stopwatch.f("Preprocessing arcticdem", printer=logger.debug, print_kwargs=["tpi_outer_radius", "tpi_inner_radius"])
@@ -35,7 +30,6 @@ def preprocess_arcticdem(
     ds_arcticdem: xr.Dataset,
     tpi_outer_radius: int,
     tpi_inner_radius: int,
-    device: Literal["cuda", "cpu"] | int,
     azimuth: int,
     angle_altitude: int,
 ) -> xr.Dataset:
@@ -45,8 +39,6 @@ def preprocess_arcticdem(
         ds_arcticdem (xr.Dataset): The ArcticDEM dataset.
         tpi_outer_radius (int): The outer radius of the annulus kernel for the tpi calculation in number of cells.
         tpi_inner_radius (int): The inner radius of the annulus kernel for the tpi calculation in number of cells.
-        device (Literal["cuda", "cpu"] | int): The device to run the tpi and slope calculations on.
-            If "cuda" take the first device (0), if int take the specified device.
         azimuth (int): The azimuth angle of the light source in degrees for hillshade calculation.
         angle_altitude (int): The altitude angle of the light source in degrees for hillshade
 
@@ -54,47 +46,28 @@ def preprocess_arcticdem(
         xr.Dataset: The preprocessed ArcticDEM dataset.
 
     """
-    use_gpu = device == "cuda" or isinstance(device, int)
-
-    # Warn user if use_gpu is set but no GPU is available
-    if use_gpu and not has_cuda_and_cupy():
-        logger.warning(
-            f"Device was set to {device}, but GPU acceleration is not available. Calculating TPI and slope on CPU."
-        )
-        use_gpu = False
-
-    # Calculate TPI and slope from ArcticDEM on GPU
-    if use_gpu:
-        device_nr = device if isinstance(device, int) else 0
-        logger.debug(f"Moving arcticdem to GPU:{device}.")
-        # Check if dem is dask, if not persist it, since tpi and slope can't be calculated from cupy-dask arrays
-        if ds_arcticdem.chunks is not None:
-            ds_arcticdem = ds_arcticdem.persist()
-        # Move and calculate on specified device
-        with cp.cuda.Device(device_nr):
-            ds_arcticdem = ds_arcticdem.cupy.as_cupy()
-            ds_arcticdem = calculate_topographic_position_index(ds_arcticdem, tpi_outer_radius, tpi_inner_radius)
-            ds_arcticdem = calculate_slope(ds_arcticdem)
-            ds_arcticdem = calculate_hillshade(ds_arcticdem, azimuth=azimuth, angle_altitude=angle_altitude)
-            ds_arcticdem = calculate_aspect(ds_arcticdem)
-            ds_arcticdem = calculate_curvature(ds_arcticdem)
-            ds_arcticdem = ds_arcticdem.cupy.as_numpy()
-            free_cupy()
-
-    # Calculate TPI and slope from ArcticDEM on CPU
-    else:
-        ds_arcticdem = calculate_topographic_position_index(ds_arcticdem, tpi_outer_radius, tpi_inner_radius)
-        ds_arcticdem = calculate_slope(ds_arcticdem)
-        ds_arcticdem = calculate_hillshade(ds_arcticdem, azimuth=azimuth, angle_altitude=angle_altitude)
-        ds_arcticdem = calculate_aspect(ds_arcticdem)
-        ds_arcticdem = calculate_curvature(ds_arcticdem)
+    ds_arcticdem = calculate_topographic_position_index(ds_arcticdem, tpi_outer_radius, tpi_inner_radius)
+    ds_arcticdem = calculate_slope(ds_arcticdem)
+    ds_arcticdem = calculate_hillshade(ds_arcticdem, azimuth=azimuth, angle_altitude=angle_altitude)
+    ds_arcticdem = calculate_aspect(ds_arcticdem)
+    ds_arcticdem = calculate_curvature(ds_arcticdem)
 
     return ds_arcticdem
 
 
+# TODO: Add possibility to filter out which stuff should be pre-processed
+# E.g. in case AlphaEarth Embeddings are added - it does not make sense to merge them here if they are not used
+# They are just to big
+# However, I think it is still a good approach to have all potential bands available in the training data
+# Hence, it would be good to have a possibility to add everything, e.g. filter-preprocessing=False
+# The pipelines would then request the bands based on their models
+# TODO: Write CUDA reprojection script with cupy
+# Needed projections:
+# - TCVIS -> Optical: 4326 to UTM
+# - ArcticDEM -> Optical: 3413 to UTM
 @stopwatch("Preprocessing", printer=logger.debug)
 def preprocess_v2(
-    ds_merged: xr.Dataset,
+    ds_optical: xr.Dataset,
     ds_arcticdem: xr.Dataset,
     ds_tcvis: xr.Dataset,
     tpi_outer_radius: int = 100,
@@ -109,7 +82,7 @@ def preprocess_v2(
     - Merge everything into a single ds.
 
     Args:
-        ds_merged (xr.Dataset): The Planet scene optical data or Sentinel 2 scene optical dataset including data_masks.
+        ds_optical (xr.Dataset): The Planet scene optical data or Sentinel 2 scene optical dataset including data_masks.
         ds_arcticdem (xr.Dataset): The ArcticDEM dataset.
         ds_tcvis (xr.Dataset): The TCVIS dataset.
         tpi_outer_radius (int, optional): The outer radius of the annulus kernel for the tpi calculation
@@ -124,32 +97,39 @@ def preprocess_v2(
         xr.Dataset: The preprocessed dataset.
 
     """
+    # Move to GPU for faster calculations
+    ds_optical = move_to_device(ds_optical, device)
     # Calculate NDVI
-    ds_merged["ndvi"] = calculate_ndvi(ds_merged).ndvi
+    ds_optical["ndvi"] = calculate_ndvi(ds_optical)
+    ds_optical = move_to_host(ds_optical)
 
     # Reproject TCVIS to optical data
     with stopwatch("Reprojecting TCVIS", printer=logger.debug):
         # *: Reprojecting this way will not alter the datatype of the data!
         # Should be uint8 before and after reprojection.
-        ds_tcvis = ds_tcvis.odc.reproject(ds_merged.odc.geobox, resampling="cubic")
+        ds_tcvis = ds_tcvis.odc.reproject(ds_optical.odc.geobox, resampling="cubic")
 
     # !: Reprojecting with f64 coordinates and values behind the decimal point can result in a coordinate missmatch:
-    # E.g. ds_merged has x coordinates [2.123, ...] then is can happen that the
+    # E.g. ds_optical has x coordinates [2.123, ...] then is can happen that the
     # reprojected ds_tcvis coordinates are [2.12300001, ...]
     # This results is all-nan assigments later when adding the variables of the reprojected dataset to the original
-    assert (ds_merged.x == ds_tcvis.x).all(), "x coordinates do not match! See code comment above"
-    assert (ds_merged.y == ds_tcvis.y).all(), "y coordinates do not match! See code comment above"
+    assert (ds_optical.x == ds_tcvis.x).all(), "x coordinates do not match! See code comment above"
+    assert (ds_optical.y == ds_tcvis.y).all(), "y coordinates do not match! See code comment above"
 
-    ds_merged["tc_brightness"] = ds_tcvis.tc_brightness
-    ds_merged["tc_greenness"] = ds_tcvis.tc_greenness
-    ds_merged["tc_wetness"] = ds_tcvis.tc_wetness
+    # ?: Do ds_tcvis and ds_optical now share the same memory on the GPU or do I need to delte ds_tcvis to free memory?
+    # Same question for ArcticDEM
+    ds_optical["tc_brightness"] = ds_tcvis.tc_brightness
+    ds_optical["tc_greenness"] = ds_tcvis.tc_greenness
+    ds_optical["tc_wetness"] = ds_tcvis.tc_wetness
 
     # Calculate TPI and slope from ArcticDEM
     with stopwatch("Reprojecting ArcticDEM", printer=logger.debug):
-        ds_arcticdem = ds_arcticdem.odc.reproject(ds_merged.odc.geobox.buffered(tpi_outer_radius), resampling="cubic")
+        ds_arcticdem = ds_arcticdem.odc.reproject(ds_optical.odc.geobox.buffered(tpi_outer_radius), resampling="cubic")
+    # Move to same device as optical
+    ds_arcticdem = move_to_device(ds_arcticdem, device)
 
-    assert (ds_merged.x == ds_arcticdem.x).all(), "x coordinates do not match! See code comment above"
-    assert (ds_merged.y == ds_arcticdem.y).all(), "y coordinates do not match! See code comment above"
+    assert (ds_optical.x == ds_arcticdem.x).all(), "x coordinates do not match! See code comment above"
+    assert (ds_optical.y == ds_arcticdem.y).all(), "y coordinates do not match! See code comment above"
 
     azimuth = 225  # Default azimuth for hillshade calculation
     angle_altitude = 25  # Default angle altitude for hillshade calculation
@@ -161,26 +141,23 @@ def preprocess_v2(
         ds_arcticdem,
         tpi_outer_radius,
         tpi_inner_radius,
-        device,
         azimuth,
         angle_altitude,
     )
-    ds_arcticdem = ds_arcticdem.odc.crop(ds_merged.odc.geobox.extent)
+    ds_arcticdem = move_to_host(ds_arcticdem)
+
+    ds_arcticdem = ds_arcticdem.odc.crop(ds_optical.odc.geobox.extent)
     # For some reason, we need to reindex, because the reproject + crop of the arcticdem sometimes results
     # in floating point errors. These error are at the order of 1e-10, hence, way below millimeter precision.
-    ds_arcticdem = ds_arcticdem.reindex_like(ds_merged)
+    ds_arcticdem = ds_arcticdem.reindex_like(ds_optical)
 
-    ds_merged["dem"] = ds_arcticdem.dem
-    ds_merged["relative_elevation"] = ds_arcticdem.tpi
-    ds_merged["slope"] = ds_arcticdem.slope
-    ds_merged["hillshade"] = ds_arcticdem.hillshade
-    ds_merged["aspect"] = ds_arcticdem.aspect
-    ds_merged["curvature"] = ds_arcticdem.curvature
-    ds_merged["arcticdem_data_mask"] = ds_arcticdem.datamask.astype("uint8")
+    ds_optical["dem"] = ds_arcticdem.dem
+    ds_optical["relative_elevation"] = ds_arcticdem.tpi
+    ds_optical["slope"] = ds_arcticdem.slope
+    ds_optical["hillshade"] = ds_arcticdem.hillshade
+    ds_optical["aspect"] = ds_arcticdem.aspect
+    ds_optical["curvature"] = ds_arcticdem.curvature
+    # TODO: Rename datamask to arcticdem_data_mask in the acquisition and change its dtype so it can be cached properly
+    ds_optical["arcticdem_data_mask"] = ds_arcticdem.arcticdem_data_mask
 
-    # Update datamask with arcticdem mask
-    # with xr.set_options(keep_attrs=True):
-    #     ds_merged["quality_data_mask"] = ds_merged.quality_data_mask * ds_arcticdem.datamask
-    # ds_merged.quality_data_mask.attrs["data_source"] += " + ArcticDEM"
-
-    return ds_merged
+    return ds_optical
