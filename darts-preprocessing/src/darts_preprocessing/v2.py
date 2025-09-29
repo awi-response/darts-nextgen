@@ -25,7 +25,11 @@ logger = logging.getLogger(__name__.replace("darts_", "darts."))
 # This is currently blocked because the arcticdem needs to be cropped after the processing happened
 
 
-@stopwatch.f("Preprocessing arcticdem", printer=logger.debug, print_kwargs=["tpi_outer_radius", "tpi_inner_radius"])
+@stopwatch.f(
+    "Preprocessing arcticdem",
+    printer=logger.debug,
+    print_kwargs=["tpi_outer_radius", "tpi_inner_radius", "azimuth", "angle_altitude"],
+)
 def preprocess_arcticdem(
     ds_arcticdem: xr.Dataset,
     tpi_outer_radius: int,
@@ -133,10 +137,14 @@ def preprocess_v2(
 
     azimuth = 225  # Default azimuth for hillshade calculation
     angle_altitude = 25  # Default angle altitude for hillshade calculation
-    if "view:azimuth" in ds_arcticdem.attrs:
-        azimuth = round(ds_arcticdem.attrs["view:azimuth"])
-    if "view:sun_elevation" in ds_arcticdem.attrs:
-        angle_altitude = round(ds_arcticdem.attrs["view:sun_elevation"])
+    if "view:azimuth" in ds_optical.attrs:
+        azimuth = round(ds_optical.attrs["view:azimuth"])
+    else:
+        logger.warning("No azimuth found in optical dataset attributes. Using default value of 225 degrees.")
+    if "view:sun_elevation" in ds_optical.attrs:
+        angle_altitude = round(ds_optical.attrs["view:sun_elevation"])
+    else:
+        logger.warning("No sun elevation found in optical dataset attributes. Using default value of 25 degrees.")
     ds_arcticdem = preprocess_arcticdem(
         ds_arcticdem,
         tpi_outer_radius,
