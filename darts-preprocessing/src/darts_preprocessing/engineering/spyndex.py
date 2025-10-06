@@ -11,13 +11,6 @@ from stopuhr import stopwatch
 
 logger = logging.getLogger(__name__.replace("darts_", "darts."))
 
-spyndex_band_mapping = {
-    "B": "blue",
-    "G": "green",
-    "R": "red",
-    "N": "nir",
-}
-
 
 @stopwatch.f("Computing spectral index with spyndex", printer=logger.debug, print_kwargs=["index"])
 def compute_spyndex(ds_optical: xr.Dataset, index: str, **kwargs) -> xr.DataArray:
