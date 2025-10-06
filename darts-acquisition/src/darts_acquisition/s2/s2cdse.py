@@ -36,7 +36,7 @@ def _flatten_dict(d: MutableMapping, parent_key: str = "", sep: str = ".") -> Mu
 @stopwatch.f("Loading Sentinel-2 scene from STAC", printer=logger.debug, print_kwargs=["s2item"])
 def load_s2_from_stac(
     s2item: str | Item,
-    bands_mapping: dict = {"B02_10m": "blue", "B03_10m": "green", "B04_10m": "red", "B08_10m": "nir"},
+    bands_mapping: dict | Literal["all"] = {"B02_10m": "blue", "B03_10m": "green", "B04_10m": "red", "B08_10m": "nir"},
     cache: Path | None = None,
     aws_profile_name: str = "default",
 ) -> xr.Dataset:
@@ -48,8 +48,9 @@ def load_s2_from_stac(
 
     Args:
         s2item (str | Item): The Sentinel-2 image ID or the corresponing STAC Item.
-        bands_mapping (dict[str, str], optional): A mapping from bands to obtain.
+        bands_mapping (dict[str, str] | Literal["all"], optional): A mapping from bands to obtain.
             Will be renamed to the corresponding band names.
+            If "all" is provided, will load all optical bands and the SCL band.
             Defaults to {"B02_10m": "blue", "B03_10m": "green", "B04_10m": "red", "B08_10m": "nir"}.
         cache (Path | None, optional): The path to the cache directory. If None, no caching will be done.
             Defaults to None.
@@ -61,6 +62,26 @@ def load_s2_from_stac(
 
     """
     s2id = s2item.id if isinstance(s2item, Item) else s2item
+
+    if bands_mapping == "all":
+        # Mapping according to spyndex band common names:
+        # for key, band in spyndex.bands.items():
+        #     if not hasattr(band, "sentinel2a"): continue
+        #     print(f"{band.sentinel2a.band}: {band.common_name}")
+        bands_mapping = {
+            "B01_20m": "coastal",
+            "B02_10m": "blue",
+            "B03_10m": "green",
+            "B04_10m": "red",
+            "B05_20m": "rededge071",
+            "B06_20m": "rededge075",
+            "B07_20m": "rededge078",
+            "B08_10m": "nir",
+            "B8A_20m": "nir08",
+            "B09_60m": "nir09",
+            "B11_20m": "swir16",
+            "B12_20m": "swir22",
+        }
 
     if "SCL_20m" not in bands_mapping.keys():
         bands_mapping["SCL_20m"] = "s2_scl"
@@ -87,6 +108,7 @@ def load_s2_from_stac(
                 bands=bands,
                 crs="utm",
                 resolution=10,
+                resampling="nearest",  # is used as default, but lets be sure
             )
 
         ds_s2.attrs = _flatten_dict(s2item.properties)

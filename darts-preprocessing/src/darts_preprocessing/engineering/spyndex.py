@@ -25,6 +25,10 @@ def compute_spyndex(ds_optical: xr.Dataset, index: str, **kwargs) -> xr.DataArra
 
     Run `spyndex.indices` to see all available indices.
 
+    Will look for required bands in the provided dataset `ds_optical` and in the keyword arguments `kwargs`.
+    Bands provided in `kwargs` will override bands from `ds_optical`.
+    Constants not found in `kwargs` will be set to their default value.
+
     Args:
         ds_optical (xr.Dataset): The optical dataset containing the required bands.
         index (str): The name of the spectral index to compute.
@@ -43,16 +47,28 @@ def compute_spyndex(ds_optical: xr.Dataset, index: str, **kwargs) -> xr.DataArra
     params = {}
     atleast_one_dataarray = False
     for band in index.bands:
-        # Case 3: band is missing -> error
-        if band not in kwargs and band not in spyndex_band_mapping:
+        is_constant = band in spyndex.constants
+        is_in_kwargs = band in kwargs
+
+        is_in_optical = False
+        if not is_constant:
+            spyndex_band: spyndex.axioms.Band = spyndex.bands.get(band)
+            is_in_optical = spyndex_band is not None and spyndex_band.common_name in ds_optical
+
+        # Case 4: band is missing -> error
+        if not (is_constant or is_in_kwargs or is_in_optical):
             raise ValueError(f"Band '{band}' is required for index '{index.short_name}' but not provided in {kwargs=}.")
-        # Case 2: band is in kwargs
-        if band in kwargs:
+        # Case 3: band is in kwargs
+        if is_in_kwargs:
             params[band] = kwargs[band]
             continue
+        # Case 2: band is a constant
+        if is_constant:
+            constant: spyndex.axioms.Constant = spyndex.constants[band]
+            params[band] = constant.default
+            continue
         # Case 1: band is in optical
-        band_name = spyndex_band_mapping[band]
-        params[band] = ds_optical[band_name].clip(0, 1)
+        params[band] = ds_optical[spyndex_band.common_name].clip(0, 1)
         atleast_one_dataarray = True
 
     if not atleast_one_dataarray:

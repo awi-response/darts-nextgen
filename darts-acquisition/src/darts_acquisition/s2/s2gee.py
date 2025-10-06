@@ -3,6 +3,7 @@
 import logging
 from datetime import datetime
 from pathlib import Path
+from typing import Literal
 
 import ee
 import geopandas as gpd
@@ -20,15 +21,16 @@ logger = logging.getLogger(__name__.replace("darts_", "darts."))
 @stopwatch.f("Loading Sentinel-2 scene from GEE", printer=logger.debug, print_kwargs=["img"])
 def load_s2_from_gee(
     img: str | ee.Image,
-    bands_mapping: dict = {"B2": "blue", "B3": "green", "B4": "red", "B8": "nir"},
+    bands_mapping: dict | Literal["all"] = {"B2": "blue", "B3": "green", "B4": "red", "B8": "nir"},
     cache: Path | None = None,
 ) -> xr.Dataset:
     """Load a Sentinel-2 scene from Google Earth Engine and return it as an xarray dataset.
 
     Args:
         img (str | ee.Image): The Sentinel-2 image ID or the ee image object.
-        bands_mapping (dict[str, str], optional): A mapping from bands to obtain.
+        bands_mapping (dict[str, str] | Literal["all"], optional): A mapping from bands to obtain.
             Will be renamed to the corresponding band names.
+            If "all" is provided, will load all optical bands and the SCL band.
             Defaults to {"B2": "blue", "B3": "green", "B4": "red", "B8": "nir"}.
         cache (Path | None, optional): The path to the cache directory. If None, no caching will be done.
             Defaults to None.
@@ -43,6 +45,26 @@ def load_s2_from_gee(
     else:
         s2id = img.id().getInfo().split("/")[-1]
     logger.debug(f"Loading Sentinel-2 tile {s2id=} from GEE")
+
+    if bands_mapping == "all":
+        # Mapping according to spyndex band common names:
+        # for key, band in spyndex.bands.items():
+        #     if not hasattr(band, "sentinel2a"): continue
+        #     print(f"{band.sentinel2a.band}: {band.common_name}")
+        bands_mapping = {
+            "B1": "coastal",
+            "B2": "blue",
+            "B3": "green",
+            "B4": "red",
+            "B5": "rededge071",
+            "B6": "rededge075",
+            "B7": "rededge078",
+            "B8": "nir",
+            "B8A": "nir08",
+            "B9": "nir09",
+            "B11": "swir16",
+            "B12": "swir22",
+        }
 
     if "SCL" not in bands_mapping.keys():
         bands_mapping["SCL"] = "s2_scl"
