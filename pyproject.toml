@@ -38,6 +38,7 @@ dependencies = [
     "numpy>=1.26.3, <2",
     "xarray>=2024.9.0",
     "ray[data, default]>=2.37.0",
+    "spyndex>=0.7.1",
     # Visualization
     "cartopy>=0.24.1",
     "hvplot>=0.11.1",
