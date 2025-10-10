@@ -1,7 +1,4 @@
-"""Calculation of spectral indices from optical data with the spyndex library.
-
-Note: Cupy acceleration is not tested yet.
-"""
+"""Calculation of spectral indices from optical data with the spyndex library."""
 
 import logging
 

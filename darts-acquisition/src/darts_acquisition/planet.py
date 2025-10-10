@@ -107,17 +107,22 @@ def load_planet_scene(fpath: str | Path) -> xr.Dataset:
     # Create a dataset with the bands
     bands = ["blue", "green", "red", "nir"]
     ds_planet = planet_da.assign_coords({"band": bands}).to_dataset(dim="band")
-    for var in ds_planet.variables:
-        ds_planet[var].assign_attrs(
-            {
-                "long_name": f"PLANET {var.capitalize()}",
-                "data_source": "planet",
-                "planet_type": planet_type,
-                "units": "Reflectance",
-            }
-        )
-    # TODO: this is not working - it uses the file of one band too high when using training scenarios
-    ds_planet.attrs = {"tile_id": fpath.parent.stem if planet_type == "orthotile" else fpath.stem}
+    for var in bands:
+        ds_planet[var].attrs["long_name"] = f"PLANET {var.capitalize()}"
+        ds_planet[var].attrs["units"] = "Reflectance"
+
+    for var in ds_planet.data_vars:
+        ds_planet[var].attrs["data_source"] = "planet"
+        ds_planet[var].attrs["planet_type"] = planet_type
+
+    if planet_type == "scene":
+        ds_planet.attrs["tile_id"] = fpath.stem
+        ds_planet.attrs["planet_scene_id"] = fpath.stem
+    elif planet_type == "orthotile":
+        ds_planet.attrs["tile_id"] = f"{fpath.parent.stem}-{fpath.stem}"
+        ds_planet.attrs["planet_orthotile_id"] = fpath.parent.stem
+        ds_planet.attrs["planet_scene_id"] = fpath.stem
+
     return ds_planet
 
 

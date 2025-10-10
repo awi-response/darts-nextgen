@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Literal
 
 import geopandas as gpd
+import numpy as np
 import odc.geo.xr
 import pandas as pd
 import rioxarray  # noqa: F401
@@ -113,9 +114,12 @@ def load_s2_from_stac(
 
         ds_s2.attrs = _flatten_dict(s2item.properties)
         # Convert boolean values to int, since they are not supported in netcdf
+        # Also convert array, dicts and np types to str
         for key, value in ds_s2.attrs.items():
             if isinstance(value, bool):
                 ds_s2.attrs[key] = int(value)
+            elif isinstance(value, (list, dict, np.ndarray)):
+                ds_s2.attrs[key] = str(value)
         ds_s2.attrs["time"] = str(ds_s2.time.values[0])
         ds_s2 = ds_s2.isel(time=0).drop_vars("time")
 
@@ -137,11 +141,21 @@ def load_s2_from_stac(
     ds_s2 = ds_s2.rename_vars(bands_mapping)
     optical_bands = [band for name, band in bands_mapping.items() if name.startswith("B")]
     for band in optical_bands:
-        # Apply scale and offset
-        ds_s2[band] = ds_s2[band].astype("float32") / 10000.0 - 0.1
-        ds_s2[band].attrs["data_source"] = "s2-stac"
+        # We need to filter out 0 values, since they are not valid reflectance values
+        # But also not reflected in the SCL for some reason
+        ds_s2[band] = ds_s2[band].where(ds_s2[band] != 0).astype("float32") / 10000.0 - 0.1
         ds_s2[band].attrs["long_name"] = f"Sentinel-2 {band.capitalize()}"
         ds_s2[band].attrs["units"] = "Reflectance"
+    ds_s2["s2_scl"].attrs = {
+        "long_name": "Sentinel-2 Scene Classification Layer",
+        "description": (
+            "0: NO_DATA - 1: SATURATED_OR_DEFECTIVE - 2: CAST_SHADOWS - 3: CLOUD_SHADOWS - 4: VEGETATION"
+            " - 5: NOT_VEGETATED - 6: WATER - 7: UNCLASSIFIED - 8: CLOUD_MEDIUM_PROBABILITY - 9: CLOUD_HIGH_PROBABILITY"
+            " - 10: THIN_CIRRUS - 11: SNOW or ICE"
+        ),
+    }
+    for band in ds_s2.data_vars:
+        ds_s2[band].attrs["data_source"] = "Sentinel-2 L2A via Copernicus STAC API (sentinel-2-l2a)"
 
     ds_s2 = convert_masks(ds_s2)
 

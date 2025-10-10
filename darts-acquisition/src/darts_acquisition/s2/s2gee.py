@@ -104,11 +104,23 @@ def load_s2_from_gee(
     for band in optical_bands:
         # Apply scale and offset
         ds_s2[band] = ds_s2[band].astype("float32") / 10000.0 - offset
-        ds_s2[band].attrs["data_source"] = "s2-gee"
         ds_s2[band].attrs["long_name"] = f"Sentinel 2 {band.capitalize()}"
         ds_s2[band].attrs["units"] = "Reflectance"
+    ds_s2["s2_scl"].attrs = {
+        "long_name": "Sentinel-2 Scene Classification Layer",
+        "description": (
+            "0: NO_DATA - 1: SATURATED_OR_DEFECTIVE - 2: CAST_SHADOWS - 3: CLOUD_SHADOWS - 4: VEGETATION"
+            " - 5: NOT_VEGETATED - 6: WATER - 7: UNCLASSIFIED - 8: CLOUD_MEDIUM_PROBABILITY - 9: CLOUD_HIGH_PROBABILITY"
+            " - 10: THIN_CIRRUS - 11: SNOW or ICE"
+        ),
+    }
+    for band in ds_s2.data_vars:
+        ds_s2[band].attrs["data_source"] = "Sentinel-2 L2A via Google Earth Engine (COPERNICUS/S2_SR)"
 
     ds_s2 = convert_masks(ds_s2)
+    print(ds_s2.quality_data_mask.attrs)
+    qdm_attrs = ds_s2["quality_data_mask"].attrs.copy()
+    print(qdm_attrs)
 
     # For some reason, there are some spatially random nan values in the data, not only at the borders
     # To workaround this, set all nan values to 0 and add this information to the quality_data_mask
@@ -121,7 +133,10 @@ def load_s2_from_gee(
             # Turn real nan values (s2_scl is nan) into invalid data
             ds_s2[band] = ds_s2[band].where(~ds_s2["s2_scl"].isnull())
 
-    ds_s2.attrs["s2_tile_id"] = s2id
+    print(qdm_attrs)
+    ds_s2["quality_data_mask"].attrs = qdm_attrs
+    print(ds_s2.quality_data_mask.attrs)
+    ds_s2.attrs["s2_tile_id"] = img.getInfo()["properties"]["PRODUCT_ID"]
     ds_s2.attrs["tile_id"] = s2id
 
     return ds_s2
