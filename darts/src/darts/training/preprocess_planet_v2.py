@@ -73,41 +73,42 @@ def preprocess_planet_train_data(
 ):
     """Preprocess Planet data for training.
 
-    The data is split into a cross-validation, a validation-test and a test set:
+    This function preprocesses Planet scenes into a training-ready format by creating fixed-size patches
+    and storing them in a zarr array for efficient random access during training. All data is stored in
+    a single zarr group with associated metadata.
 
-        - `cross-val` is meant to be used for train and validation
-        - `val-test` (5%) random leave-out for testing the randomness distribution shift of the data
-        - `test` leave-out region for testing the spatial distribution shift of the data
+    The preprocessing creates patches of the specified size from each Planet scene and stores them as:
+    - A zarr group containing 'x' (input data) and 'y' (labels) arrays
+    - A geopandas dataframe with metadata including region, position, and label statistics
+    - A configuration file with preprocessing parameters
 
-    Each split is stored as a zarr group, containing a x and a y dataarray.
-    The x dataarray contains the input data with the shape (n_patches, n_bands, patch_size, patch_size).
-    The y dataarray contains the labels with the shape (n_patches, patch_size, patch_size).
-    Both dataarrays are chunked along the n_patches dimension.
-    This results in super fast random access to the data, because each sample / patch is stored in a separate chunk and
-    therefore in a separate file.
+    The x dataarray contains the input data with shape (n_patches, n_bands, patch_size, patch_size).
+    The y dataarray contains the labels with shape (n_patches, patch_size, patch_size).
+    Both dataarrays are chunked along the n_patches dimension with chunk size 1, resulting in
+    each patch being stored in a separate file for super fast random access.
 
-    Through the parameters `test_val_split` and `test_regions`, the test and validation split can be controlled.
-    To `test_regions` can a list of admin 1 or admin 2 region names, based on the region shapefile maintained by
-    https://github.com/wmgeolab/geoBoundaries, be supplied to remove intersecting scenes from the dataset and
-    put them in the test-split.
-    With the `test_val_split` parameter, the ratio between further splitting of a test-validation set can be controlled.
+    The metadata dataframe contains information about each patch including:
+    - sample_id: Identifier for the source Planet scene
+    - region: Administrative region name
+    - geometry: Spatial extent of the patch
+    - empty: Whether the patch contains positive labeled pixels
+    - Additional metadata as specified
 
     Through `exclude_nopositve` and `exclude_nan`, respective patches can be excluded from the final data.
 
-    Further, a `config.toml` file is saved in the `train_data_dir` containing the configuration used for the
-    preprocessing.
-    Addionally, a `labels.geojson` file is saved in the `train_data_dir` containing the joined labels geometries used
-    for the creation of the binarized label-masks, containing also information about the split via the `mode` column.
+    A `config.toml` file is saved in the `train_data_dir` containing the configuration used for the
+    preprocessing. Additionally, a timestamp-based CLI configuration file is saved for reproducibility.
 
     The final directory structure of `train_data_dir` will look like this:
 
     ```sh
     train_data_dir/
     ├── config.toml
-    ├── cross-val.zarr/
-    ├── test.zarr/
-    ├── val-test.zarr/
-    └── labels.geojson
+    ├── data.zarr/
+    │   ├── x/          # Input patches [n_patches, n_bands, patch_size, patch_size]
+    │   └── y/          # Label patches [n_patches, patch_size, patch_size]
+    ├── metadata.parquet
+    └── {timestamp}.cli.json
     ```
 
     Args:
