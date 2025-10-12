@@ -472,6 +472,11 @@ class PlanetPipeline(_BasePipeline):
         return tile
 
     @staticmethod
+    def pre_offline_cli(*, pipeline: "PlanetPipeline"):
+        """Download all necessary data for offline processing."""
+        pipeline.predownload()
+
+    @staticmethod
     def cli(*, pipeline: "PlanetPipeline"):
         """Run the sequential pipeline for Planet data."""
         pipeline.run()
@@ -618,6 +623,11 @@ class Sentinel2Pipeline(_BasePipeline):
         return base_metadata | file_meta
 
     @staticmethod
+    def pre_offline_cli(*, pipeline: "Sentinel2Pipeline"):
+        """Download all necessary data for offline processing."""
+        pipeline.predownload()
+
+    @staticmethod
     def cli(*, pipeline: "Sentinel2Pipeline"):
         """Run the sequential pipeline for Sentinel 2 data."""
         pipeline.run()
@@ -684,7 +694,7 @@ class AOISentinel2Pipeline(_BasePipeline):
     end_date: str = None
     max_cloud_cover: int = 10
     s2_source: Literal["gee", "cdse"] = "cdse"
-    s2_download_cache: Path = Path("data/cache/s2gee")
+    s2_download_cache: Path = Path("data/cache/s2cdse")
 
     @property
     def _is_local(self) -> bool:
@@ -756,6 +766,11 @@ class AOISentinel2Pipeline(_BasePipeline):
             from darts_acquisition import load_s2_from_stac
 
             return load_s2_from_stac(s2id, cache=self.s2_download_cache, offline=self.offline)
+
+    @staticmethod
+    def pre_offline_cli(*, pipeline: "AOISentinel2Pipeline"):
+        """Download all necessary data for offline processing."""
+        pipeline.predownload()
 
     @staticmethod
     def cli(*, pipeline: "AOISentinel2Pipeline"):
