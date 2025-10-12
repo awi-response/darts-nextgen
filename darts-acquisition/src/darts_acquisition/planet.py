@@ -6,6 +6,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Literal
 
+import odc.geo
+import rasterio
 import rioxarray
 import xarray as xr
 from stopuhr import stopwatch
@@ -193,3 +195,29 @@ def load_planet_masks(fpath: str | Path) -> xr.Dataset:
     }
 
     return qa_ds
+
+
+def get_planet_geometry(fpath: str | Path) -> odc.geo.Geometry:
+    """Get the geometry of a Planet scene.
+
+    Args:
+        fpath (str | Path): The file path to the Planet scene from which to derive the geometry.
+
+    Returns:
+        odc.geo.Geometry: The geometry of the Planet scene.
+
+    Raises:
+        FileNotFoundError: If no matching TIFF file is found in the specified path.
+
+    """
+    # Convert to Path object if a string is provided
+    fpath = fpath if isinstance(fpath, Path) else Path(fpath)
+    # Get imagepath
+    ps_image = next(fpath.glob("*_SR.tif"), None)
+    if not ps_image:
+        ps_image = next(fpath.glob("*_SR_clip.tif"), None)
+    if not ps_image:
+        raise FileNotFoundError(f"No matching TIFF files found in {fpath.resolve()} (.glob('*_SR.tif'))")
+
+    planet_raster = rasterio.open(ps_image)
+    return odc.geo.Geometry(planet_raster.bounds, crs=planet_raster.crs)

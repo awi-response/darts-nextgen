@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING, Any, Literal
 from cyclopts import Parameter
 
 if TYPE_CHECKING:
+    import geopandas as gpd
     import xarray as xr
 
 logger = logging.getLogger(__name__)
@@ -54,6 +55,12 @@ class _BasePipeline(ABC):
     )
     write_model_outputs: bool = False
     overwrite: bool = False
+    offline: bool = False
+
+    @property
+    @abstractmethod
+    def _is_local(self) -> bool:
+        pass
 
     @abstractmethod
     def _arcticdem_resolution(self) -> Literal[2, 10, 32]:
@@ -75,6 +82,15 @@ class _BasePipeline(ABC):
     def _load_tile(self, tileinfo: Any) -> "xr.Dataset":
         pass
 
+    @abstractmethod
+    def _tile_aoi(self) -> "gpd.GeoDataFrame":
+        pass
+
+    # Only used for _is_local == True
+    # Therefore "pass" is a valid default implementation
+    def _predownload_tile(self, tileinfo: Any) -> None:
+        pass
+
     def _result_metadata(self, tilekey: Any) -> dict:
         export_metadata = {
             "tileid": self._get_tile_id(tilekey),
@@ -93,12 +109,13 @@ class _BasePipeline(ABC):
 
         return {f"DARTS_{k}": v for k, v in export_metadata.items()}
 
-    def run(self):  # noqa: C901
+    def _validate(self):
         if self.model_files is None or len(self.model_files) == 0:
             raise ValueError("No model files provided. Please provide a list of model files.")
         if len(self.export_bands) == 0:
             raise ValueError("No export bands provided. Please provide a list of export bands.")
 
+    def _dump_config(self) -> str:
         current_time = time.strftime("%Y-%m-%d_%H-%M-%S")
         logger.info(f"Starting pipeline at {current_time}.")
 
@@ -113,39 +130,12 @@ class _BasePipeline(ABC):
                 elif isinstance(value, list):
                     config[key] = [str(v.resolve()) if isinstance(v, Path) else v for v in value]
             json.dump(config, f)
+        return current_time
 
-        from stopuhr import Chronometer, stopwatch
-
-        timer = Chronometer(printer=logger.debug)
-
-        from darts.utils.cuda import debug_info
-
-        debug_info()
-
-        from darts.utils.earthengine import init_ee
-
-        init_ee(self.ee_project, self.ee_use_highvolume)
-
-        import pandas as pd
+    def _create_auxiliary_datacubes(self):
         import smart_geocubes
-        import torch
-        from darts_acquisition import load_arcticdem, load_tcvis
-        from darts_ensemble import EnsembleV1
-        from darts_export import export_tile, missing_outputs
-        from darts_postprocessing import prepare_export
-        from darts_preprocessing import preprocess_v2
 
-        from darts.utils.cuda import decide_device
         from darts.utils.logging import LoggingManager
-
-        self.device = decide_device(self.device)
-
-        # determine models to use
-        if isinstance(self.model_files, Path):
-            self.model_files = [self.model_files]
-            self.write_model_outputs = False
-        models = {model_file.stem: model_file for model_file in self.model_files}
-        ensemble = EnsembleV1(models, device=torch.device(self.device))
 
         # Create the datacubes if they do not exist
         LoggingManager.apply_logging_handlers("smart_geocubes")
@@ -159,6 +149,92 @@ class _BasePipeline(ABC):
         accessor = smart_geocubes.TCTrend(self.tcvis_dir)
         if not accessor.created:
             accessor.create(overwrite=False)
+
+    def predownload(self):
+        self._validate()
+        self._dump_config()
+
+        from darts.utils.cuda import debug_info
+
+        debug_info()
+
+        from darts_acquisition import download_arcticdem, download_tcvis
+        from stopuhr import Chronometer
+
+        from darts.utils.cuda import decide_device
+        from darts.utils.earthengine import init_ee
+
+        timer = Chronometer(printer=logger.debug)
+        self.device = decide_device(self.device)
+
+        init_ee(self.ee_project, self.ee_use_highvolume)
+        self._create_auxiliary_datacubes()
+
+        # Predownload auxiliary
+        aoi = self._tile_aoi()
+        with timer("Downloading ArcticDEM"):
+            download_arcticdem(aoi, self.arcticdem_dir, resolution=self._arcticdem_resolution())
+        with timer("Downloading TCVis"):
+            download_tcvis(aoi, self.tcvis_dir)
+
+        # Predownload tiles if not local
+        if self._is_local:
+            return
+
+        # Iterate over all the data
+        with timer("Loading Optical"):
+            tileinfo = self._tileinfos()
+            n_tiles = 0
+            logger.info(f"Found {len(tileinfo)} tiles to process.")
+            for i, (tilekey, outpath) in enumerate(tileinfo):
+                tile_id = self._get_tile_id(tilekey)
+                try:
+                    self._predownload_tile(tilekey)
+                    n_tiles += 1
+                    logger.info(f"Processed sample {i + 1} of {len(tileinfo)} '{tilekey}' ({tile_id=}).")
+                except KeyboardInterrupt:
+                    logger.warning("Keyboard interrupt detected.\nExiting...")
+                    raise KeyboardInterrupt
+                except Exception as e:
+                    logger.warning(f"Could not process '{tilekey}' ({tile_id=}).\nSkipping...")
+                    logger.exception(e)
+            else:
+                logger.info(f"Processed {n_tiles} tiles to {self.output_data_dir.resolve()}.")
+
+    def run(self):  # noqa: C901
+        current_time = self._validate()
+        self._dump_config()
+
+        from darts.utils.cuda import debug_info
+
+        debug_info()
+
+        import pandas as pd
+        import torch
+        from darts_acquisition import load_arcticdem, load_tcvis
+        from darts_ensemble import EnsembleV1
+        from darts_export import export_tile, missing_outputs
+        from darts_postprocessing import prepare_export
+        from darts_preprocessing import preprocess_v2
+        from stopuhr import Chronometer, stopwatch
+
+        from darts.utils.cuda import decide_device
+        from darts.utils.earthengine import init_ee
+
+        timer = Chronometer(printer=logger.debug)
+        self.device = decide_device(self.device)
+
+        if not self.offline:
+            init_ee(self.ee_project, self.ee_use_highvolume)
+
+        self._create_auxiliary_datacubes()
+
+        # determine models to use
+        if isinstance(self.model_files, Path):
+            self.model_files = [self.model_files]
+            self.write_model_outputs = False
+        models = {model_file.stem: model_file for model_file in self.model_files}
+        ensemble = EnsembleV1(models, device=torch.device(self.device))
 
         # Iterate over all the data
         tileinfo = self._tileinfos()
@@ -184,14 +260,16 @@ class _BasePipeline(ABC):
                 with timer("Loading Optical", log=False):
                     tile = self._load_tile(tilekey)
                 with timer("Loading ArcticDEM", log=False):
+                    arcticdem_resolution = self._arcticdem_resolution()
                     arcticdem = load_arcticdem(
                         tile.odc.geobox,
                         self.arcticdem_dir,
                         resolution=arcticdem_resolution,
                         buffer=ceil(self.tpi_outer_radius / arcticdem_resolution * sqrt(2)),
+                        offline=self.offline,
                     )
                 with timer("Loading TCVis", log=False):
-                    tcvis = load_tcvis(tile.odc.geobox, self.tcvis_dir)
+                    tcvis = load_tcvis(tile.odc.geobox, self.tcvis_dir, offline=self.offline)
                 with timer("Preprocessing", log=False):
                     tile = preprocess_v2(
                         tile,
@@ -321,12 +399,17 @@ class PlanetPipeline(_BasePipeline):
         write_model_outputs (bool, optional): Also save the model outputs, not only the ensemble result.
             Defaults to False.
         overwrite (bool, optional): Whether to overwrite existing files. Defaults to False.
+        offline (bool, optional): If True, will not attempt to download any missing data. Defaults to False.
 
     """
 
     orthotiles_dir: Path = Path("data/input/planet/PSOrthoTile")
     scenes_dir: Path = Path("data/input/planet/PSScene")
     image_ids: list = None
+
+    @property
+    def _is_local(self) -> bool:
+        return False
 
     def _arcticdem_resolution(self) -> Literal[2]:
         return 2
@@ -366,6 +449,18 @@ class PlanetPipeline(_BasePipeline):
             out.append((fpath.resolve(), outpath))
         out.sort()
         return out
+
+    def _tile_aoi(self) -> "gpd.GeoDataFrame":
+        import geopandas as gpd
+        from darts_acquisition import get_planet_geometry
+
+        tileinfos = self._tileinfos()
+        aoi = []
+        for fpath, _ in tileinfos:
+            geom = get_planet_geometry(fpath)
+            aoi.append({"tilekey": fpath, "geometry": geom.to_crs("EPSG:4326").geom})
+        aoi = gpd.GeoDataFrame(aoi, geometry="geometry", crs="EPSG:4326")
+        return aoi
 
     def _load_tile(self, fpath: Path) -> "xr.Dataset":
         import xarray as xr
@@ -431,11 +526,16 @@ class Sentinel2Pipeline(_BasePipeline):
         write_model_outputs (bool, optional): Also save the model outputs, not only the ensemble result.
             Defaults to False.
         overwrite (bool, optional): Whether to overwrite existing files. Defaults to False.
+        offline (bool, optional): If True, will not attempt to download any missing data. Defaults to False.
 
     """
 
     sentinel2_dir: Path = Path("data/input/sentinel2")
     image_ids: list = None
+
+    @property
+    def _is_local(self) -> bool:
+        return False
 
     def _arcticdem_resolution(self) -> Literal[10]:
         return 10
@@ -463,6 +563,18 @@ class Sentinel2Pipeline(_BasePipeline):
             out.append((fpath.resolve(), outpath))
         out.sort()
         return out
+
+    def _tile_aoi(self) -> "gpd.GeoDataFrame":
+        import geopandas as gpd
+        from darts_acquisition import get_s2_geometry
+
+        tileinfos = self._tileinfos()
+        aoi = []
+        for fpath, _ in tileinfos:
+            geom = get_s2_geometry(fpath)
+            aoi.append({"tilekey": fpath, "geometry": geom.to_crs("EPSG:4326").geom})
+        aoi = gpd.GeoDataFrame(aoi, geometry="geometry", crs="EPSG:4326")
+        return aoi
 
     def _load_tile(self, fpath: Path) -> "xr.Dataset":  # Here: fpath == 'tid'
         import xarray as xr
@@ -512,6 +624,7 @@ class Sentinel2Pipeline(_BasePipeline):
 
 
 @dataclass
+# TODO: This needs a complete rewrite
 class AOISentinel2Pipeline(_BasePipeline):
     """Pipeline for Sentinel 2 data based on an area of interest.
 
@@ -562,6 +675,7 @@ class AOISentinel2Pipeline(_BasePipeline):
         write_model_outputs (bool, optional): Also save the model outputs, not only the ensemble result.
             Defaults to False.
         overwrite (bool, optional): Whether to overwrite existing files. Defaults to False.
+        offline (bool, optional): If True, will not attempt to download any missing data. Defaults to False.
 
     """
 
@@ -572,10 +686,15 @@ class AOISentinel2Pipeline(_BasePipeline):
     s2_source: Literal["gee", "cdse"] = "cdse"
     s2_download_cache: Path = Path("data/cache/s2gee")
 
+    @property
+    def _is_local(self) -> bool:
+        return False
+
     def _arcticdem_resolution(self) -> Literal[10]:
         return 10
 
     @cached_property
+    # TODO: Find a way to do this in offline mode
     def _s2ids(self) -> list[str]:
         if self.s2_source == "gee":
             from darts_acquisition import get_s2ids_from_geodataframe_ee
@@ -612,7 +731,13 @@ class AOISentinel2Pipeline(_BasePipeline):
         out.sort()
         return out
 
-    def _load_tile(self, s2id: str) -> "xr.Dataset":
+    def _tile_aoi(self) -> "gpd.GeoDataFrame":
+        import geopandas as gpd
+
+        return gpd.read_file(self.aoi_shapefile).to_crs("EPSG:4326")
+
+    def _predownload_tile(self, s2id: str):
+        # TODO: write "native" predownload functions for STAC and GEE, which don't overhead
         if self.s2_source == "gee":
             from darts_acquisition import load_s2_from_gee
 
@@ -621,6 +746,16 @@ class AOISentinel2Pipeline(_BasePipeline):
             from darts_acquisition import load_s2_from_stac
 
             return load_s2_from_stac(s2id, cache=self.s2_download_cache)
+
+    def _load_tile(self, s2id: str) -> "xr.Dataset":
+        if self.s2_source == "gee":
+            from darts_acquisition import load_s2_from_gee
+
+            return load_s2_from_gee(s2id, cache=self.s2_download_cache, offline=self.offline)
+        else:
+            from darts_acquisition import load_s2_from_stac
+
+            return load_s2_from_stac(s2id, cache=self.s2_download_cache, offline=self.offline)
 
     @staticmethod
     def cli(*, pipeline: "AOISentinel2Pipeline"):

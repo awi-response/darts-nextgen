@@ -3,6 +3,7 @@
 import logging
 from pathlib import Path
 
+import geopandas as gpd
 import smart_geocubes
 import xarray as xr
 from odc.geo.geobox import GeoBox
@@ -11,12 +12,12 @@ from stopuhr import stopwatch
 logger = logging.getLogger(__name__.replace("darts_", "darts."))
 
 
-@stopwatch.f("Loading TCVIS", printer=logger.debug, print_kwargs=["data_dir", "buffer", "persist"])
+@stopwatch.f("Loading TCVIS", printer=logger.debug, print_kwargs=["data_dir", "buffer", "offline"])
 def load_tcvis(
     geobox: GeoBox,
     data_dir: Path | str,
     buffer: int = 0,
-    persist: bool = True,
+    offline: bool = True,
 ) -> xr.Dataset:
     """Load the TCVIS for the given geobox, fetch new data from GEE if necessary.
 
@@ -24,8 +25,7 @@ def load_tcvis(
         geobox (GeoBox): The geobox to load the data for.
         data_dir (Path | str): The directory to store the downloaded data for faster access for consecutive calls.
         buffer (int, optional): The buffer around the geobox in pixels. Defaults to 0.
-        persist (bool, optional): If the data should be persisted in memory.
-            If not, this will return a Dask backed Dataset. Defaults to True.
+        offline (bool, optional): If True, will not attempt to download any missing data. Defaults to False.
 
     Returns:
         xr.Dataset: The TCVIS dataset.
@@ -57,7 +57,13 @@ def load_tcvis(
     # We want to assume that the datacube is already created to be save in a multi-process environment
     accessor.assert_created()
 
-    tcvis = accessor.load(geobox, buffer=buffer, persist=persist)
+    if not offline:
+        tcvis = accessor.load(geobox, buffer=buffer, persist=True)
+    else:
+        xrcube = accessor.open_xarray()
+        reference_geobox = geobox.to_crs(accessor.extent.crs, resolution=accessor.extent.resolution.x).pad(buffer)
+        xrcube_aoi = xrcube.odc.crop(reference_geobox.extent, apply_mask=False)
+        xrcube_aoi = xrcube_aoi.load()
 
     # Rename to follow our conventions
     tcvis = tcvis.rename_vars(
@@ -69,3 +75,21 @@ def load_tcvis(
     )
 
     return tcvis
+
+
+@stopwatch.f("Downloading TCVIS", printer=logger.debug, print_kwargs=["data_dir"])
+def download_tcvis(
+    aoi: gpd.GeoDataFrame,
+    data_dir: Path | str,
+) -> None:
+    """Download the TCVIS for the given area of interest.
+
+    Args:
+        aoi (gpd.GeoDataFrame): The area of interest to download the TCVIS for.
+        data_dir (Path | str): The directory to store the downloaded data for faster access for consecutive calls.
+
+    """
+    assert ".icechunk" == data_dir.suffix, f"Data directory {data_dir} must have an .icechunk suffix!"
+    accessor = smart_geocubes.TCTrend(data_dir, create_icechunk_storage=False)
+    accessor.assert_created()
+    accessor.download(aoi)

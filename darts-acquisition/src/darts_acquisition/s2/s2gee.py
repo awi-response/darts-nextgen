@@ -8,7 +8,6 @@ from typing import Literal
 import ee
 import geopandas as gpd
 import odc.geo.xr
-import rioxarray
 import xarray as xr
 from darts_utils.tilecache import XarrayCacheManager
 from stopuhr import stopwatch
@@ -23,6 +22,7 @@ def load_s2_from_gee(
     img: str | ee.Image,
     bands_mapping: dict | Literal["all"] = {"B2": "blue", "B3": "green", "B4": "red", "B8": "nir"},
     cache: Path | None = None,
+    offline: bool = False,
 ) -> xr.Dataset:
     """Load a Sentinel-2 scene from Google Earth Engine and return it as an xarray dataset.
 
@@ -34,6 +34,7 @@ def load_s2_from_gee(
             Defaults to {"B2": "blue", "B3": "green", "B4": "red", "B8": "nir"}.
         cache (Path | None, optional): The path to the cache directory. If None, no caching will be done.
             Defaults to None.
+        offline (bool, optional): If True, will not attempt to download any missing data. Defaults to False.
 
     Returns:
         xr.Dataset: The loaded dataset
@@ -90,12 +91,18 @@ def load_s2_from_gee(
             ds_s2.load()
         return ds_s2
 
-    ds_s2 = XarrayCacheManager(cache).get_or_create(
-        identifier=f"gee-s2sr-{s2id}-{''.join(bands_mapping.keys())}",
-        creation_func=_get_tile,
-        force=False,
-        use_band_manager=False,
-    )
+    cache_manager = XarrayCacheManager(cache)
+    cache_id = f"gee-s2sr-{s2id}-{''.join(bands_mapping.keys())}"
+    if not offline:
+        ds_s2 = cache_manager.get_or_create(
+            identifier=cache_id,
+            creation_func=_get_tile,
+            force=False,
+            use_band_manager=False,
+        )
+    else:
+        assert cache is not None, "Cache must be provided in offline mode!"
+        ds_s2 = cache_manager.load_from_cache(identifier=cache_id)
 
     ds_s2 = ds_s2.rename_vars(bands_mapping)
 

@@ -4,6 +4,7 @@ import logging
 from pathlib import Path
 from typing import Literal
 
+import geopandas as gpd
 import odc.stac
 import smart_geocubes
 import xarray as xr
@@ -16,19 +17,46 @@ logger = logging.getLogger(__name__.replace("darts_", "darts."))
 RESOLUTIONS = Literal[2, 10, 32]
 
 
-@stopwatch.f("Loading ArcticDEM", printer=logger.debug, print_kwargs=["data_dir", "resolution", "buffer", "persist"])
+def _validate_and_get_accessor(
+    data_dir: Path | str,
+    resolution: RESOLUTIONS,
+) -> smart_geocubes.ArcticDEM2m | smart_geocubes.ArcticDEM10m | smart_geocubes.ArcticDEM32m:
+    data_dir = Path(data_dir)
+    assert ".icechunk" == data_dir.suffix, f"Data directory {data_dir} must have an .icechunk suffix!"
+
+    match resolution:
+        case 2:
+            assert "2m" in data_dir.stem and "32m" not in data_dir.stem, (
+                f"Data directory {data_dir} must have a '2m' in the name!"
+            )
+            accessor = smart_geocubes.ArcticDEM2m(data_dir)
+        case 10:
+            assert "10m" in data_dir.stem, f"Data directory {data_dir} must have a '10m' in the name!"
+            accessor = smart_geocubes.ArcticDEM10m(data_dir)
+        case 32:
+            assert "32m" in data_dir.stem, f"Data directory {data_dir} must have a '32m' in the name!"
+            accessor = smart_geocubes.ArcticDEM32m(data_dir)
+        case _:
+            raise ValueError(f"Resolution {resolution} not supported, only 2m, 10m and 32m are supported")
+    accessor.assert_created()
+
+
+@stopwatch.f("Loading ArcticDEM", printer=logger.debug, print_kwargs=["data_dir", "resolution", "buffer", "offline"])
 def load_arcticdem(
-    geobox: GeoBox, data_dir: Path | str, resolution: RESOLUTIONS, buffer: int = 0, persist: bool = True
+    geobox: GeoBox,
+    data_dir: Path | str,
+    resolution: RESOLUTIONS,
+    buffer: int = 0,
+    offline: bool = False,
 ) -> xr.Dataset:
     """Load the ArcticDEM for the given geobox, fetch new data from the STAC server if necessary.
 
     Args:
         geobox (GeoBox): The geobox for which the tile should be loaded.
-        data_dir (Path | str): The directory where the ArcticDEM data is stored.
+        data_dir (Path | str): The directory to store the downloaded data for faster access for consecutive calls.
         resolution (Literal[2, 10, 32]): The resolution of the ArcticDEM data in m.
         buffer (int, optional): The buffer around the projected (epsg:3413) geobox in pixels. Defaults to 0.
-        persist (bool, optional): If the data should be persisted in memory.
-            If not, this will return a Dask backed Dataset. Defaults to True.
+        offline (bool, optional): If True, will not attempt to download any missing data. Defaults to False.
 
     Returns:
         xr.Dataset: The ArcticDEM tile, with a buffer applied.
@@ -63,32 +91,19 @@ def load_arcticdem(
         The `buffer` parameter is used to extend the region of interest by a certain amount of pixels.
         This comes handy when calculating e.g. the Topographic Position Index (TPI), which requires a buffer around the region of interest to remove edge effects.
 
-    Raises:
-        ValueError: If the resolution is not supported.
-
     """  # noqa: E501
-    odc.stac.configure_rio(cloud_defaults=True, aws={"aws_unsigned": True})
+    if not offline:
+        odc.stac.configure_rio(cloud_defaults=True, aws={"aws_unsigned": True})
 
-    assert ".icechunk" == data_dir.suffix, f"Data directory {data_dir} must have an .icechunk suffix!"
+    accessor = _validate_and_get_accessor(data_dir, resolution)
 
-    match resolution:
-        case 2:
-            assert "2m" in data_dir.stem and "32m" not in data_dir.stem, (
-                f"Data directory {data_dir} must have a '2m' in the name!"
-            )
-            accessor = smart_geocubes.ArcticDEM2m(data_dir)
-        case 10:
-            assert "10m" in data_dir.stem, f"Data directory {data_dir} must have a '10m' in the name!"
-            accessor = smart_geocubes.ArcticDEM10m(data_dir)
-        case 32:
-            assert "32m" in data_dir.stem, f"Data directory {data_dir} must have a '32m' in the name!"
-            accessor = smart_geocubes.ArcticDEM32m(data_dir)
-        case _:
-            raise ValueError(f"Resolution {resolution} not supported, only 2m, 10m and 32m are supported")
-
-    accessor.assert_created()
-
-    arcticdem = accessor.load(geobox, buffer=buffer, persist=persist)
+    if not offline:
+        arcticdem = accessor.load(geobox, buffer=buffer, persist=True)
+    else:
+        xrcube = accessor.open_xarray()
+        reference_geobox = geobox.to_crs(accessor.extent.crs, resolution=accessor.extent.resolution.x).pad(buffer)
+        xrcube_aoi = xrcube.odc.crop(reference_geobox.extent, apply_mask=False)
+        xrcube_aoi = xrcube_aoi.load()
 
     # Change dtype of the datamask to uint8 for later reproject_match
     arcticdem["arcticdem_data_mask"] = arcticdem.datamask.astype("uint8")
@@ -100,3 +115,23 @@ def load_arcticdem(
     arcticdem = arcticdem.astype("float32")
 
     return arcticdem
+
+
+@stopwatch.f("Downloading ArcticDEM", printer=logger.debug, print_kwargs=["data_dir", "resolution"])
+def download_arcticdem(
+    aoi: gpd.GeoDataFrame,
+    data_dir: Path | str,
+    resolution: RESOLUTIONS,
+) -> None:
+    """Download the ArcticDEM for the given area of interest.
+
+    Args:
+        aoi (gpd.GeoDataFrame): The area of interest to download the ArcticDEM for.
+        data_dir (Path | str): The directory to store the downloaded data for faster access for consecutive calls.
+        resolution (Literal[2, 10, 32]): The resolution of the ArcticDEM data in m.
+
+
+    """
+    odc.stac.configure_rio(cloud_defaults=True, aws={"aws_unsigned": True})
+    accessor = _validate_and_get_accessor(data_dir, resolution)
+    accessor.download(aoi)

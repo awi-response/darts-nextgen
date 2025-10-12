@@ -3,7 +3,9 @@
 import logging
 from pathlib import Path
 
+import odc.geo
 import odc.geo.xr
+import rasterio
 import rioxarray
 import xarray as xr
 from odc.geo.geobox import GeoBox
@@ -128,3 +130,28 @@ def load_s2_masks(fpath: str | Path, reference_geobox: GeoBox) -> xr.Dataset:
     da_scl = convert_masks(da_scl)
 
     return da_scl
+
+
+def get_s2_geometry(fpath: str | Path) -> odc.geo.Geometry:
+    """Get the geometry of a Sentinel-2 scene.
+
+    Args:
+        fpath (str | Path): The path to the directory containing the TIFF files.
+
+    Returns:
+        odc.geo.Geometry: The geometry of the Sentinel-2 scene.
+
+    Raises:
+        FileNotFoundError: If no matching TIFF file is found in the specified path.
+
+    """
+    # Convert to Path object if a string is provided
+    fpath = fpath if isinstance(fpath, Path) else Path(fpath)
+    # Get imagepath
+    try:
+        s2_image = next(fpath.glob("*_SR*.tif"))
+    except StopIteration:
+        raise FileNotFoundError(f"No matching TIFF files found in {fpath.resolve()} (.glob('*_SR*.tif'))")
+
+    s2_raster = rasterio.open(s2_image)
+    return odc.geo.Geometry(s2_raster.bounds, crs=s2_raster.crs)

@@ -9,7 +9,6 @@ import geopandas as gpd
 import numpy as np
 import odc.geo.xr
 import pandas as pd
-import rioxarray
 import xarray as xr
 from darts_utils.tilecache import XarrayCacheManager
 from odc.stac import stac_load
@@ -35,11 +34,12 @@ def _flatten_dict(d: MutableMapping, parent_key: str = "", sep: str = ".") -> Mu
 
 
 @stopwatch.f("Loading Sentinel-2 scene from STAC", printer=logger.debug, print_kwargs=["s2item"])
-def load_s2_from_stac(  # noqa: C901
+def load_s2_from_stac(
     s2item: str | Item,
-    bands_mapping: dict | Literal["all"] = {"B02_10m": "blue", "B03_10m": "green", "B04_10m": "red", "B08_10m": "nir"},
+    bands_mapping: dict = {"B02_10m": "blue", "B03_10m": "green", "B04_10m": "red", "B08_10m": "nir"},
     cache: Path | None = None,
     aws_profile_name: str = "default",
+    offline: bool = False,
 ) -> xr.Dataset:
     """Load a Sentinel-2 scene from the Copernicus STAC API and return it as an xarray dataset.
 
@@ -49,14 +49,14 @@ def load_s2_from_stac(  # noqa: C901
 
     Args:
         s2item (str | Item): The Sentinel-2 image ID or the corresponing STAC Item.
-        bands_mapping (dict[str, str] | Literal["all"], optional): A mapping from bands to obtain.
+        bands_mapping (dict[str, str], optional): A mapping from bands to obtain.
             Will be renamed to the corresponding band names.
-            If "all" is provided, will load all optical bands and the SCL band.
             Defaults to {"B02_10m": "blue", "B03_10m": "green", "B04_10m": "red", "B08_10m": "nir"}.
         cache (Path | None, optional): The path to the cache directory. If None, no caching will be done.
             Defaults to None.
         aws_profile_name (str, optional): The name of the AWS profile to use for authentication.
             Defaults to "default".
+        offline (bool, optional): If True, will not attempt to download any missing data. Defaults to False.
 
     Returns:
         xr.Dataset: The loaded dataset
@@ -134,16 +134,20 @@ def load_s2_from_stac(  # noqa: C901
 
         return ds_s2
 
-    ds_s2 = XarrayCacheManager(cache).get_or_create(
-        identifier=f"stac-s2l2a-{s2id}-{''.join(bands_mapping.keys())}", creation_func=_get_tile, force=False
-    )
+    cache_manager = XarrayCacheManager(cache)
+    cache_id = f"stac-s2l2a-{s2id}-{''.join(bands_mapping.keys())}"
+    if not offline:
+        ds_s2 = cache_manager.get_or_create(identifier=cache_id, creation_func=_get_tile, force=False)
+    else:
+        assert cache is not None, "Cache must be provided in offline mode!"
+        ds_s2 = cache_manager.load_from_cache(identifier=cache_id)
 
     ds_s2 = ds_s2.rename_vars(bands_mapping)
     optical_bands = [band for name, band in bands_mapping.items() if name.startswith("B")]
     for band in optical_bands:
         # We need to filter out 0 values, since they are not valid reflectance values
         # But also not reflected in the SCL for some reason
-        ds_s2[band] = ds_s2[band].where(ds_s2[band] != 0).astype("float32") / 10000.0 - 0.1
+        ds_s2[band] = ds_s2[band].where(ds_s2[band].astype("float32") != 0) / 10000.0 - 0.1
         ds_s2[band].attrs["long_name"] = f"Sentinel-2 {band.capitalize()}"
         ds_s2[band].attrs["units"] = "Reflectance"
     ds_s2["s2_scl"].attrs = {
