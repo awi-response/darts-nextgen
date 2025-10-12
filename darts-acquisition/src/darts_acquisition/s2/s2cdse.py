@@ -159,6 +159,10 @@ def load_s2_from_stac(
 
     ds_s2 = convert_masks(ds_s2)
 
+    # Convert sun elevation and azimuth to match our naming
+    ds_s2.attrs["azimuth"] = ds_s2.attrs.get("view:azimuth", float("nan"))
+    ds_s2.attrs["elevation"] = ds_s2.attrs.get("view:sun_elevation", float("nan"))
+
     ds_s2.attrs["s2_tile_id"] = s2id
     ds_s2.attrs["tile_id"] = s2id
 

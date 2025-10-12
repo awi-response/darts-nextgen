@@ -201,6 +201,8 @@ def assert_optical_dataset(tile: xr.Dataset, satellite: Literal["s2", "planet"])
 
     # Check for necessary attributes
     assert "tile_id" in tile.attrs
+    assert "azimuth" in tile.attrs
+    assert "elevation" in tile.attrs
 
     for band in ["red", "green", "blue", "nir"]:
         assert "data_source" in tile[band].attrs, f"data_source not found in {band=}"

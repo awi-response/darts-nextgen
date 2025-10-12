@@ -1,5 +1,6 @@
 """PLANET related data loading. Should be used temporary and maybe moved to the acquisition package."""
 
+import json
 import logging
 from datetime import datetime
 from pathlib import Path
@@ -98,6 +99,13 @@ def load_planet_scene(fpath: str | Path) -> xr.Dataset:
     if not ps_image:
         raise FileNotFoundError(f"No matching TIFF files found in {fpath.resolve()} (.glob('*_SR.tif'))")
 
+    ps_meta = next(fpath.glob("*_metadata.json"), None)
+    if not ps_meta:
+        raise FileNotFoundError(
+            f"No matching metadata JSON files found in {fpath.resolve()} (.glob('*_metadata.json'))"
+        )
+    metadata = json.load(ps_meta.open())
+
     # Define band names and corresponding indices
     planet_da = xr.open_dataarray(ps_image)
 
@@ -114,6 +122,10 @@ def load_planet_scene(fpath: str | Path) -> xr.Dataset:
     for var in ds_planet.data_vars:
         ds_planet[var].attrs["data_source"] = "planet"
         ds_planet[var].attrs["planet_type"] = planet_type
+
+    # Add sun and elevation from metadata
+    ds_planet.attrs["azimuth"] = metadata.get("sun_azimuth", float("nan"))
+    ds_planet.attrs["elevation"] = metadata.get("sun_elevation", float("nan"))
 
     if planet_type == "scene":
         ds_planet.attrs["tile_id"] = fpath.stem

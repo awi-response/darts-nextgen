@@ -224,7 +224,7 @@ def preprocess_planet_train_data(
         device=device,
         append=append,
     )
-    cache_manager = XarrayCacheManager(preprocess_cache / "planet_v2")
+    cache_manager = XarrayCacheManager(preprocess_cache)
 
     if append and (train_data_dir / "metadata.parquet").exists():
         metadata = gpd.read_parquet(train_data_dir / "metadata.parquet")

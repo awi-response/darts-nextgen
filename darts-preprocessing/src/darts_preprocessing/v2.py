@@ -1,6 +1,7 @@
 """PLANET scene based preprocessing."""
 
 import logging
+from math import isnan
 from typing import Literal
 
 import odc.geo.xr
@@ -23,6 +24,41 @@ logger = logging.getLogger(__name__.replace("darts_", "darts."))
 # TODO: Find a better abstraction for GPU / CPU processing
 # Combine it with persisting Stuff on the GPU for later inference
 # This is currently blocked because the arcticdem needs to be cropped after the processing happened
+
+
+def get_azimuth_and_elevation(ds_optical: xr.Dataset) -> tuple[float, float]:
+    """Get the azimuth and elevation from the optical dataset attributes.
+
+    Args:
+        ds_optical (xr.Dataset): The optical dataset.
+
+    Returns:
+        tuple[float, float]: The azimuth and elevation.
+
+    """
+    azimuth = ds_optical.attrs.get("azimuth", float("nan"))
+    elevation = ds_optical.attrs.get("elevation", float("nan"))
+    if isnan(azimuth):
+        azimuth = 225
+        logger.warning("No azimuth found in optical dataset attributes. Using default value of 225 degrees.")
+    if isnan(elevation):
+        elevation = 25
+        logger.warning("No sun elevation found in optical dataset attributes. Using default value of 25 degrees.")
+    if not isinstance(azimuth, (int, float)):
+        azimuth = 225
+        logger.warning(
+            f"Azimuth found in optical dataset is {azimuth}, which is not a number. Using default value of 225 degrees."
+        )
+    if not isinstance(elevation, (int, float)):
+        elevation = 25
+        logger.warning(
+            f"Sun elevation found in optical dataset is {elevation}, which is not a number."
+            " Using default value of 25 degrees."
+        )
+
+    azimuth = round(azimuth)
+    elevation = round(elevation)
+    return azimuth, elevation
 
 
 @stopwatch.f(
@@ -135,16 +171,7 @@ def preprocess_v2(
     assert (ds_optical.x == ds_arcticdem.x).all(), "x coordinates do not match! See code comment above"
     assert (ds_optical.y == ds_arcticdem.y).all(), "y coordinates do not match! See code comment above"
 
-    azimuth = 225  # Default azimuth for hillshade calculation
-    angle_altitude = 25  # Default angle altitude for hillshade calculation
-    if "view:azimuth" in ds_optical.attrs:
-        azimuth = round(ds_optical.attrs["view:azimuth"])
-    else:
-        logger.warning("No azimuth found in optical dataset attributes. Using default value of 225 degrees.")
-    if "view:sun_elevation" in ds_optical.attrs:
-        angle_altitude = round(ds_optical.attrs["view:sun_elevation"])
-    else:
-        logger.warning("No sun elevation found in optical dataset attributes. Using default value of 25 degrees.")
+    azimuth, angle_altitude = get_azimuth_and_elevation(ds_optical)
     ds_arcticdem = preprocess_arcticdem(
         ds_arcticdem,
         tpi_outer_radius,

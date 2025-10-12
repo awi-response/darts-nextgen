@@ -79,6 +79,10 @@ def load_s2_from_gee(
             crs=img.select(0).projection().crs().getInfo(),
             scale=10,
         )
+        props = img.getInfo()["properties"]
+        ds_s2.attrs["azimuth"] = props.get("MEAN_SOLAR_AZIMUTH_ANGLE", float("nan"))
+        ds_s2.attrs["elevation"] = props.get("MEAN_SOLAR_ZENITH_ANGLE", float("nan"))
+
         ds_s2.attrs["time"] = str(ds_s2.time.values[0])
         ds_s2 = ds_s2.isel(time=0).drop_vars("time").rename({"X": "x", "Y": "y"}).transpose("y", "x")
         ds_s2 = ds_s2.odc.assign_crs(ds_s2.attrs["crs"])
