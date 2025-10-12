@@ -1,11 +1,12 @@
 """PLANET related data loading. Should be used temporary and maybe moved to the acquisition package."""
 
+import json
 import logging
 from datetime import datetime
 from pathlib import Path
 from typing import Literal
 
-import rioxarray  # noqa: F401
+import rioxarray
 import xarray as xr
 from stopuhr import stopwatch
 
@@ -98,23 +99,42 @@ def load_planet_scene(fpath: str | Path) -> xr.Dataset:
     if not ps_image:
         raise FileNotFoundError(f"No matching TIFF files found in {fpath.resolve()} (.glob('*_SR.tif'))")
 
+    ps_meta = next(fpath.glob("*_metadata.json"), None)
+    if not ps_meta:
+        raise FileNotFoundError(
+            f"No matching metadata JSON files found in {fpath.resolve()} (.glob('*_metadata.json'))"
+        )
+    metadata = json.load(ps_meta.open())
+
     # Define band names and corresponding indices
     planet_da = xr.open_dataarray(ps_image)
+
+    # Divide by 10000 to get reflectance between 0 and 1
+    planet_da = planet_da.astype("float32") / 10000.0
 
     # Create a dataset with the bands
     bands = ["blue", "green", "red", "nir"]
     ds_planet = planet_da.assign_coords({"band": bands}).to_dataset(dim="band")
-    for var in ds_planet.variables:
-        ds_planet[var].assign_attrs(
-            {
-                "long_name": f"PLANET {var.capitalize()}",
-                "data_source": "planet",
-                "planet_type": planet_type,
-                "units": "Reflectance",
-            }
-        )
-    # TODO: this is not working - it uses the file of one band too high when using training scenarios
-    ds_planet.attrs = {"tile_id": fpath.parent.stem if planet_type == "orthotile" else fpath.stem}
+    for var in bands:
+        ds_planet[var].attrs["long_name"] = f"PLANET {var.capitalize()}"
+        ds_planet[var].attrs["units"] = "Reflectance"
+
+    for var in ds_planet.data_vars:
+        ds_planet[var].attrs["data_source"] = "planet"
+        ds_planet[var].attrs["planet_type"] = planet_type
+
+    # Add sun and elevation from metadata
+    ds_planet.attrs["azimuth"] = metadata.get("sun_azimuth", float("nan"))
+    ds_planet.attrs["elevation"] = metadata.get("sun_elevation", float("nan"))
+
+    if planet_type == "scene":
+        ds_planet.attrs["tile_id"] = fpath.stem
+        ds_planet.attrs["planet_scene_id"] = fpath.stem
+    elif planet_type == "orthotile":
+        ds_planet.attrs["tile_id"] = f"{fpath.parent.stem}-{fpath.stem}"
+        ds_planet.attrs["planet_orthotile_id"] = fpath.parent.stem
+        ds_planet.attrs["planet_scene_id"] = fpath.stem
+
     return ds_planet
 
 

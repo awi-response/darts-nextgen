@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__.replace("darts_", "darts."))
 
 if has_cuda_and_cupy():
     import cupy as cp  # type: ignore
-    import cupy_xarray  # noqa: F401 # type: ignore
+    import cupy_xarray  # type: ignore
 
 
 @dataclass(frozen=True)
@@ -140,7 +140,7 @@ def calculate_slope(arcticdem_ds: xr.Dataset) -> xr.Dataset:
     return arcticdem_ds
 
 
-@stopwatch("Calculating hillshade", printer=logger.debug)
+@stopwatch.f("Calculating hillshade", printer=logger.debug, print_kwargs=["azimuth", "angle_altitude"])
 def calculate_hillshade(arcticdem_ds: xr.Dataset, azimuth: int = 225, angle_altitude: int = 25) -> xr.Dataset:
     """Calculate the hillshade of the terrain surface from an ArcticDEM Dataset.
 

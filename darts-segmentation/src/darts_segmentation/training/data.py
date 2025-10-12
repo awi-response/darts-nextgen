@@ -186,12 +186,13 @@ def _get_fold(
     raise ValueError(f"Fold {fold} not found")
 
 
-def _log_stats(metadata: gpd.GeoDataFrame, mode: str):
+def _log_stats(metadata: gpd.GeoDataFrame, mode: str, level: int = logging.DEBUG):
     n_pos = (~metadata["empty"]).sum()
     n_neg = metadata["empty"].sum()
-    logger.debug(
+    logger.log(
+        level,
         f"{mode} dataset: {n_pos} positive, {n_neg} negative ({len(metadata)} total)"
-        f" with {metadata['region'].nunique()} unique regions and {metadata['sample_id'].nunique()} unique sample ids"
+        f" with {metadata['region'].nunique()} unique regions and {metadata['sample_id'].nunique()} unique sample ids",
     )
 
 

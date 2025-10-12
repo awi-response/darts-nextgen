@@ -14,6 +14,7 @@ from darts_segmentation.training import (
     test_smp,
     train_smp,
     tune_smp,
+    validate_dataset,
 )
 
 from darts import __version__
@@ -108,6 +109,7 @@ app.command(group=pipeline_group)(benchviz)
 app.command(group=train_group)(preprocess_planet_train_data)
 app.command(group=train_group)(preprocess_planet_train_data_pingo)
 app.command(group=train_group)(preprocess_s2_train_data)
+app.command(group=train_group)(validate_dataset)
 app.command(group=train_group)(train_smp)
 app.command(group=train_group)(test_smp)
 app.command(group=train_group)(convert_lightning_checkpoint)

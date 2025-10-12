@@ -38,6 +38,7 @@ dependencies = [
     "numpy>=1.26.3, <2",
     "xarray>=2024.9.0",
     "ray[data, default]>=2.37.0",
+    "spyndex>=0.7.1",
     # Visualization
     "cartopy>=0.24.1",
     "hvplot>=0.11.1",
@@ -151,7 +152,7 @@ darts = "darts.cli:start_app"
 dev = [
     "ipykernel>=6.29.5",
     "matplotlib>=3.9.2",
-    "ruff>=0.8.3",
+    "ruff>=0.14.0",
     "pyright>=1.1.384",
     "pytest>=8",
     "ipywidgets>=8.1.5",
@@ -353,4 +354,4 @@ select = ["F", "E", "W", "C", "I", "N", "D", "UP", "FLY", "NPY", "FURB", "DOC", 
 extend-ignore-names = ["test_*"]
 
 [tool.ruff.lint.pyflakes]
-allowed-unused-imports = ["hvplot.pandas", "hvplot.xarray", "rioxarray", "odc.geo.xr"]
+allowed-unused-imports = ["hvplot.pandas", "hvplot.xarray", "rioxarray", "odc.geo.xr", "cupy_xarray"]

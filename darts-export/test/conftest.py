@@ -1,6 +1,6 @@
 import numpy as np
 import pytest
-import rioxarray  # noqa: F401
+import rioxarray
 import xarray
 from scipy import ndimage
 

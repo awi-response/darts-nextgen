@@ -4,7 +4,7 @@ import logging
 from pathlib import Path
 
 import odc.geo.xr
-import rioxarray  # noqa: F401
+import rioxarray
 import xarray as xr
 from odc.geo.geobox import GeoBox
 from stopuhr import stopwatch
@@ -66,10 +66,12 @@ def load_s2_scene(fpath: str | Path) -> xr.Dataset:
     # Define band names and corresponding indices
     s2_da = xr.open_dataarray(s2_image)
 
+    # Divide by 10000 to get reflectance between 0 and 1
+    s2_da = s2_da.astype("float32") / 10000.0
+
     # Create a dataset with the bands
     bands = ["blue", "green", "red", "nir"]
-    ds_s2 = s2_da.fillna(0).rio.write_nodata(0).astype("uint16").assign_coords({"band": bands}).to_dataset(dim="band")
-
+    ds_s2 = s2_da.assign_coords({"band": bands}).to_dataset(dim="band")
     for var in ds_s2.data_vars:
         ds_s2[var].attrs["data_source"] = "s2"
         ds_s2[var].attrs["long_name"] = f"Sentinel 2 {var.capitalize()}"

@@ -6,9 +6,10 @@ from pathlib import Path
 from typing import Literal
 
 import geopandas as gpd
+import numpy as np
 import odc.geo.xr
 import pandas as pd
-import rioxarray  # noqa: F401
+import rioxarray
 import xarray as xr
 from darts_utils.tilecache import XarrayCacheManager
 from odc.stac import stac_load
@@ -34,9 +35,9 @@ def _flatten_dict(d: MutableMapping, parent_key: str = "", sep: str = ".") -> Mu
 
 
 @stopwatch.f("Loading Sentinel-2 scene from STAC", printer=logger.debug, print_kwargs=["s2item"])
-def load_s2_from_stac(
+def load_s2_from_stac(  # noqa: C901
     s2item: str | Item,
-    bands_mapping: dict = {"B02_10m": "blue", "B03_10m": "green", "B04_10m": "red", "B08_10m": "nir"},
+    bands_mapping: dict | Literal["all"] = {"B02_10m": "blue", "B03_10m": "green", "B04_10m": "red", "B08_10m": "nir"},
     cache: Path | None = None,
     aws_profile_name: str = "default",
 ) -> xr.Dataset:
@@ -48,8 +49,9 @@ def load_s2_from_stac(
 
     Args:
         s2item (str | Item): The Sentinel-2 image ID or the corresponing STAC Item.
-        bands_mapping (dict[str, str], optional): A mapping from bands to obtain.
+        bands_mapping (dict[str, str] | Literal["all"], optional): A mapping from bands to obtain.
             Will be renamed to the corresponding band names.
+            If "all" is provided, will load all optical bands and the SCL band.
             Defaults to {"B02_10m": "blue", "B03_10m": "green", "B04_10m": "red", "B08_10m": "nir"}.
         cache (Path | None, optional): The path to the cache directory. If None, no caching will be done.
             Defaults to None.
@@ -61,6 +63,26 @@ def load_s2_from_stac(
 
     """
     s2id = s2item.id if isinstance(s2item, Item) else s2item
+
+    if bands_mapping == "all":
+        # Mapping according to spyndex band common names:
+        # for key, band in spyndex.bands.items():
+        #     if not hasattr(band, "sentinel2a"): continue
+        #     print(f"{band.sentinel2a.band}: {band.common_name}")
+        bands_mapping = {
+            "B01_20m": "coastal",
+            "B02_10m": "blue",
+            "B03_10m": "green",
+            "B04_10m": "red",
+            "B05_20m": "rededge071",
+            "B06_20m": "rededge075",
+            "B07_20m": "rededge078",
+            "B08_10m": "nir",
+            "B8A_20m": "nir08",
+            "B09_60m": "nir09",
+            "B11_20m": "swir16",
+            "B12_20m": "swir22",
+        }
 
     if "SCL_20m" not in bands_mapping.keys():
         bands_mapping["SCL_20m"] = "s2_scl"
@@ -87,13 +109,17 @@ def load_s2_from_stac(
                 bands=bands,
                 crs="utm",
                 resolution=10,
+                resampling="nearest",  # is used as default, but lets be sure
             )
 
         ds_s2.attrs = _flatten_dict(s2item.properties)
         # Convert boolean values to int, since they are not supported in netcdf
+        # Also convert array, dicts and np types to str
         for key, value in ds_s2.attrs.items():
             if isinstance(value, bool):
                 ds_s2.attrs[key] = int(value)
+            elif isinstance(value, (list, dict, np.ndarray)):
+                ds_s2.attrs[key] = str(value)
         ds_s2.attrs["time"] = str(ds_s2.time.values[0])
         ds_s2 = ds_s2.isel(time=0).drop_vars("time")
 
@@ -113,12 +139,29 @@ def load_s2_from_stac(
     )
 
     ds_s2 = ds_s2.rename_vars(bands_mapping)
-    for band in set(bands_mapping.values()) - {"s2_scl"}:
-        ds_s2[band].attrs["data_source"] = "s2-stac"
+    optical_bands = [band for name, band in bands_mapping.items() if name.startswith("B")]
+    for band in optical_bands:
+        # We need to filter out 0 values, since they are not valid reflectance values
+        # But also not reflected in the SCL for some reason
+        ds_s2[band] = ds_s2[band].where(ds_s2[band] != 0).astype("float32") / 10000.0 - 0.1
         ds_s2[band].attrs["long_name"] = f"Sentinel-2 {band.capitalize()}"
         ds_s2[band].attrs["units"] = "Reflectance"
+    ds_s2["s2_scl"].attrs = {
+        "long_name": "Sentinel-2 Scene Classification Layer",
+        "description": (
+            "0: NO_DATA - 1: SATURATED_OR_DEFECTIVE - 2: CAST_SHADOWS - 3: CLOUD_SHADOWS - 4: VEGETATION"
+            " - 5: NOT_VEGETATED - 6: WATER - 7: UNCLASSIFIED - 8: CLOUD_MEDIUM_PROBABILITY - 9: CLOUD_HIGH_PROBABILITY"
+            " - 10: THIN_CIRRUS - 11: SNOW or ICE"
+        ),
+    }
+    for band in ds_s2.data_vars:
+        ds_s2[band].attrs["data_source"] = "Sentinel-2 L2A via Copernicus STAC API (sentinel-2-l2a)"
 
     ds_s2 = convert_masks(ds_s2)
+
+    # Convert sun elevation and azimuth to match our naming
+    ds_s2.attrs["azimuth"] = ds_s2.attrs.get("view:azimuth", float("nan"))
+    ds_s2.attrs["elevation"] = ds_s2.attrs.get("view:sun_elevation", float("nan"))
 
     ds_s2.attrs["s2_tile_id"] = s2id
     ds_s2.attrs["tile_id"] = s2id
