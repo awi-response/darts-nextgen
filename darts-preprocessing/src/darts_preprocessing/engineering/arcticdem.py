@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__.replace("darts_", "darts."))
 
 if has_cuda_and_cupy():
     import cupy as cp  # type: ignore
-    import cupy_xarray  # noqa: F401 # type: ignore
+    import cupy_xarray  # type: ignore
 
 
 @dataclass(frozen=True)

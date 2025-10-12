@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__.replace("darts_", "darts."))
 
 try:
     import cupy as cp  # type: ignore
-    import cupy_xarray  # noqa: F401
+    import cupy_xarray
     from cucim.skimage.morphology import binary_erosion as binary_erosion_gpu  # type: ignore
     from cucim.skimage.morphology import disk as disk_gpu  # type: ignore
     from cucim.skimage.morphology import remove_small_objects as remove_small_objects_gpu  # type: ignore

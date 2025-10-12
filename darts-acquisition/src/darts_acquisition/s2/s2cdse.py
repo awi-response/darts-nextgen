@@ -9,7 +9,7 @@ import geopandas as gpd
 import numpy as np
 import odc.geo.xr
 import pandas as pd
-import rioxarray  # noqa: F401
+import rioxarray
 import xarray as xr
 from darts_utils.tilecache import XarrayCacheManager
 from odc.stac import stac_load
@@ -35,7 +35,7 @@ def _flatten_dict(d: MutableMapping, parent_key: str = "", sep: str = ".") -> Mu
 
 
 @stopwatch.f("Loading Sentinel-2 scene from STAC", printer=logger.debug, print_kwargs=["s2item"])
-def load_s2_from_stac(
+def load_s2_from_stac(  # noqa: C901
     s2item: str | Item,
     bands_mapping: dict | Literal["all"] = {"B02_10m": "blue", "B03_10m": "green", "B04_10m": "red", "B08_10m": "nir"},
     cache: Path | None = None,

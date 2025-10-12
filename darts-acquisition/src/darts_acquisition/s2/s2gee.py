@@ -8,7 +8,7 @@ from typing import Literal
 import ee
 import geopandas as gpd
 import odc.geo.xr
-import rioxarray  # noqa: F401
+import rioxarray
 import xarray as xr
 from darts_utils.tilecache import XarrayCacheManager
 from stopuhr import stopwatch

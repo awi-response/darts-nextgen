@@ -4,7 +4,7 @@ import logging
 from pathlib import Path
 
 import odc.geo.xr
-import rioxarray  # noqa: F401
+import rioxarray
 import xarray as xr
 from odc.geo.geobox import GeoBox
 from stopuhr import stopwatch

@@ -6,7 +6,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Literal
 
-import rioxarray  # noqa: F401
+import rioxarray
 import xarray as xr
 from stopuhr import stopwatch
 
