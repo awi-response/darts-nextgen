@@ -24,6 +24,9 @@ logger = logging.getLogger(__name__.replace("darts_", "darts."))
 # TODO: Find a better abstraction for GPU / CPU processing
 # Combine it with persisting Stuff on the GPU for later inference
 # This is currently blocked because the arcticdem needs to be cropped after the processing happened
+# Otherwise it should be possible to do something like this:
+# - let the output of the proprocessing stay on the GPU
+# - when the data is converted into a torch tensor use the cupy-torch interop: https://docs.cupy.dev/en/stable/user_guide/interoperability.html#pytorch
 
 
 def get_azimuth_and_elevation(ds_optical: xr.Dataset) -> tuple[float, float]:

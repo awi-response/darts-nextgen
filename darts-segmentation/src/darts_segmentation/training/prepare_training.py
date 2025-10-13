@@ -13,8 +13,6 @@ import xarray as xr
 import zarr
 from darts_utils.bands import manager
 from darts_utils.cuda import free_torch
-
-# TODO: move erode_mask to darts_utils, since uasge is not limited to prepare_export
 from geocube.api.core import make_geocube
 from zarr.codecs import BloscCodec
 from zarr.storage import LocalStore

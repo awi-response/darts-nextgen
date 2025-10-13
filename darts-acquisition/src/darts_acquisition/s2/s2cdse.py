@@ -126,6 +126,7 @@ def load_s2_from_stac(
         # Because of the resampling to 10m, the SCL is a float -> fix it
         ds_s2["SCL_20m"] = ds_s2["SCL_20m"].astype("uint8")
 
+        # TODO: move outside of tile
         # Set values where SCL_20m == 0 to NaN in all other bands
         # This way the data is similar to data from gee or planet data
         for band in set(bands_mapping.keys()) - {"SCL_20m"}:

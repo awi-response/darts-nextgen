@@ -1,12 +1,5 @@
 """More advanced hyper-parameter tuning."""
 
-# TODO: Concurrent training:
-# Can't parallelize cv only because for tunes without cv this would result in only one concurrent training job.
-# Parallelizing tune only is also bad, because then cv is not parallelized at all.
-# Concept:
-# Implement concurrency for both tune and cv, but don't parallelize cv in a tuning situation.
-# Reminder: Set the device for final training and test
-
 import logging
 import time
 from dataclasses import asdict, dataclass

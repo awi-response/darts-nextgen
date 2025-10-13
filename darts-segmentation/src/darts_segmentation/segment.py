@@ -131,10 +131,8 @@ class SMPSegmenter:
         ).squeeze(0)
 
         # Highly sophisticated DL-based predictor
-        # TODO: is there a better way to pass metadata?
-        tile["probabilities"] = tile["red"].copy(data=probabilities.cpu().numpy())
+        tile["probabilities"] = (("y", "x"), probabilities.cpu().numpy())
         tile["probabilities"].attrs = {"long_name": "Probabilities"}
-        tile["probabilities"] = tile["probabilities"].fillna(float("nan")).rio.write_nodata(float("nan"))
 
         # Cleanup cuda memory
         del tensor_tile, probabilities
