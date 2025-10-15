@@ -313,7 +313,6 @@ def calculate_vector_ruggedness_measure(arcticdem_ds: xr.Dataset, neighborhood_s
 
     logger.debug(f"Calculating Vector Ruggedness Measure with square kernel of size {neighborhood_size} cells.")
 
-    # TODO: Write a custom kernel for this for speedup and smaller memory footprint
     # Calculate sums of x, y, and z components in the neighborhood
     x_sum = convolution.convolution_2d(x, kernel)
     y_sum = convolution.convolution_2d(y, kernel)

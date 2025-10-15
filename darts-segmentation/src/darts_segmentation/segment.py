@@ -95,6 +95,11 @@ class SMPSegmenter:
 
         logger.debug(f"Successfully loaded model from {model_checkpoint.resolve()} with inputs: {self.config['bands']}")
 
+    @property
+    def required_bands(self) -> set[str]:
+        """The bands required by this model."""
+        return set(self.config["bands"])
+
     @stopwatch.f(
         "Segmenting tile",
         printer=logger.debug,

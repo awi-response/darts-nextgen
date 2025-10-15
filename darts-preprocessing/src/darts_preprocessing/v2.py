@@ -111,8 +111,8 @@ def preprocess_arcticdem(
 @stopwatch("Preprocessing", printer=logger.debug)
 def preprocess_v2(
     ds_optical: xr.Dataset,
-    ds_arcticdem: xr.Dataset,
-    ds_tcvis: xr.Dataset,
+    ds_arcticdem: xr.Dataset | None,
+    ds_tcvis: xr.Dataset | None,
     tpi_outer_radius: int = 100,
     tpi_inner_radius: int = 0,
     device: Literal["cuda", "cpu"] | int = DEFAULT_DEVICE,
@@ -126,8 +126,8 @@ def preprocess_v2(
 
     Args:
         ds_optical (xr.Dataset): The Planet scene optical data or Sentinel 2 scene optical dataset including data_masks.
-        ds_arcticdem (xr.Dataset): The ArcticDEM dataset.
-        ds_tcvis (xr.Dataset): The TCVIS dataset.
+        ds_arcticdem (xr.Dataset | None): The ArcticDEM dataset.
+        ds_tcvis (xr.Dataset | None): The TCVIS dataset.
         tpi_outer_radius (int, optional): The outer radius of the annulus kernel for the tpi calculation
             in m. Defaults to 100m.
         tpi_inner_radius (int, optional): The inner radius of the annulus kernel for the tpi calculation
@@ -146,56 +146,68 @@ def preprocess_v2(
     ds_optical["ndvi"] = calculate_ndvi(ds_optical)
     ds_optical = move_to_host(ds_optical)
 
-    # Reproject TCVIS to optical data
-    with stopwatch("Reprojecting TCVIS", printer=logger.debug):
-        # *: Reprojecting this way will not alter the datatype of the data!
-        # Should be uint8 before and after reprojection.
-        ds_tcvis = ds_tcvis.odc.reproject(ds_optical.odc.geobox, resampling="cubic")
+    if ds_tcvis is None and ds_arcticdem is None:
+        logger.debug("No auxiliary data provided. Only NDVI was calculated.")
+        return ds_optical
 
-    # !: Reprojecting with f64 coordinates and values behind the decimal point can result in a coordinate missmatch:
-    # E.g. ds_optical has x coordinates [2.123, ...] then is can happen that the
-    # reprojected ds_tcvis coordinates are [2.12300001, ...]
-    # This results is all-nan assigments later when adding the variables of the reprojected dataset to the original
-    assert (ds_optical.x == ds_tcvis.x).all(), "x coordinates do not match! See code comment above"
-    assert (ds_optical.y == ds_tcvis.y).all(), "y coordinates do not match! See code comment above"
+    if ds_tcvis is not None:
+        # Reproject TCVIS to optical data
+        with stopwatch("Reprojecting TCVIS", printer=logger.debug):
+            # *: Reprojecting this way will not alter the datatype of the data!
+            # Should be uint8 before and after reprojection.
+            ds_tcvis = ds_tcvis.odc.reproject(ds_optical.odc.geobox, resampling="cubic")
 
-    # ?: Do ds_tcvis and ds_optical now share the same memory on the GPU or do I need to delte ds_tcvis to free memory?
-    # Same question for ArcticDEM
-    ds_optical["tc_brightness"] = ds_tcvis.tc_brightness
-    ds_optical["tc_greenness"] = ds_tcvis.tc_greenness
-    ds_optical["tc_wetness"] = ds_tcvis.tc_wetness
+        # !: Reprojecting with f64 coordinates and values behind the decimal point can result in a coordinate missmatch:
+        # E.g. ds_optical has x coordinates [2.123, ...] then is can happen that the
+        # reprojected ds_tcvis coordinates are [2.12300001, ...]
+        # This results is all-nan assigments later when adding the variables of the reprojected dataset to the original
+        assert (ds_optical.x == ds_tcvis.x).all(), "x coordinates do not match! See code comment above"
+        assert (ds_optical.y == ds_tcvis.y).all(), "y coordinates do not match! See code comment above"
 
-    # Calculate TPI and slope from ArcticDEM
-    with stopwatch("Reprojecting ArcticDEM", printer=logger.debug):
-        ds_arcticdem = ds_arcticdem.odc.reproject(ds_optical.odc.geobox.buffered(tpi_outer_radius), resampling="cubic")
-    # Move to same device as optical
-    ds_arcticdem = move_to_device(ds_arcticdem, device)
+        # ?: Do ds_tcvis and ds_optical now share the same memory on the GPU?
+        #  or do I need to delete ds_tcvis to free memory?
+        # Same question for ArcticDEM
+        ds_optical["tc_brightness"] = ds_tcvis.tc_brightness
+        ds_optical["tc_greenness"] = ds_tcvis.tc_greenness
+        ds_optical["tc_wetness"] = ds_tcvis.tc_wetness
 
-    assert (ds_optical.x == ds_arcticdem.x).all(), "x coordinates do not match! See code comment above"
-    assert (ds_optical.y == ds_arcticdem.y).all(), "y coordinates do not match! See code comment above"
+    if ds_arcticdem is not None:
+        # Calculate TPI and slope from ArcticDEM
+        with stopwatch("Reprojecting ArcticDEM", printer=logger.debug):
+            ds_arcticdem = ds_arcticdem.odc.reproject(
+                ds_optical.odc.geobox.buffered(tpi_outer_radius), resampling="cubic"
+            )
+        # Move to same device as optical
+        ds_arcticdem = move_to_device(ds_arcticdem, device)
 
-    azimuth, angle_altitude = get_azimuth_and_elevation(ds_optical)
-    ds_arcticdem = preprocess_arcticdem(
-        ds_arcticdem,
-        tpi_outer_radius,
-        tpi_inner_radius,
-        azimuth,
-        angle_altitude,
-    )
-    ds_arcticdem = move_to_host(ds_arcticdem)
+        assert (ds_optical.x == ds_arcticdem.x).all(), "x coordinates do not match! See code comment above"
+        assert (ds_optical.y == ds_arcticdem.y).all(), "y coordinates do not match! See code comment above"
 
-    ds_arcticdem = ds_arcticdem.odc.crop(ds_optical.odc.geobox.extent)
-    # For some reason, we need to reindex, because the reproject + crop of the arcticdem sometimes results
-    # in floating point errors. These error are at the order of 1e-10, hence, way below millimeter precision.
-    ds_arcticdem["x"] = ds_optical.x
-    ds_arcticdem["y"] = ds_optical.y
+        azimuth, angle_altitude = get_azimuth_and_elevation(ds_optical)
+        ds_arcticdem = preprocess_arcticdem(
+            ds_arcticdem,
+            tpi_outer_radius,
+            tpi_inner_radius,
+            azimuth,
+            angle_altitude,
+        )
+        ds_arcticdem = move_to_host(ds_arcticdem)
 
-    ds_optical["dem"] = ds_arcticdem.dem
-    ds_optical["relative_elevation"] = ds_arcticdem.tpi
-    ds_optical["slope"] = ds_arcticdem.slope
-    ds_optical["hillshade"] = ds_arcticdem.hillshade
-    ds_optical["aspect"] = ds_arcticdem.aspect
-    ds_optical["curvature"] = ds_arcticdem.curvature
-    ds_optical["arcticdem_data_mask"] = ds_arcticdem.arcticdem_data_mask
+        # TODO: Check if crop can be done with apply_mask = False
+        # -> Then the type conversion of the arcticdem data mask would not be necessary anymore
+        # -> And this would also allow to keep the data on the GPU
+        ds_arcticdem = ds_arcticdem.odc.crop(ds_optical.odc.geobox.extent)
+        # For some reason, we need to reindex, because the reproject + crop of the arcticdem sometimes results
+        # in floating point errors. These error are at the order of 1e-10, hence, way below millimeter precision.
+        ds_arcticdem["x"] = ds_optical.x
+        ds_arcticdem["y"] = ds_optical.y
+
+        ds_optical["dem"] = ds_arcticdem.dem
+        ds_optical["relative_elevation"] = ds_arcticdem.tpi
+        ds_optical["slope"] = ds_arcticdem.slope
+        ds_optical["hillshade"] = ds_arcticdem.hillshade
+        ds_optical["aspect"] = ds_arcticdem.aspect
+        ds_optical["curvature"] = ds_arcticdem.curvature
+        ds_optical["arcticdem_data_mask"] = ds_arcticdem.arcticdem_data_mask.astype("uint8")
 
     return ds_optical

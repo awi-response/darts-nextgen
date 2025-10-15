@@ -28,7 +28,6 @@ def convert_masks(ds_s2: xr.Dataset) -> xr.Dataset:
     assert "s2_scl" in ds_s2.data_vars, "The dataset does not contain the SCL band."
 
     ds_s2["quality_data_mask"] = xr.zeros_like(ds_s2["s2_scl"], dtype="uint8")
-    # TODO: What about nan values?
     invalids = ds_s2["s2_scl"].fillna(0).isin([0, 1])
     low_quality = ds_s2["s2_scl"].isin([3, 8, 9, 11])
     high_quality = ~invalids & ~low_quality

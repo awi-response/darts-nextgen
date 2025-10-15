@@ -15,6 +15,7 @@ from cyclopts import Parameter
 if TYPE_CHECKING:
     import geopandas as gpd
     import xarray as xr
+    from darts_ensemble import EnsembleV1
 
 logger = logging.getLogger(__name__)
 
@@ -86,8 +87,6 @@ class _BasePipeline(ABC):
     def _tile_aoi(self) -> "gpd.GeoDataFrame":
         pass
 
-    # Only used for _is_local == True
-    # Therefore "pass" is a valid default implementation
     def _predownload_tile(self, tileinfo: Any) -> None:
         pass
 
@@ -132,25 +131,50 @@ class _BasePipeline(ABC):
             json.dump(config, f)
         return current_time
 
-    def _create_auxiliary_datacubes(self):
+    def _create_auxiliary_datacubes(self, arcticdem: bool = True, tcvis: bool = True):
         import smart_geocubes
 
         from darts.utils.logging import LoggingManager
 
         # Create the datacubes if they do not exist
         LoggingManager.apply_logging_handlers("smart_geocubes")
-        arcticdem_resolution = self._arcticdem_resolution()
-        if arcticdem_resolution == 2:
-            accessor = smart_geocubes.ArcticDEM2m(self.arcticdem_dir)
-        elif arcticdem_resolution == 10:
-            accessor = smart_geocubes.ArcticDEM10m(self.arcticdem_dir)
-        if not accessor.created:
-            accessor.create(overwrite=False)
-        accessor = smart_geocubes.TCTrend(self.tcvis_dir)
-        if not accessor.created:
-            accessor.create(overwrite=False)
+        if arcticdem:
+            arcticdem_resolution = self._arcticdem_resolution()
+            if arcticdem_resolution == 2:
+                accessor = smart_geocubes.ArcticDEM2m(self.arcticdem_dir)
+            elif arcticdem_resolution == 10:
+                accessor = smart_geocubes.ArcticDEM10m(self.arcticdem_dir)
+            if not accessor.created:
+                accessor.create(overwrite=False)
+        if tcvis:
+            accessor = smart_geocubes.TCTrend(self.tcvis_dir)
+            if not accessor.created:
+                accessor.create(overwrite=False)
 
-    def predownload(self):
+    def _load_ensemble(self) -> "EnsembleV1":
+        import torch
+        from darts_ensemble import EnsembleV1
+
+        # determine models to use
+        if isinstance(self.model_files, Path):
+            self.model_files = [self.model_files]
+            self.write_model_outputs = False
+        models = {model_file.stem: model_file for model_file in self.model_files}
+        ensemble = EnsembleV1(models, device=torch.device(self.device))
+        return ensemble
+
+    def _check_aux_needs(self, ensemble: "EnsembleV1") -> tuple[bool, bool]:
+        # Get the ensemble to check which auxiliary data is necessary
+        required_bands = ensemble.required_bands
+        arcticdem_bands = {"dem", "relative_elevation", "slope", "aspect", "hillshade", "curvature"}
+        tcvis_bands = {"tc_brightness", "tc_greenness", "tc_wetness"}
+        needs_arcticdem = len(required_bands.intersection(arcticdem_bands)) > 0
+        needs_tcvis = len(required_bands.intersection(tcvis_bands)) > 0
+        return needs_arcticdem, needs_tcvis
+
+    def predownload(self, optical: bool = False, aux: bool = False):
+        assert optical or aux, "Nothing to predownload. Please set optical and/or aux to True."
+
         self._validate()
         self._dump_config()
 
@@ -167,18 +191,29 @@ class _BasePipeline(ABC):
         timer = Chronometer(printer=logger.debug)
         self.device = decide_device(self.device)
 
-        init_ee(self.ee_project, self.ee_use_highvolume)
-        self._create_auxiliary_datacubes()
+        if aux:
+            # Get the ensemble to check which auxiliary data is necessary
+            ensemble = self._load_ensemble()
+            needs_arcticdem, needs_tcvis = self._check_aux_needs(ensemble)
 
-        # Predownload auxiliary
-        aoi = self._tile_aoi()
-        with timer("Downloading ArcticDEM"):
-            download_arcticdem(aoi, self.arcticdem_dir, resolution=self._arcticdem_resolution())
-        with timer("Downloading TCVis"):
-            download_tcvis(aoi, self.tcvis_dir)
+            if not needs_arcticdem and not needs_tcvis:
+                logger.warning("No auxiliary data required by the models. Skipping predownload of auxiliary data...")
+            else:
+                logger.info(f"Models {needs_tcvis=} {needs_arcticdem=}.")
+                self._create_auxiliary_datacubes(arcticdem=needs_arcticdem, tcvis=needs_tcvis)
 
-        # Predownload tiles if not local
-        if self._is_local:
+                # Predownload auxiliary
+                aoi = self._tile_aoi()
+                if needs_arcticdem:
+                    with timer("Downloading ArcticDEM"):
+                        download_arcticdem(aoi, self.arcticdem_dir, resolution=self._arcticdem_resolution())
+                if needs_tcvis:
+                    init_ee(self.ee_project, self.ee_use_highvolume)
+                    with timer("Downloading TCVis"):
+                        download_tcvis(aoi, self.tcvis_dir)
+
+        # Predownload tiles if optical flag is set
+        if not optical:
             return
 
         # Iterate over all the data
@@ -186,15 +221,15 @@ class _BasePipeline(ABC):
             tileinfo = self._tileinfos()
             n_tiles = 0
             logger.info(f"Found {len(tileinfo)} tiles to process.")
-            for i, (tilekey, outpath) in enumerate(tileinfo):
+            for i, (tilekey, _) in enumerate(tileinfo):
                 tile_id = self._get_tile_id(tilekey)
                 try:
                     self._predownload_tile(tilekey)
                     n_tiles += 1
                     logger.info(f"Processed sample {i + 1} of {len(tileinfo)} '{tilekey}' ({tile_id=}).")
-                except KeyboardInterrupt:
-                    logger.warning("Keyboard interrupt detected.\nExiting...")
-                    raise KeyboardInterrupt
+                except (KeyboardInterrupt, SystemError, SystemExit) as e:
+                    logger.warning(f"{type(e).__name__} detected.\nExiting...")
+                    raise e
                 except Exception as e:
                     logger.warning(f"Could not process '{tilekey}' ({tile_id=}).\nSkipping...")
                     logger.exception(e)
@@ -210,9 +245,7 @@ class _BasePipeline(ABC):
         debug_info()
 
         import pandas as pd
-        import torch
         from darts_acquisition import load_arcticdem, load_tcvis
-        from darts_ensemble import EnsembleV1
         from darts_export import export_tile, missing_outputs
         from darts_postprocessing import prepare_export
         from darts_preprocessing import preprocess_v2
@@ -230,11 +263,9 @@ class _BasePipeline(ABC):
         self._create_auxiliary_datacubes()
 
         # determine models to use
-        if isinstance(self.model_files, Path):
-            self.model_files = [self.model_files]
-            self.write_model_outputs = False
-        models = {model_file.stem: model_file for model_file in self.model_files}
-        ensemble = EnsembleV1(models, device=torch.device(self.device))
+        ensemble = self._load_ensemble()
+        ensemble_subsets = ensemble.model_names
+        needs_arcticdem, needs_tcvis = self._check_aux_needs(ensemble)
 
         # Iterate over all the data
         tileinfo = self._tileinfos()
@@ -245,7 +276,7 @@ class _BasePipeline(ABC):
             tile_id = self._get_tile_id(tilekey)
             try:
                 if not self.overwrite:
-                    mo = missing_outputs(outpath, bands=self.export_bands, ensemble_subsets=models.keys())
+                    mo = missing_outputs(outpath, bands=self.export_bands, ensemble_subsets=ensemble_subsets)
                     if mo == "none":
                         logger.info(f"Tile {tile_id} already processed. Skipping...")
                         continue
@@ -259,17 +290,26 @@ class _BasePipeline(ABC):
 
                 with timer("Loading Optical", log=False):
                     tile = self._load_tile(tilekey)
-                with timer("Loading ArcticDEM", log=False):
-                    arcticdem_resolution = self._arcticdem_resolution()
-                    arcticdem = load_arcticdem(
-                        tile.odc.geobox,
-                        self.arcticdem_dir,
-                        resolution=arcticdem_resolution,
-                        buffer=ceil(self.tpi_outer_radius / arcticdem_resolution * sqrt(2)),
-                        offline=self.offline,
-                    )
-                with timer("Loading TCVis", log=False):
-                    tcvis = load_tcvis(tile.odc.geobox, self.tcvis_dir, offline=self.offline)
+
+                if needs_arcticdem:
+                    with timer("Loading ArcticDEM", log=False):
+                        arcticdem_resolution = self._arcticdem_resolution()
+                        arcticdem = load_arcticdem(
+                            tile.odc.geobox,
+                            self.arcticdem_dir,
+                            resolution=arcticdem_resolution,
+                            buffer=ceil(self.tpi_outer_radius / arcticdem_resolution * sqrt(2)),
+                            offline=self.offline,
+                        )
+                else:
+                    arcticdem = None
+
+                if needs_tcvis:
+                    with timer("Loading TCVis", log=False):
+                        tcvis = load_tcvis(tile.odc.geobox, self.tcvis_dir, offline=self.offline)
+                else:
+                    tcvis = None
+
                 with timer("Preprocessing", log=False):
                     tile = preprocess_v2(
                         tile,
@@ -279,6 +319,7 @@ class _BasePipeline(ABC):
                         self.tpi_inner_radius,
                         self.device,
                     )
+
                 with timer("Segmenting", log=False):
                     tile = ensemble.segment_tile(
                         tile,
@@ -288,6 +329,7 @@ class _BasePipeline(ABC):
                         reflection=self.reflection,
                         keep_inputs=self.write_model_outputs,
                     )
+
                 with timer("Postprocessing", log=False):
                     tile = prepare_export(
                         tile,
@@ -295,7 +337,7 @@ class _BasePipeline(ABC):
                         mask_erosion_size=self.mask_erosion_size,
                         min_object_size=self.min_object_size,
                         quality_level=self.quality_level,
-                        ensemble_subsets=models.keys() if self.write_model_outputs else [],
+                        ensemble_subsets=ensemble_subsets if self.write_model_outputs else [],
                         device=self.device,
                         edge_erosion_size=self.edge_erosion_size,
                     )
@@ -307,7 +349,7 @@ class _BasePipeline(ABC):
                         tile,
                         outpath,
                         bands=self.export_bands,
-                        ensemble_subsets=models.keys() if self.write_model_outputs else [],
+                        ensemble_subsets=ensemble_subsets if self.write_model_outputs else [],
                         metadata=export_metadata,
                     )
 
@@ -407,10 +449,6 @@ class PlanetPipeline(_BasePipeline):
     scenes_dir: Path = Path("data/input/planet/PSScene")
     image_ids: list = None
 
-    @property
-    def _is_local(self) -> bool:
-        return False
-
     def _arcticdem_resolution(self) -> Literal[2]:
         return 2
 
@@ -472,9 +510,9 @@ class PlanetPipeline(_BasePipeline):
         return tile
 
     @staticmethod
-    def pre_offline_cli(*, pipeline: "PlanetPipeline"):
+    def pre_offline_cli(*, pipeline: "PlanetPipeline", aux: bool = False):
         """Download all necessary data for offline processing."""
-        pipeline.predownload()
+        pipeline.predownload(optical=False, aux=aux)
 
     @staticmethod
     def cli(*, pipeline: "PlanetPipeline"):
@@ -537,10 +575,6 @@ class Sentinel2Pipeline(_BasePipeline):
 
     sentinel2_dir: Path = Path("data/input/sentinel2")
     image_ids: list = None
-
-    @property
-    def _is_local(self) -> bool:
-        return False
 
     def _arcticdem_resolution(self) -> Literal[10]:
         return 10
@@ -695,10 +729,6 @@ class AOISentinel2Pipeline(_BasePipeline):
     max_cloud_cover: int = 10
     s2_source: Literal["gee", "cdse"] = "cdse"
     s2_download_cache: Path = Path("data/cache/s2cdse")
-
-    @property
-    def _is_local(self) -> bool:
-        return False
 
     def _arcticdem_resolution(self) -> Literal[10]:
         return 10

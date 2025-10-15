@@ -126,13 +126,6 @@ def load_s2_from_stac(
         # Because of the resampling to 10m, the SCL is a float -> fix it
         ds_s2["SCL_20m"] = ds_s2["SCL_20m"].astype("uint8")
 
-        # TODO: move outside of tile
-        # Set values where SCL_20m == 0 to NaN in all other bands
-        # This way the data is similar to data from gee or planet data
-        for band in set(bands_mapping.keys()) - {"SCL_20m"}:
-            if ds_s2[band].dtype == "float32":
-                ds_s2[band] = ds_s2[band].where(ds_s2.SCL_20m != 0)
-
         return ds_s2
 
     cache_manager = XarrayCacheManager(cache)
@@ -146,9 +139,11 @@ def load_s2_from_stac(
     ds_s2 = ds_s2.rename_vars(bands_mapping)
     optical_bands = [band for name, band in bands_mapping.items() if name.startswith("B")]
     for band in optical_bands:
+        # Set values where SCL_20m == 0 to NaN in all other bands
+        # This way the data is similar to data from gee or planet data
         # We need to filter out 0 values, since they are not valid reflectance values
         # But also not reflected in the SCL for some reason
-        ds_s2[band] = ds_s2[band].where(ds_s2[band].astype("float32") != 0) / 10000.0 - 0.1
+        ds_s2[band] = ds_s2[band].where(ds_s2.s2_scl != 0).where(ds_s2[band].astype("float32") != 0) / 10000.0 - 0.1
         ds_s2[band].attrs["long_name"] = f"Sentinel-2 {band.capitalize()}"
         ds_s2[band].attrs["units"] = "Reflectance"
     ds_s2["s2_scl"].attrs = {

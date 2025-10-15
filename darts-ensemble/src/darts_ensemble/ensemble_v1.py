@@ -36,6 +36,17 @@ class EnsembleV1:
         )
         self.models = {k: SMPSegmenter(v, device=device) for k, v in model_paths.items()}
 
+    @property
+    def model_names(self) -> list[str]:
+        """The names of the models in this ensemble."""
+        return list(self.models.keys())
+
+    @property
+    def required_bands(self) -> set[str]:
+        """The combined bands required by all models in this ensemble."""
+        bands = {model.required_bands for model in self.models.values()}
+        return bands
+
     @stopwatch.f(
         "Ensemble inference",
         printer=logger.debug,
