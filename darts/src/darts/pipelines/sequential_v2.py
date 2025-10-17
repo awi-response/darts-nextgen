@@ -59,6 +59,7 @@ class _BasePipeline(ABC):
     write_model_outputs: bool = False
     overwrite: bool = False
     offline: bool = False
+    debug_data: bool = False
 
     def __post_init__(self):
         paths.set_defaults(self.default_dirs)
@@ -545,155 +546,8 @@ class PlanetPipeline(_BasePipeline):
 
 
 @dataclass
-class Sentinel2Pipeline(_BasePipeline):
-    """Pipeline for Sentinel 2 data.
-
-    Args:
-        sentinel2_dir (Path): The directory containing the Sentinel 2 scenes.
-            Defaults to Path("data/input/sentinel2").
-        image_ids (list): The list of image ids to process. If None, all images in the directory will be processed.
-            Defaults to None.
-
-        model_files (Path | list[Path]): The path to the models to use for segmentation.
-            Can also be a single Path to only use one model. This implies `write_model_outputs=False`
-            If a list is provided, will use an ensemble of the models.
-        output_data_dir (Path): The "output" directory. Defaults to Path("data/output").
-        arcticdem_dir (Path): The directory containing the ArcticDEM data (the datacube and the extent files).
-            Will be created and downloaded if it does not exist.
-            Defaults to Path("data/download/arcticdem").
-        tcvis_dir (Path): The directory containing the TCVis data. Defaults to Path("data/download/tcvis").
-        device (Literal["cuda", "cpu"] | int, optional): The device to run the model on.
-            If "cuda" take the first device (0), if int take the specified device.
-            If "auto" try to automatically select a free GPU (<50% memory usage).
-            Defaults to "cuda" if available, else "cpu".
-        ee_project (str, optional): The Earth Engine project ID or number to use. May be omitted if
-            project is defined within persistent API credentials obtained via `earthengine authenticate`.
-        ee_use_highvolume (bool, optional): Whether to use the high volume server (https://earthengine-highvolume.googleapis.com).
-        tpi_outer_radius (int, optional): The outer radius of the annulus kernel for the tpi calculation
-            in m. Defaults to 100m.
-        tpi_inner_radius (int, optional): The inner radius of the annulus kernel for the tpi calculation
-            in m. Defaults to 0.
-        patch_size (int, optional): The patch size to use for inference. Defaults to 1024.
-        overlap (int, optional): The overlap to use for inference. Defaults to 16.
-        batch_size (int, optional): The batch size to use for inference. Defaults to 8.
-        reflection (int, optional): The reflection padding to use for inference. Defaults to 0.
-        binarization_threshold (float, optional): The threshold to binarize the probabilities. Defaults to 0.5.
-        mask_erosion_size (int, optional): The size of the disk to use for mask erosion and the edge-cropping.
-            Defaults to 10.
-        edge_erosion_size (int, optional): If the edge-cropping should have a different witdth, than the (inner) mask
-            erosion, set it here. Defaults to `mask_erosion_size`.
-        min_object_size (int, optional): The minimum object size to keep in pixel. Defaults to 32.
-        quality_level (int | Literal["high_quality", "low_quality", "none"], optional):
-            The quality level to use for the segmentation. Can also be an int.
-            In this case 0="none" 1="low_quality" 2="high_quality". Defaults to 1.
-        export_bands (list[str], optional): The bands to export.
-            Can be a list of "probabilities", "binarized", "polygonized", "extent", "thumbnail", "optical", "dem",
-            "tcvis", "metadata" or concrete band-names.
-            Defaults to ["probabilities", "binarized", "polygonized", "extent", "thumbnail"].
-        write_model_outputs (bool, optional): Also save the model outputs, not only the ensemble result.
-            Defaults to False.
-        overwrite (bool, optional): Whether to overwrite existing files. Defaults to False.
-        offline (bool, optional): If True, will not attempt to download any missing data. Defaults to False.
-
-    """
-
-    sentinel2_dir: Path = Path("data/input/sentinel2")
-    image_ids: list = None
-
-    def _arcticdem_resolution(self) -> Literal[10]:
-        return 10
-
-    def _get_tile_id(self, tilekey: Path):
-        from darts_acquisition import parse_s2_tile_id
-
-        try:
-            fpath = tilekey
-            _, _, tile_id = parse_s2_tile_id(fpath)
-            return tile_id
-        except Exception as e:
-            logger.error("Could not parse Sentinel 2 tile-id. Please check the input data.")
-            logger.exception(e)
-            raise e
-
-    def _tileinfos(self) -> list[tuple[Path, Path]]:
-        out = []
-        for fpath in self.sentinel2_dir.glob("*/"):
-            scene_id = fpath.name
-            if self.image_ids is not None:
-                if scene_id not in self.image_ids:
-                    continue
-            outpath = self.output_data_dir / scene_id
-            out.append((fpath.resolve(), outpath))
-        out.sort()
-        return out
-
-    def _tile_aoi(self) -> "gpd.GeoDataFrame":
-        import geopandas as gpd
-        from darts_acquisition import get_s2_geometry
-
-        tileinfos = self._tileinfos()
-        aoi = []
-        for fpath, _ in tileinfos:
-            geom = get_s2_geometry(fpath)
-            aoi.append({"tilekey": fpath, "geometry": geom.to_crs("EPSG:4326").geom})
-        aoi = gpd.GeoDataFrame(aoi, geometry="geometry", crs="EPSG:4326")
-        return aoi
-
-    def _load_tile(self, fpath: Path) -> "xr.Dataset":  # Here: fpath == 'tid'
-        import xarray as xr
-        from darts_acquisition import load_s2_masks, load_s2_scene
-
-        optical = load_s2_scene(fpath)
-        data_masks = load_s2_masks(fpath, optical.odc.geobox)
-        tile = xr.merge([optical, data_masks])
-        return tile
-
-    def _result_metadata(self, fpath: Path):
-        base_metadata = super()._result_metadata(fpath)
-
-        import rasterio as rio
-
-        # find the SR
-        try:
-            s2_image = next(fpath.glob("*_SR*.tif"))
-        except StopIteration:
-            return base_metadata
-
-        with rio.open(s2_image) as riods:
-            src_tags: dict = riods.tags()
-
-        file_meta = {
-            k: src_tags.get(k, None)
-            for k in [
-                "CLOUDY_PIXEL_PERCENTAGE",
-                "DATASTRIP_ID",
-                "DATATAKE_IDENTIFIER",
-                "GRANULE_ID",
-                "MGRS_TILE",
-                "PRODUCT_ID",
-                "SENSING_ORBIT_NUMBER",
-            ]
-            if k in src_tags
-        }
-        file_meta = {f"S2_{k}": v for k, v in file_meta.items()}
-        file_meta["S2_TILEID"] = fpath.name
-
-        return base_metadata | file_meta
-
-    @staticmethod
-    def pre_offline_cli(*, pipeline: "Sentinel2Pipeline"):
-        """Download all necessary data for offline processing."""
-        pipeline.predownload()
-
-    @staticmethod
-    def cli(*, pipeline: "Sentinel2Pipeline"):
-        """Run the sequential pipeline for Sentinel 2 data."""
-        pipeline.run()
-
-
-@dataclass
 # TODO: This needs a complete rewrite
-class AOISentinel2Pipeline(_BasePipeline):
+class Sentinel2Pipeline(_BasePipeline):
     """Pipeline for Sentinel 2 data based on an area of interest.
 
     Args:
@@ -833,11 +687,11 @@ class AOISentinel2Pipeline(_BasePipeline):
             return load_s2_from_stac(s2id, cache=self.s2_download_cache, offline=self.offline)
 
     @staticmethod
-    def pre_offline_cli(*, pipeline: "AOISentinel2Pipeline"):
+    def pre_offline_cli(*, pipeline: "Sentinel2Pipeline"):
         """Download all necessary data for offline processing."""
         pipeline.predownload()
 
     @staticmethod
-    def cli(*, pipeline: "AOISentinel2Pipeline"):
-        """Run the sequential pipeline for AOI Sentinel 2 data."""
+    def cli(*, pipeline: "Sentinel2Pipeline"):
+        """Run the sequential pipeline for Sentinel 2 data."""
         pipeline.run()

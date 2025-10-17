@@ -9,7 +9,6 @@ from typing import Annotated
 import cyclopts
 import rich
 from darts_segmentation.training import (
-    convert_lightning_checkpoint,
     cross_validation_smp,
     test_smp,
     train_smp,
@@ -19,13 +18,8 @@ from darts_segmentation.training import (
 
 from darts import __version__
 from darts.pipelines import (
-    AOISentinel2BlockPipeline,
-    AOISentinel2Pipeline,
-    AOISentinel2RayPipeline,
-    PlanetBlockPipeline,
     PlanetPipeline,
     PlanetRayPipeline,
-    Sentinel2BlockPipeline,
     Sentinel2Pipeline,
     Sentinel2RayPipeline,
 )
@@ -50,9 +44,7 @@ app = cyclopts.App(
     version_format="plaintext",
 )
 
-pipeline_group = cyclopts.Group.create_ordered("Pipeline Commands")
-data_group = cyclopts.Group.create_ordered("Data Commands")
-train_group = cyclopts.Group.create_ordered("Training Commands")
+subcommands_group = cyclopts.Group.create_ordered("Pipelines & Scripts")
 
 
 @app.command
@@ -95,29 +87,35 @@ def env_info():
     debug_info()
 
 
-app.command(name="run-sequential-aoi-sentinel2-pipeline", group=pipeline_group)(AOISentinel2Pipeline.cli)
-app.command(name="run-sequential-sentinel2-pipeline", group=pipeline_group)(Sentinel2Pipeline.cli)
-app.command(name="run-sequential-planet-pipeline", group=pipeline_group)(PlanetPipeline.cli)
-app.command(name="prerun-sequential-aoi-sentinel2-pipeline", group=pipeline_group)(AOISentinel2Pipeline.pre_offline_cli)
-app.command(name="prerun-sequential-sentinel2-pipeline", group=pipeline_group)(Sentinel2Pipeline.pre_offline_cli)
-app.command(name="prerun-sequential-planet-pipeline", group=pipeline_group)(PlanetPipeline.pre_offline_cli)
-app.command(name="run-ray-aoi-sentinel2-pipeline", group=pipeline_group)(AOISentinel2RayPipeline.cli)
-app.command(name="run-ray-sentinel2-pipeline", group=pipeline_group)(Sentinel2RayPipeline.cli)
-app.command(name="run-ray-planet-pipeline", group=pipeline_group)(PlanetRayPipeline.cli)
-app.command(name="run-block-sentinel2-pipeline", group=pipeline_group)(Sentinel2BlockPipeline.cli)
-app.command(name="run-block-aoi-sentinel2-pipeline", group=pipeline_group)(AOISentinel2BlockPipeline.cli)
-app.command(name="run-block-planet-pipeline", group=pipeline_group)(PlanetBlockPipeline.cli)
-app.command(group=pipeline_group)(benchviz)
+inference_app = cyclopts.App(name="inference", group=subcommands_group, help="Predefined inference pipelines")
+app.command(inference_app)
+sequential_group = cyclopts.Group.create_ordered("Sequential Pipelines")
+inference_app.command(name="sentinel2-sequential", group=sequential_group)(Sentinel2Pipeline.cli)
+inference_app.command(name="planet-sequential", group=sequential_group)(PlanetPipeline.cli)
+ray_group = cyclopts.Group.create_ordered("Ray Pipelines")
+inference_app.command(name="sentinel2-ray", group=ray_group)(Sentinel2RayPipeline.cli)
+inference_app.command(name="planet-ray", group=ray_group)(PlanetRayPipeline.cli)
+utilities_group = cyclopts.Group.create_ordered("Utilities")
+inference_app.command(group=utilities_group)(benchviz)
 
-app.command(group=train_group)(preprocess_planet_train_data)
-app.command(group=train_group)(preprocess_planet_train_data_pingo)
-app.command(group=train_group)(preprocess_s2_train_data)
-app.command(group=train_group)(validate_dataset)
-app.command(group=train_group)(train_smp)
-app.command(group=train_group)(test_smp)
-app.command(group=train_group)(convert_lightning_checkpoint)
-app.command(group=train_group)(cross_validation_smp)
-app.command(group=train_group)(tune_smp)
+inference_data_app = cyclopts.App(name="prep-data", group=utilities_group, help="Data preparation for offline use")
+inference_app.command(inference_data_app)
+inference_data_app.command(name="sentinel2")(Sentinel2Pipeline.pre_offline_cli)
+inference_data_app.command(name="planet")(PlanetPipeline.pre_offline_cli)
+
+training_app = cyclopts.App(name="training", group=subcommands_group, help="Predefined training pipelines")
+app.command(training_app)
+training_app.command()(validate_dataset)
+training_app.command()(train_smp)
+training_app.command()(test_smp)
+training_app.command(name="crossval-smp")(cross_validation_smp)
+training_app.command()(tune_smp)
+
+training_data_app = cyclopts.App(name="create-dataset", help="Dataset creation")
+training_app.command(training_data_app)
+training_data_app.command(name="planet")(preprocess_planet_train_data)
+training_data_app.command(name="planet-pingo")(preprocess_planet_train_data_pingo)
+training_data_app.command(name="sentinel2")(preprocess_s2_train_data)
 
 
 # Intercept the logging behavior to add a file handler
