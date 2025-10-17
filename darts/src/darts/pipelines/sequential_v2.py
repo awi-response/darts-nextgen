@@ -624,10 +624,10 @@ class Sentinel2Pipeline(_BasePipeline):
     # TODO: Find a way to do this in offline mode
     def _s2ids(self) -> list[str]:
         if self.s2_source == "gee":
-            from darts_acquisition import get_s2ids_from_geodataframe_ee
+            from darts_acquisition import get_gee_s2_sr_scene_ids_from_geodataframe
 
             return sorted(
-                get_s2ids_from_geodataframe_ee(
+                get_gee_s2_sr_scene_ids_from_geodataframe(
                     self.aoi_shapefile,
                     self.start_date,
                     self.end_date,
@@ -635,10 +635,10 @@ class Sentinel2Pipeline(_BasePipeline):
                 )
             )
         else:
-            from darts_acquisition import get_s2ids_from_geodataframe_stac
+            from darts_acquisition import get_cdse_s2_sr_scene_ids_from_geodataframe
 
             return sorted(
-                get_s2ids_from_geodataframe_stac(
+                get_cdse_s2_sr_scene_ids_from_geodataframe(
                     self.aoi_shapefile,
                     self.start_date,
                     self.end_date,
@@ -667,24 +667,24 @@ class Sentinel2Pipeline(_BasePipeline):
         # TODO: write "native" predownload functions for STAC and GEE, which don't overhead
         self.s2_download_cache = self.s2_download_cache or paths.input / self.s2_source
         if self.s2_source == "gee":
-            from darts_acquisition import load_s2_from_gee
+            from darts_acquisition import load_gee_s2_sr_scene
 
-            return load_s2_from_gee(s2id, cache=self.s2_download_cache)
+            return load_gee_s2_sr_scene(s2id, cache=self.s2_download_cache)
         else:
-            from darts_acquisition import load_s2_from_stac
+            from darts_acquisition import load_cdse_s2_sr_scene
 
-            return load_s2_from_stac(s2id, cache=self.s2_download_cache)
+            return load_cdse_s2_sr_scene(s2id, cache=self.s2_download_cache)
 
     def _load_tile(self, s2id: str) -> "xr.Dataset":
         self.s2_download_cache = self.s2_download_cache or paths.input / self.s2_source
         if self.s2_source == "gee":
-            from darts_acquisition import load_s2_from_gee
+            from darts_acquisition import load_gee_s2_sr_scene
 
-            return load_s2_from_gee(s2id, cache=self.s2_download_cache, offline=self.offline)
+            return load_gee_s2_sr_scene(s2id, cache=self.s2_download_cache, offline=self.offline)
         else:
-            from darts_acquisition import load_s2_from_stac
+            from darts_acquisition import load_cdse_s2_sr_scene
 
-            return load_s2_from_stac(s2id, cache=self.s2_download_cache, offline=self.offline)
+            return load_cdse_s2_sr_scene(s2id, cache=self.s2_download_cache, offline=self.offline)
 
     @staticmethod
     def pre_offline_cli(*, pipeline: "Sentinel2Pipeline"):

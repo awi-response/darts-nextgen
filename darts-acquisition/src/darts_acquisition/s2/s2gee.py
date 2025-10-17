@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__.replace("darts_", "darts."))
 
 
 @stopwatch.f("Loading Sentinel-2 scene from GEE", printer=logger.debug, print_kwargs=["img"])
-def load_s2_from_gee(
+def load_gee_s2_sr_scene(
     img: str | ee.Image,
     bands_mapping: dict | Literal["all"] = {"B2": "blue", "B3": "green", "B4": "red", "B8": "nir"},
     cache: Path | None = None,
@@ -153,8 +153,8 @@ def load_s2_from_gee(
     return ds_s2
 
 
-@stopwatch("Searching for Sentinel-2 tiles via Earth Engine", printer=logger.debug)
-def get_s2ids_from_geodataframe_ee(
+@stopwatch("Searching for Sentinel-2 scenes in Earth Engine from AOI", printer=logger.debug)
+def get_gee_s2_sr_scene_ids_from_geodataframe(
     aoi: gpd.GeoDataFrame | Path | str,
     start_date: str,
     end_date: str,

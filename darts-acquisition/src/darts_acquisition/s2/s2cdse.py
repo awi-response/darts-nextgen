@@ -34,14 +34,14 @@ def _flatten_dict(d: MutableMapping, parent_key: str = "", sep: str = ".") -> Mu
 
 
 @stopwatch.f("Loading Sentinel-2 scene from STAC", printer=logger.debug, print_kwargs=["s2item"])
-def load_s2_from_stac(
+def load_cdse_s2_sr_scene(
     s2item: str | Item,
     bands_mapping: dict = {"B02_10m": "blue", "B03_10m": "green", "B04_10m": "red", "B08_10m": "nir"},
     cache: Path | None = None,
     aws_profile_name: str = "default",
     offline: bool = False,
 ) -> xr.Dataset:
-    """Load a Sentinel-2 scene from the Copernicus STAC API and return it as an xarray dataset.
+    """Load a Sentinel-2 scene from CDSE via STAC API and return it as an xarray dataset.
 
     Note:
         Must use the `darts.utils.copernicus.init_copernicus` function to setup authentification
@@ -169,14 +169,14 @@ def load_s2_from_stac(
     return ds_s2
 
 
-@stopwatch("Searching for Sentinel-2 tiles via STAC", printer=logger.debug)
-def search_s2_stac(
+@stopwatch("Searching for Sentinel-2 scenes in CDSE", printer=logger.debug)
+def search_cdse_s2_sr(
     intersects,
     start_date: str,
     end_date: str,
     max_cloud_cover: int = 100,
 ) -> dict[str, Item]:
-    """Search for Sentinel-2 tiles via STAC based on an area of interest (intersects) and date range.
+    """Search for Sentinel-2 scenes via STAC based on an area of interest (intersects) and date range.
 
     Note:
         `start_date` and `end_date` will be concatted with a `/` to form a date range.
@@ -207,12 +207,12 @@ def search_s2_stac(
             f" {intersects=}, {start_date=}, {end_date=}, {max_cloud_cover=}"
         )
         return {}
-    logger.debug(f"Found {len(found_items)} Sentinel-2 items via STAC.")
+    logger.debug(f"Found {len(found_items)} Sentinel-2 items in CDSE.")
     return {item.id: item for item in found_items}
 
 
-@stopwatch("Searching for Sentinel-2 tiles via STAC from AOI", printer=logger.debug)
-def get_s2ids_from_geodataframe_stac(
+@stopwatch("Searching for Sentinel-2 scenes in CDSE from AOI", printer=logger.debug)
+def get_cdse_s2_sr_scene_ids_from_geodataframe(
     aoi: gpd.GeoDataFrame | Path | str,
     start_date: str,
     end_date: str,
@@ -244,7 +244,7 @@ def get_s2ids_from_geodataframe_stac(
         aoi["geometry"] = aoi.geometry.simplify(simplify_geometry)
     for i, row in aoi.iterrows():
         s2items.update(
-            search_s2_stac(
+            search_cdse_s2_sr(
                 intersects=row.geometry,
                 start_date=start_date,
                 end_date=end_date,
@@ -254,8 +254,8 @@ def get_s2ids_from_geodataframe_stac(
     return s2items
 
 
-@stopwatch("Searching for Sentinel-2 tiles via STAC from AOI", printer=logger.debug)
-def match_s2ids_from_geodataframe_stac(
+@stopwatch("Matching Sentinel-2 scenes in CDSE from AOI", printer=logger.debug)
+def match_cdse_s2_sr_scene_ids_from_geodataframe(
     aoi: gpd.GeoDataFrame,
     day_range: int = 60,
     max_cloud_cover: int = 20,
@@ -300,7 +300,7 @@ def match_s2ids_from_geodataframe_stac(
         intersects = row.geometry.__geo_interface__
         start_date = (row["date"] - pd.Timedelta(days=day_range)).strftime("%Y-%m-%d")
         end_date = (row["date"] + pd.Timedelta(days=day_range)).strftime("%Y-%m-%d")
-        intersecting_items = search_s2_stac(
+        intersecting_items = search_cdse_s2_sr(
             intersects=intersects,
             start_date=start_date,
             end_date=end_date,

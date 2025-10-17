@@ -271,9 +271,9 @@ def preprocess_s2_train_data(  # noqa: C901
     import xarray as xr
     from darts_acquisition import (
         load_arcticdem,
-        load_s2_from_stac,
+        load_s2_sr_from_cdse,
         load_tcvis,
-        match_s2ids_from_geodataframe_stac,
+        match_cdse_s2_sr_scene_ids_from_geodataframe,
     )
     from darts_acquisition.admin import download_admin_files
     from darts_preprocessing import preprocess_v2
@@ -303,7 +303,7 @@ def preprocess_s2_train_data(  # noqa: C901
 
     # Find S2 scenes that intersect with the Planet footprints
     if matching_cache is None or not matching_cache.exists():
-        matches = match_s2ids_from_geodataframe_stac(
+        matches = match_cdse_s2_sr_scene_ids_from_geodataframe(
             aoi=footprints,
             day_range=matching_day_range,
             max_cloud_cover=matching_max_cloud_cover,
@@ -391,7 +391,7 @@ def preprocess_s2_train_data(  # noqa: C901
                 continue
 
             def _get_tile():
-                s2ds = load_s2_from_stac(s2_item, cache=s2_download_cache)
+                s2ds = load_s2_sr_from_cdse(s2_item, cache=s2_download_cache)
 
                 # Crop to footprint geometry
                 geom = Geometry(footprint.geometry, crs=footprints.crs)

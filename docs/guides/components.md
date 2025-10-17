@@ -15,8 +15,8 @@ Currently, the implemented components are:
 | [darts_acquisition.load_planet_scene][]                  | Stateless                | Disk-IO                      |
 | [darts_acquisition.load_planet_masks][]                  | Stateless                | Disk-IO                      |
 | [darts_acquisition.load_s2_scene][]                      | Stateless                | Disk-IO                      |
-| [darts_acquisition.load_s2_from_gee][]                   | Stateless                | Network-IO (+ Disk-IO) + CPU |
-| [darts_acquisition.load_s2_from_stac][]                  | Stateless                | Network-IO (+ Disk-IO)       |
+| [darts_acquisition.load_gee_s2_sr_scene][]               | Stateless                | Network-IO (+ Disk-IO) + CPU |
+| [darts_acquisition.load_cdse_s2_sr_scene][]              | Stateless                | Network-IO (+ Disk-IO)       |
 | [darts_acquisition.load_s2_masks][]                      | Stateless                | Disk-IO + CPU                |
 | [darts_preprocessing.preprocess_legacy_fast][]           | Stateless                | CPU + GPU                    |
 | [darts_preprocessing.preprocess_v2][]                    | Stateless                | CPU + GPU                    |

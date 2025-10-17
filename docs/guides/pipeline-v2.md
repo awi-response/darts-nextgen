@@ -24,7 +24,7 @@ The pipeline currently consists of the following steps:
 
 1. Load the optical and auxiliary data
     This step depends on the realisation of the pipeline.
-    Either [darts_acquisition.load_planet_scene][], [darts_acquisition.load_s2_scene][], [darts_acquisition.load_s2_from_gee][] or [darts_acquisition.load_s2_from_stac][].
+    Either [darts_acquisition.load_planet_scene][], [darts_acquisition.load_s2_scene][], [darts_acquisition.load_gee_s2_sr_scene][] or [darts_acquisition.load_cdse_s2_sr_scene][].
     Also loads the masks if not loaded from gee or stac: [darts_acquisition.load_planet_masks][] or [darts_acquisition.load_s2_masks][], for the gee and stac versions the masks are already included.
     For the auxiliary data: [darts_acquisition.load_arcticdem][] and [darts_acquisition.load_tcvis][]
 2. Preprocess the optical data: [darts_preprocessing.preprocess_legacy_fast][] or [darts_preprocessing.preprocess_v2][].
@@ -42,7 +42,7 @@ from darts_segmentation import SMPSegmenter
 from darts_export import export_tile, missing_outputs
 from darts_postprocessing import prepare_export
 from darts_preprocessing import preprocess_legacy_fast
-from darts_acquisition.s2 import load_s2_from_gee
+from darts_acquisition.s2 import load_gee_s2_sr_scene
 
 s2id = "20230701T194909_20230701T195350_T11XNA"
 arcticdem_dir = "/path/to/arcticdem"
@@ -52,7 +52,7 @@ outpath = "/path/to/output"
 
 segmenter = SMPSegmenter(model_file)
 
-tile = load_s2_from_gee(s2id)
+tile = load_gee_s2_sr_scene(s2id)
 
 arcticdem = load_arcticdem(
     tile.odc.geobox,
