@@ -8,6 +8,7 @@ from multiprocessing import Queue
 from typing import TYPE_CHECKING, Literal
 
 import cyclopts
+from darts_utils.paths import DefaultPaths, paths
 
 from darts_segmentation.training.hparams import Hyperparameters
 from darts_segmentation.training.train import DataConfig, DeviceConfig, LoggingConfig, TrainingConfig, TrainRunConfig
@@ -143,6 +144,7 @@ def cross_validation_smp(
     *,
     name: str | None = None,
     tune_name: str | None = None,
+    default_dirs: DefaultPaths = DefaultPaths(),
     cv: CrossValidationConfig = CrossValidationConfig(),
     training_config: TrainingConfig = TrainingConfig(),
     data_config: DataConfig = DataConfig(),
@@ -216,6 +218,7 @@ def cross_validation_smp(
             Defaults to None.
         tune_name (str | None, optional): Name of the tuning. Should only be specified by a tuning script.
             Defaults to None.
+        default_dirs (DefaultPaths, optional): The default directories for DARTS. Defaults to a config filled with None.
         cv (CrossValidationConfig): Configuration for cross-validation.
         training_config (TrainingConfig): Configuration for the training.
         data_config (DataConfig): Configuration for the data.
@@ -238,6 +241,8 @@ def cross_validation_smp(
     from darts_segmentation.training.scoring import score_from_runs
 
     tick_fstart = time.perf_counter()
+
+    paths.set_defaults(default_dirs)
 
     artifact_dir = logging_config.artifact_dir_at_cv(tune_name)
     cv_name = name or generate_counted_name(artifact_dir)

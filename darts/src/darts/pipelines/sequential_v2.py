@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
 
 from cyclopts import Parameter
+from darts_utils.paths import DefaultPaths, paths
 
 if TYPE_CHECKING:
     import geopandas as gpd
@@ -34,9 +35,10 @@ class _BasePipeline(ABC):
     """
 
     model_files: list[Path] = None
-    output_data_dir: Path = Path("data/output")
-    arcticdem_dir: Path = Path("data/download/arcticdem")
-    tcvis_dir: Path = Path("data/download/tcvis")
+    default_dirs: DefaultPaths = field(default_factory=lambda: DefaultPaths())
+    output_data_dir: Path | None = None
+    arcticdem_dir: Path | None = None
+    tcvis_dir: Path | None = None
     device: Literal["cuda", "cpu", "auto"] | int | None = None
     ee_project: str | None = None
     ee_use_highvolume: bool = True
@@ -57,6 +59,17 @@ class _BasePipeline(ABC):
     write_model_outputs: bool = False
     overwrite: bool = False
     offline: bool = False
+
+    def __post_init__(self):
+        paths.set_defaults(self.default_dirs)
+        self.output_data_dir = self.output_data_dir or paths.out
+        self.model_files = self.model_files or list(self.paths.models.glob("*.pt"))
+        if self.arcticdem_dir is None:
+            arcticdem_resolution = self._arcticdem_resolution()
+            self.arcticdem_dir = paths.aux / f"arcticdem{arcticdem_resolution}m.icechunk"
+        self.tcvis_dir = self.tcvis_dir or paths.aux / "tcvis.icechunk"
+        if self.edge_erosion_size is None:
+            self.edge_erosion_size = self.mask_erosion_size
 
     @property
     @abstractmethod
@@ -158,6 +171,7 @@ class _BasePipeline(ABC):
         # determine models to use
         if isinstance(self.model_files, Path):
             self.model_files = [self.model_files]
+        if len(self.model_files) == 1:
             self.write_model_outputs = False
         models = {model_file.stem: model_file for model_file in self.model_files}
         ensemble = EnsembleV1(models, device=torch.device(self.device))
@@ -381,7 +395,7 @@ class _BasePipeline(ABC):
                 if len(results) > 0:
                     pd.DataFrame(results).to_parquet(self.output_data_dir / f"{current_time}.results.parquet")
                 if len(timer.durations) > 0:
-                    timer.export().to_parquet(self.output_data_dir / f"{current_time}.stopuhr.parquet")
+                    timer.export().to_parquet(self.output_data_dir / f"{current_time}.timer.parquet")
                 if len(stopwatch.durations) > 0:
                     stopwatch.export().to_parquet(self.output_data_dir / f"{current_time}.stopwatch.parquet")
         else:
@@ -402,14 +416,22 @@ class PlanetPipeline(_BasePipeline):
         image_ids (list): The list of image ids to process. If None, all images in the directory will be processed.
 
 
-        model_files (Path | list[Path]): The path to the models to use for segmentation.
+        model_files (Path | list[Path] | None, optional): The path to the models to use for segmentation.
             Can also be a single Path to only use one model. This implies `write_model_outputs=False`
             If a list is provided, will use an ensemble of the models.
-        output_data_dir (Path): The "output" directory. Defaults to Path("data/output").
-        arcticdem_dir (Path): The directory containing the ArcticDEM data (the datacube and the extent files).
+            If None, will search the default model directory based on the DARTS paths for all .pt files.
+            Defaults to None.
+        output_data_dir (Path | None, optional): The "output" directory.
+            If None, will use the default output directory based on the DARTS paths.
+            Defaults to None.
+        arcticdem_dir (Path | None, optional): The directory containing the ArcticDEM data
+            (the datacube and the extent files).
             Will be created and downloaded if it does not exist.
-            Defaults to Path("data/download/arcticdem").
-        tcvis_dir (Path): The directory containing the TCVis data. Defaults to Path("data/download/tcvis").
+            If None, will use the default auxiliary directory based on the DARTS paths.
+            Defaults to None.
+        tcvis_dir (Path | None, optional): The directory containing the TCVis data.
+            If None, will use the default TCVis directory based on the DARTS paths.
+            Defaults to None.
         device (Literal["cuda", "cpu"] | int, optional): The device to run the model on.
             If "cuda" take the first device (0), if int take the specified device.
             If "auto" try to automatically select a free GPU (<50% memory usage).
@@ -445,8 +467,8 @@ class PlanetPipeline(_BasePipeline):
 
     """
 
-    orthotiles_dir: Path = Path("data/input/planet/PSOrthoTile")
-    scenes_dir: Path = Path("data/input/planet/PSScene")
+    orthotiles_dir: Path | None = None
+    scenes_dir: Path | None = None
     image_ids: list = None
 
     def _arcticdem_resolution(self) -> Literal[2]:
@@ -467,6 +489,8 @@ class PlanetPipeline(_BasePipeline):
 
     def _tileinfos(self) -> list[tuple[Path, Path]]:
         out = []
+        self.orthotiles_dir = self.orthotiles_dir or paths.input / "planet" / "PSOrthoTile"
+        self.scenes_dir = self.scenes_dir or paths.input / "planet" / "PSScene"
         # Find all PlanetScope orthotiles
         for fpath in self.orthotiles_dir.glob("*/*/"):
             tile_id = fpath.parent.name
@@ -680,14 +704,23 @@ class AOISentinel2Pipeline(_BasePipeline):
             Defaults to 10.
         s2_download_cache (Path): The directory to use for caching the Sentinel 2 download data.
             Defaults to Path("data/cache/s2gee").
-        model_files (Path | list[Path]): The path to the models to use for segmentation.
+
+        model_files (Path | list[Path] | None, optional): The path to the models to use for segmentation.
             Can also be a single Path to only use one model. This implies `write_model_outputs=False`
             If a list is provided, will use an ensemble of the models.
-        output_data_dir (Path): The "output" directory. Defaults to Path("data/output").
-        arcticdem_dir (Path): The directory containing the ArcticDEM data (the datacube and the extent files).
+            If None, will search the default model directory based on the DARTS paths for all .pt files.
+            Defaults to None.
+        output_data_dir (Path | None, optional): The "output" directory.
+            If None, will use the default output directory based on the DARTS paths.
+            Defaults to None.
+        arcticdem_dir (Path | None, optional): The directory containing the ArcticDEM data
+            (the datacube and the extent files).
             Will be created and downloaded if it does not exist.
-            Defaults to Path("data/download/arcticdem").
-        tcvis_dir (Path): The directory containing the TCVis data. Defaults to Path("data/download/tcvis").
+            If None, will use the default auxiliary directory based on the DARTS paths.
+            Defaults to None.
+        tcvis_dir (Path | None, optional): The directory containing the TCVis data.
+            If None, will use the default TCVis directory based on the DARTS paths.
+            Defaults to None.
         device (Literal["cuda", "cpu"] | int, optional): The device to run the model on.
             If "cuda" take the first device (0), if int take the specified device.
             If "auto" try to automatically select a free GPU (<50% memory usage).
@@ -728,7 +761,7 @@ class AOISentinel2Pipeline(_BasePipeline):
     end_date: str = None
     max_cloud_cover: int = 10
     s2_source: Literal["gee", "cdse"] = "cdse"
-    s2_download_cache: Path = Path("data/cache/s2cdse")
+    s2_download_cache: Path | None = None
 
     def _arcticdem_resolution(self) -> Literal[10]:
         return 10
@@ -778,6 +811,7 @@ class AOISentinel2Pipeline(_BasePipeline):
 
     def _predownload_tile(self, s2id: str):
         # TODO: write "native" predownload functions for STAC and GEE, which don't overhead
+        self.s2_download_cache = self.s2_download_cache or paths.input / self.s2_source
         if self.s2_source == "gee":
             from darts_acquisition import load_s2_from_gee
 
@@ -788,6 +822,7 @@ class AOISentinel2Pipeline(_BasePipeline):
             return load_s2_from_stac(s2id, cache=self.s2_download_cache)
 
     def _load_tile(self, s2id: str) -> "xr.Dataset":
+        self.s2_download_cache = self.s2_download_cache or paths.input / self.s2_source
         if self.s2_source == "gee":
             from darts_acquisition import load_s2_from_gee
 
