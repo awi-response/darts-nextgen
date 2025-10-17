@@ -675,7 +675,7 @@ def test_smp(
     from darts_segmentation.training.data import DartsDataModule
     from darts_segmentation.training.module import LitSMP
 
-    LoggingManager.apply_logging_handlers("lightning.pytorch")
+    LoggingManager.apply_logging_handlers("lightning.pytorch", level=logging.INFO)
 
     tick_fstart = time.perf_counter()
 

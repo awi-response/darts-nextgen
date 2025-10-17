@@ -36,7 +36,7 @@ from darts.training import (
 )
 from darts.utils.bench import benchviz
 from darts.utils.config import ConfigParser
-from darts.utils.logging import LoggingManager
+from darts.utils.logging import LoggingManager, VerbosityLevel
 
 root_file = Path(__file__).resolve()
 logger = logging.getLogger(__name__)
@@ -126,23 +126,25 @@ def launcher(  # noqa: D103
     *tokens: Annotated[str, cyclopts.Parameter(show=False, allow_leading_hyphen=True)],
     log_dir: Path = Path("logs"),
     config_file: Path = Path("config.toml"),
-    verbose: bool = False,
-    tracebacks_show_locals: bool = False,
+    verbose: Annotated[bool, cyclopts.Parameter(alias="-v")] = False,
+    very_verbose: Annotated[bool, cyclopts.Parameter(alias="-vv")] = False,
+    debug: Annotated[bool, cyclopts.Parameter(alias="-vvv")] = False,
     log_plain: bool = False,
 ):
-    command, bound, ignored = app.parse_args(tokens, verbose=verbose)
-    # Set verbose to true for debug stuff like env_info
-    if command.__name__ == "env_info":
-        verbose = True
-    LoggingManager.add_logging_handlers(command.__name__, log_dir, verbose, tracebacks_show_locals, log_plain=log_plain)
+    verbosity = VerbosityLevel.from_cli(verbose, very_verbose, debug)
+    command, bound, ignored = app.parse_args(tokens, verbose=verbosity == VerbosityLevel.VERBOSE)
+    # Set verbosity to 1 for debug stuff like env_info
+    if command.__name__ == "env_info" and verbosity == VerbosityLevel.NORMAL:
+        verbosity = VerbosityLevel.VERBOSE
+    LoggingManager.add_logging_handlers(command.__name__, log_dir, verbosity, log_plain=log_plain)
     logger.debug(f"Running on Python version {sys.version} from {__name__} ({root_file})")
     additional_args = {}
     if "config_file" in ignored:
         additional_args["config_file"] = config_file
     if "log_dir" in ignored:
         additional_args["log_dir"] = log_dir
-    if "verbose" in ignored:
-        additional_args["verbose"] = verbose
+    if "verbosity" in ignored:
+        additional_args["verbosity"] = verbosity
     return command(*bound.args, **bound.kwargs, **additional_args)
 
 
