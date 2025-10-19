@@ -60,7 +60,7 @@ class DataConfig:
             Defaults to None.
         data_split_by (list[str | float] | None, optional): Select by which regions/samples to split or
             the size of test set. Defaults to None.
-        fold_method (Literal["kfold", "shuffle", "stratified", "region", "region-stratified"], optional):
+        fold_method (Literal["kfold", "shuffle", "stratified", "region", "region-stratified", "none"], optional):
             Method for cross-validation split. Defaults to "kfold".
         total_folds (int, optional): Total number of folds in cross-validation. Defaults to 5.
         subsample (int | None, optional): If set, will subsample the dataset to this number of samples.
@@ -72,7 +72,7 @@ class DataConfig:
     train_data_dir: Path | None = None
     data_split_method: Literal["random", "region", "sample"] | None = None
     data_split_by: list[str | float] | None = None
-    fold_method: Literal["kfold", "shuffle", "stratified", "region", "region-stratified"] = "kfold"
+    fold_method: Literal["kfold", "shuffle", "stratified", "region", "region-stratified", "none"] = "kfold"
     total_folds: int = 5
     subsample: int | None = None
     in_memory: bool = False

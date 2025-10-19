@@ -155,11 +155,12 @@ def _get_fold(
     n_folds: int,
     fold: int,
 ) -> tuple[list[int], list[int]]:
-    fold = fold if fold_method is not None else 0
     fold_method = fold_method or "none"
+    logger.debug(f"Using fold method {fold_method} for fold {fold} of {n_folds} total folds.")
+    if fold_method == "none":
+        return metadata.index.tolist(), metadata.index.tolist()
+
     match fold_method:
-        case "none":
-            foldgen = [(metadata.index.tolist(), metadata.index.tolist())]
         case "kfold":
             foldgen = KFold(n_folds).split(metadata)
         case "shuffle":

@@ -11,7 +11,7 @@ def validate_dataset(
     data_split_method: Literal["random", "region", "sample"] | None = None,
     data_split_by: list[str | float] | None = None,
     # fold is for cross-validation split (train/val)
-    fold_method: Literal["kfold", "shuffle", "stratified", "region", "region-stratified"] | None = "kfold",
+    fold_method: Literal["kfold", "shuffle", "stratified", "region", "region-stratified", "none"] = "kfold",
     total_folds: int = 5,
     subsample: int | None = None,
     bands: list[str] | None = None,
@@ -45,7 +45,7 @@ def validate_dataset(
             Defaults to None.
         data_split_by (list[str | float] | None, optional): Select by which regions/samples to split or
             the size of test set. Defaults to None.
-        fold_method (Literal["kfold", "shuffle", "stratified", "region", "region-stratified"] | None, optional):
+        fold_method (Literal["kfold", "shuffle", "stratified", "region", "region-stratified", "none"], optional):
             Method for cross-validation split. Defaults to "kfold".
         total_folds (int, optional): Total number of folds in cross-validation. Defaults to 5.
         subsample (int | None, optional): If set, will subsample the dataset to this number of samples.
