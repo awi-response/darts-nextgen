@@ -601,7 +601,6 @@ def test_smp(
     batch_size: int = 8,
     data_split_method: Literal["random", "region", "sample"] | None = None,
     data_split_by: list[str] | str | float | None = None,
-    default_dirs: DefaultPaths = DefaultPaths(),
     artifact_dir: Path | None = None,
     num_workers: int = 0,
     device_config: DeviceConfig = DeviceConfig(),
@@ -650,7 +649,6 @@ def test_smp(
             Defaults to None.
         data_split_by (list[str] | str | float | None, optional): Select by which seed/regions/samples split.
             Defaults to None.
-        default_dirs (DefaultPaths, optional): The default directories for DARTS. Defaults to a config filled with None.
         artifact_dir (Path | None, optional): Directory to save artifacts.
             If None, will use the default training data directory based on the DARTS paths.
             Defaults to None.
@@ -678,8 +676,6 @@ def test_smp(
     LoggingManager.apply_logging_handlers("lightning.pytorch", level=logging.INFO)
 
     tick_fstart = time.perf_counter()
-
-    paths.set_defaults(default_dirs)
 
     # Further nest the artifact directory to avoid cluttering the root directory
     artifact_dir = artifact_dir / "_runs"

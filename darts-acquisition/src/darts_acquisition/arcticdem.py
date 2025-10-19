@@ -39,6 +39,7 @@ def _validate_and_get_accessor(
         case _:
             raise ValueError(f"Resolution {resolution} not supported, only 2m, 10m and 32m are supported")
     accessor.assert_created()
+    return accessor
 
 
 @stopwatch.f("Loading ArcticDEM", printer=logger.debug, print_kwargs=["data_dir", "resolution", "buffer", "offline"])
@@ -102,8 +103,8 @@ def load_arcticdem(
     else:
         xrcube = accessor.open_xarray()
         reference_geobox = geobox.to_crs(accessor.extent.crs, resolution=accessor.extent.resolution.x).pad(buffer)
-        xrcube_aoi = xrcube.odc.crop(reference_geobox.extent, apply_mask=False)
-        xrcube_aoi = xrcube_aoi.load()
+        arcticdem = xrcube.odc.crop(reference_geobox.extent, apply_mask=False)
+        arcticdem = arcticdem.load()
 
     # Change dtype of the datamask to uint8 for later reproject_match
     arcticdem["arcticdem_data_mask"] = arcticdem.datamask.astype("uint8")

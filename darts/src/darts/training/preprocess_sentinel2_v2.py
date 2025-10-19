@@ -114,7 +114,7 @@ def preprocess_s2_train_data(  # noqa: C901
     tcvis_dir: Path | None = None,
     admin_dir: Path | None = None,
     planet_data_dir: Path | None = None,
-    s2_download_cache: Path | None = None,
+    raw_data_store: Path | None = None,
     preprocess_cache: Path | None = None,
     matching_cache: Path | None = None,
     force_preprocess: bool = False,
@@ -198,8 +198,8 @@ def preprocess_s2_train_data(  # noqa: C901
             The planet data is used to align the Sentinel-2 data to the Planet data, spatially.
             Can be set to None if no alignment is wished.
             Defaults to None.
-        s2_download_cache (Path | None, optional): The directory to use for caching the raw downloaded sentinel 2 data.
-            If None, will download the data without trying to search for it in the cache.
+        raw_data_store (Path | None): The directory to use for storing the raw Sentinel 2 data locally.
+            If None, will not store any data locally and process only in memory.
             Defaults to None.
         preprocess_cache (Path | None, optional): The directory to store the preprocessed data.
             If None, will neither use nor store preprocessed data.
@@ -241,17 +241,17 @@ def preprocess_s2_train_data(  # noqa: C901
     logger.info(f"Starting preprocessing at {current_time}.")
 
     paths.set_defaults(default_dirs)
-    train_data_dir = train_data_dir or paths.training / "sentinel2_v2_rts"
-    arcticdem_dir = arcticdem_dir or paths.input / "arcticdem2m.icechunk"
-    tcvis_dir = tcvis_dir or paths.input / "tcvis.icechunk"
-    admin_dir = admin_dir or paths.input / "admin"
+    train_data_dir = train_data_dir or paths.train_data_dir("sentinel2_v2_rts", patch_size)
+    arcticdem_dir = arcticdem_dir or paths.arcticdem(10)
+    tcvis_dir = tcvis_dir or paths.tcvis()
+    admin_dir = admin_dir or paths.admin()
 
     # Storing the configuration as JSON file
     train_data_dir.mkdir(parents=True, exist_ok=True)
     from darts_utils.functools import write_function_args_to_config_file
 
     write_function_args_to_config_file(
-        fpath=train_data_dir / f"{current_time}.cli.json",
+        fpath=train_data_dir / f"{current_time}.cli.toml",
         function=preprocess_s2_train_data,
         locals_=locals(),
     )
@@ -271,7 +271,7 @@ def preprocess_s2_train_data(  # noqa: C901
     import xarray as xr
     from darts_acquisition import (
         load_arcticdem,
-        load_s2_sr_from_cdse,
+        load_cdse_s2_sr_scene,
         load_tcvis,
         match_cdse_s2_sr_scene_ids_from_geodataframe,
     )
@@ -391,7 +391,7 @@ def preprocess_s2_train_data(  # noqa: C901
                 continue
 
             def _get_tile():
-                s2ds = load_s2_sr_from_cdse(s2_item, cache=s2_download_cache)
+                s2ds = load_cdse_s2_sr_scene(s2_item, store=raw_data_store)
 
                 # Crop to footprint geometry
                 geom = Geometry(footprint.geometry, crs=footprints.crs)

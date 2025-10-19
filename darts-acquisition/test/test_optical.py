@@ -1,4 +1,5 @@
 import os
+import shutil
 from pathlib import Path
 from typing import Literal
 
@@ -299,8 +300,7 @@ def test_load_gee_s2_sr_scene_caching(s2id: str):
     cache_dir = DATA_DIR / "cache"
     cache_dir.mkdir(parents=True, exist_ok=True)
     # Empty the cache directory
-    for file in cache_dir.glob("*"):
-        file.unlink()
+    shutil.rmtree(cache_dir)
 
     # First call downloads, second call uses cache
     downloaded_tile = load_gee_s2_sr_scene(s2id, store=cache_dir)
@@ -310,9 +310,7 @@ def test_load_gee_s2_sr_scene_caching(s2id: str):
     assert downloaded_tile.identical(cached_tile)
 
     # Clean up cache directory
-    for file in cache_dir.glob("*"):
-        file.unlink()
-    cache_dir.rmdir()
+    shutil.rmtree(cache_dir)
 
 
 # =============================================================================
@@ -328,7 +326,7 @@ def test_load_cdse_s2_sr_scene_download(s2id: str):
 
 @pytest.mark.parametrize("s2id", STAC_IMAGES)
 def test_load_cdse_s2_sr_scene_from_cache(s2id: str):
-    tile = load_cdse_s2_sr_scene(s2id, store=DATA_DIR / "stac")
+    tile = load_cdse_s2_sr_scene(s2id, store=DATA_DIR / "cdse")
     assert_optical_dataset(tile, satellite="s2")
 
 
@@ -337,8 +335,7 @@ def test_load_cdse_s2_sr_scene_caching(s2id: str):
     cache_dir = DATA_DIR / "cache"
     cache_dir.mkdir(parents=True, exist_ok=True)
     # Empty the cache directory
-    for file in cache_dir.glob("*"):
-        file.unlink()
+    shutil.rmtree(cache_dir)
 
     # First call downloads, second call uses cache
     downloaded_tile = load_cdse_s2_sr_scene(s2id, store=cache_dir)
@@ -348,9 +345,7 @@ def test_load_cdse_s2_sr_scene_caching(s2id: str):
     assert downloaded_tile.identical(cached_tile)
 
     # Clean up cache directory
-    for file in cache_dir.glob("*"):
-        file.unlink()
-    cache_dir.rmdir()
+    shutil.rmtree(cache_dir)
 
 
 # =============================================================================

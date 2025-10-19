@@ -142,17 +142,17 @@ def preprocess_planet_train_data_pingo(
     logger.info(f"Starting preprocessing at {current_time}.")
 
     paths.set_defaults(default_dirs)
-    train_data_dir = train_data_dir or paths.training / "planet_v2_pingo"
-    arcticdem_dir = arcticdem_dir or paths.input / "arcticdem2m.icechunk"
-    tcvis_dir = tcvis_dir or paths.input / "tcvis.icechunk"
-    admin_dir = admin_dir or paths.input / "admin"
+    train_data_dir = train_data_dir or paths.train_data_dir("planet_v2_pingo", patch_size)
+    arcticdem_dir = arcticdem_dir or paths.arcticdem(2)
+    tcvis_dir = tcvis_dir or paths.tcvis()
+    admin_dir = admin_dir or paths.admin()
 
     # Storing the configuration as JSON file
     train_data_dir.mkdir(parents=True, exist_ok=True)
     from darts_utils.functools import write_function_args_to_config_file
 
     write_function_args_to_config_file(
-        fpath=train_data_dir / f"{current_time}.cli.json",
+        fpath=train_data_dir / f"{current_time}.cli.toml",
         function=preprocess_planet_train_data_pingo,
         locals_=locals(),
     )

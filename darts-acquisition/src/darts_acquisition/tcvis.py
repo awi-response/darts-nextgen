@@ -17,7 +17,7 @@ def load_tcvis(
     geobox: GeoBox,
     data_dir: Path | str,
     buffer: int = 0,
-    offline: bool = True,
+    offline: bool = False,
 ) -> xr.Dataset:
     """Load the TCVIS for the given geobox, fetch new data from GEE if necessary.
 
@@ -62,8 +62,8 @@ def load_tcvis(
     else:
         xrcube = accessor.open_xarray()
         reference_geobox = geobox.to_crs(accessor.extent.crs, resolution=accessor.extent.resolution.x).pad(buffer)
-        xrcube_aoi = xrcube.odc.crop(reference_geobox.extent, apply_mask=False)
-        xrcube_aoi = xrcube_aoi.load()
+        tcvis = xrcube.odc.crop(reference_geobox.extent, apply_mask=False)
+        tcvis = tcvis.load()
 
     # Rename to follow our conventions
     tcvis = tcvis.rename_vars(

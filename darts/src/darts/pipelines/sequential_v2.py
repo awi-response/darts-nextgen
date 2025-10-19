@@ -4,11 +4,12 @@ import json
 import logging
 import time
 from abc import ABC, abstractmethod
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, is_dataclass
 from math import ceil, sqrt
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
 
+import toml
 from cyclopts import Parameter
 from darts_utils.paths import DefaultPaths, paths
 
@@ -66,8 +67,8 @@ class _BasePipeline(ABC):
         self.model_files = self.model_files or list(self.paths.models.glob("*.pt"))
         if self.arcticdem_dir is None:
             arcticdem_resolution = self._arcticdem_resolution()
-            self.arcticdem_dir = paths.aux / f"arcticdem{arcticdem_resolution}m.icechunk"
-        self.tcvis_dir = self.tcvis_dir or paths.aux / "tcvis.icechunk"
+            self.arcticdem_dir = paths.arcticdem(arcticdem_resolution)
+        self.tcvis_dir = self.tcvis_dir or paths.tcvis()
         if self.edge_erosion_size is None:
             self.edge_erosion_size = self.mask_erosion_size
 
@@ -131,17 +132,19 @@ class _BasePipeline(ABC):
         current_time = time.strftime("%Y-%m-%d_%H-%M-%S")
         logger.info(f"Starting pipeline at {current_time}.")
 
-        # Storing the configuration as JSON file
+        # Storing the configuration as TOML file
         self.output_data_dir.mkdir(parents=True, exist_ok=True)
-        with open(self.output_data_dir / f"{current_time}.config.json", "w") as f:
+        with open(self.output_data_dir / f"{current_time}.config.toml", "w") as f:
             config = asdict(self)
-            # Convert everything to json serializable
+            # Convert everything to toml serializable
             for key, value in config.items():
                 if isinstance(value, Path):
                     config[key] = str(value.resolve())
                 elif isinstance(value, list):
                     config[key] = [str(v.resolve()) if isinstance(v, Path) else v for v in value]
-            json.dump(config, f)
+                elif is_dataclass(value):
+                    config[key] = asdict(value)
+            toml.dump(config, f)
         return current_time
 
     def _create_auxiliary_datacubes(self, arcticdem: bool = True, tcvis: bool = True):
@@ -474,6 +477,11 @@ class PlanetPipeline(_BasePipeline):
     scenes_dir: Path | None = None
     image_ids: list = None
 
+    def __post_init__(self):  # noqa: D105
+        super().__post_init__()
+        self.orthotiles_dir = self.orthotiles_dir or paths.planet_orthotiles()
+        self.scenes_dir = self.scenes_dir or paths.planet_scenes()
+
     def _arcticdem_resolution(self) -> Literal[2]:
         return 2
 
@@ -492,8 +500,6 @@ class PlanetPipeline(_BasePipeline):
 
     def _tileinfos(self) -> list[tuple[Path, Path]]:
         out = []
-        self.orthotiles_dir = self.orthotiles_dir or paths.input / "planet" / "PSOrthoTile"
-        self.scenes_dir = self.scenes_dir or paths.input / "planet" / "PSScene"
         # Find all PlanetScope orthotiles
         for fpath in self.orthotiles_dir.glob("*/*/"):
             tile_id = fpath.parent.name
@@ -797,7 +803,7 @@ class Sentinel2Pipeline(_BasePipeline):
         elif self.tile_ids is not None:
             from darts_acquisition import download_sentinel_2_grid
 
-            grid_dir = self.sentinel2_grid_dir or paths.aux / "sentinel2_grid"
+            grid_dir = self.sentinel2_grid_dir or paths.sentinel2_grid()
             grid_file = grid_dir.resolve() / "sentinel_2_index_shapefile.shp"
             if not grid_file.exists():
                 download_sentinel_2_grid(grid_dir)
@@ -818,19 +824,19 @@ class Sentinel2Pipeline(_BasePipeline):
             return get_aoi_from_gee_scene_ids(s2ids)
 
     def _download_tile(self, s2id: str):
-        self.s2_download_cache = self.s2_download_cache or paths.input / self.s2_source
+        # We default to a path here because the download functions need a path to store the data
+        # Note that in the normal load tile function, we can pass None to process in memory
+        raw_data_store = self.raw_data_store or paths.sentinel2_raw_data(self.raw_data_source)
         if self.s2_source == "gee":
             from darts_acquisition import download_gee_s2_sr_scene
 
-            return download_gee_s2_sr_scene(s2id, store=self.s2_download_cache)
+            return download_gee_s2_sr_scene(s2id, store=raw_data_store)
         else:
             from darts_acquisition import download_cdse_s2_sr_scene
 
-            return download_cdse_s2_sr_scene(s2id, store=self.s2_download_cache)
+            return download_cdse_s2_sr_scene(s2id, store=raw_data_store)
 
     def _load_tile(self, s2id: str) -> "xr.Dataset":
-        self.s2_download_cache = self.s2_download_cache or paths.input / self.s2_source
-
         output_dir_for_debug_geotiff = None
         if self.debug_data:
             output_dir_for_debug_geotiff = self.output_data_dir / s2id
@@ -840,7 +846,7 @@ class Sentinel2Pipeline(_BasePipeline):
 
             return load_gee_s2_sr_scene(
                 s2id,
-                store=self.s2_download_cache,
+                store=self.raw_data_store,
                 offline=self.offline,
                 output_dir_for_debug_geotiff=output_dir_for_debug_geotiff,
             )
@@ -849,7 +855,7 @@ class Sentinel2Pipeline(_BasePipeline):
 
             return load_cdse_s2_sr_scene(
                 s2id,
-                store=self.s2_download_cache,
+                store=self.raw_data_store,
                 offline=self.offline,
                 output_dir_for_debug_geotiff=output_dir_for_debug_geotiff,
             )

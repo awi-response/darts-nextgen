@@ -50,6 +50,7 @@ import logging
 import os
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Literal
 
 import cyclopts
 
@@ -122,6 +123,7 @@ class PathManagerSingleton:
         darts_dir = _parse_path(defaults.darts_dir)
         self.fast_dir = _parse_path(defaults.fast_dir) or darts_dir or self.fast_dir
         self.vast_dir = _parse_path(defaults.vast_dir) or darts_dir or self.vast_dir
+        logger.debug(f"Set DARTS default paths: fast_dir={self.fast_dir}, vast_dir={self.vast_dir}")
 
     @property
     def fast(self) -> Path:  # noqa: D102
@@ -168,6 +170,46 @@ class PathManagerSingleton:
     @property
     def input(self) -> Path:  # noqa: D102
         return self.vast_dir / "input"
+
+    def admin(self) -> Path:  # noqa: D102
+        d = (self.aux / "admin").resolve()
+        logger.debug(f"Admin path: {d}")
+        return d
+
+    def arcticdem(self, res: Literal[2, 10, 32]) -> Path:  # noqa: D102
+        d = (self.aux / f"arcticdem_{res}m.icechunk").resolve()
+        logger.debug(f"ArcticDEM path for resolution {res}m: {d}")
+        return d
+
+    def tcvis(self) -> Path:  # noqa: D102
+        d = (self.aux / "tcvis").resolve()
+        logger.debug(f"TCVIS path: {d}")
+        return d
+
+    def planet_orthotiles(self) -> Path:  # noqa: D102
+        d = (self.input / "planet" / "PSOrthoTile").resolve()
+        logger.debug(f"Planet orthotiles path: {d}")
+        return d
+
+    def planet_scenes(self) -> Path:  # noqa: D102
+        d = (self.input / "planet" / "PSScene").resolve()
+        logger.debug(f"Planet scenes path: {d}")
+        return d
+
+    def sentinel2_grid(self) -> Path:  # noqa: D102
+        d = (self.aux / "S2Grid").resolve()
+        logger.debug(f"Sentinel-2 grid path: {d}")
+        return d
+
+    def sentinel2_raw_data(self, source: Literal["cdse", "gee"]) -> Path:  # noqa: D102
+        d = (self.input / "sentinel2" / f"{source.upper()}Scene").resolve()
+        logger.debug(f"Sentinel-2 raw data path for source '{source}': {d}")
+        return d
+
+    def train_data_dir(self, pipeline: str, patch_size: int) -> Path:  # noqa: D102
+        d = (self.training / f"{pipeline}_{patch_size}").resolve()
+        logger.debug(f"Training data directory for pipeline '{pipeline}' and patch size {patch_size}: {d}")
+        return d
 
 
 paths = PathManagerSingleton()

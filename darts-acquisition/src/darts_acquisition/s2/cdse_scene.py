@@ -96,6 +96,7 @@ class CDSEStoreManager(StoreManager[Item]):
         encodings["SCL_20m"]["dtype"] = "uint8"
         return encodings
 
+    @stopwatch.f("Downloading Sentinel-2 scene from CDSE", printer=logger.debug, print_kwargs=["s2item"])
     def download_scene_from_source(self, s2item: str | Item, bands: list[str]) -> xr.Dataset:
         """Download a Sentinel-2 scene from CDSE via STAC API.
 
@@ -180,7 +181,7 @@ def download_cdse_s2_sr_scene(
     store_manager.download_and_store(s2item)
 
 
-@stopwatch.f("Loading Sentinel-2 scene from STAC", printer=logger.debug, print_kwargs=["s2item"])
+@stopwatch.f("Loading Sentinel-2 scene from CDSE", printer=logger.debug, print_kwargs=["s2item"])
 def load_cdse_s2_sr_scene(
     s2item: str | Item,
     bands_mapping: dict | Literal["all"] = {"B02_10m": "blue", "B03_10m": "green", "B04_10m": "red", "B08_10m": "nir"},
@@ -498,6 +499,7 @@ def get_cdse_s2_sr_scene_ids_from_geodataframe(
     return s2items
 
 
+@stopwatch("Getting AOI from CDSE scene IDs", printer=logger.debug)
 def get_aoi_from_cdse_scene_ids(
     scene_ids: list[str],
 ) -> gpd.GeoDataFrame:

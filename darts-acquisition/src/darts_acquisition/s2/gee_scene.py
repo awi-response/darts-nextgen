@@ -79,6 +79,7 @@ class GEEStoreManager(StoreManager[ee.Image]):
         encodings["SCL"]["dtype"] = "uint8"
         return encodings
 
+    @stopwatch.f("Downloading Sentinel-2 scene from GEE", printer=logger.debug, print_kwargs=["s2item"])
     def download_scene_from_source(self, s2item: str | ee.Image, bands: list[str]) -> xr.Dataset:
         """Download a Sentinel-2 scene from GEE.
 

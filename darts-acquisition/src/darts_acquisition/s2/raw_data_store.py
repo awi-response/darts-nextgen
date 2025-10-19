@@ -95,7 +95,7 @@ class StoreManager(ABC, Generic[SceneItem]):
         if not scene_path.exists():
             return self.bands
 
-        dataset = xr.open_zarr(scene_path)
+        dataset = xr.open_zarr(scene_path, consolidated=False)
         required_bands = set(self.bands)
         present_bands = set(dataset.data_vars)
         missing = required_bands - present_bands
@@ -127,17 +127,17 @@ class StoreManager(ABC, Generic[SceneItem]):
         """
         assert self.store is not None, "Store must be provided to save scenes!"
         scene_path = self.store / f"{identifier}.zarr"
-        encodings = self.encodings(list(dataset.data_vars))
+        encoding = self.encodings(list(dataset.data_vars))
         if not scene_path.exists():
-            dataset.to_zarr(scene_path, encodings=encodings, consolidated=False, mode="w")
+            dataset.to_zarr(scene_path, encoding=encoding, consolidated=False, mode="w")
         else:
             # Assert that the coordinates match
-            existing_dataset = xr.open_zarr(scene_path)
+            existing_dataset = xr.open_zarr(scene_path, consolidated=False)
             xr.testing.assert_allclose(existing_dataset.coords, dataset.coords)
             # Overwrite dataset coords to avoid conflicts by floating point precision issues
             dataset["x"] = existing_dataset.x
             dataset["y"] = existing_dataset.y
-            dataset.to_zarr(scene_path, encodings=encodings, consolidated=False, mode="a")
+            dataset.to_zarr(scene_path, encoding=encoding, consolidated=False, mode="a")
 
     def open(self, item: str | SceneItem) -> xr.Dataset:
         """Open a scene from local store.
@@ -154,7 +154,7 @@ class StoreManager(ABC, Generic[SceneItem]):
         identifier = self.identifier(item)
         assert self.complete(identifier), f"Scene {identifier} is incomplete in store!"
         scene_path = self.store / f"{identifier}.zarr"
-        return xr.open_zarr(scene_path, consolidated=False).load()
+        return xr.open_zarr(scene_path, consolidated=False).set_coords("spatial_ref").load()
 
     def download_and_store(self, item: str | SceneItem):
         """Download a scene from the source and store it in the local store.
@@ -191,6 +191,7 @@ class StoreManager(ABC, Generic[SceneItem]):
         """
         identifier = self.identifier(item)
         if force:
+            logger.debug(f"Force downloading scene {identifier} from source.")
             dataset = self.download_scene_from_source(item, self.bands)
             if self.store:
                 self.save_to_store(dataset, identifier)
@@ -198,7 +199,9 @@ class StoreManager(ABC, Generic[SceneItem]):
 
         missing_bands = self.missing_bands(identifier)
         if not missing_bands:
+            logger.debug(f"Scene {identifier} is complete, opening from store.")
             return self.open(item)
+        logger.debug(f"Scene {identifier} is missing bands {missing_bands}, downloading from source.")
         dataset = self.download_scene_from_source(item, missing_bands)
         if self.store:
             self.save_to_store(dataset, identifier)

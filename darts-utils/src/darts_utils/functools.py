@@ -1,9 +1,10 @@
 """Function helpers."""
 
-import json
 import logging
+from dataclasses import asdict, is_dataclass
 from pathlib import Path
 
+import toml
 from stopuhr import stopwatch
 
 logger = logging.getLogger(__name__.replace("darts_utils", "darts.shared_utils"))
@@ -26,11 +27,13 @@ def write_function_args_to_config_file(
     nargs = function.__code__.co_argcount + function.__code__.co_kwonlyargcount
     args_ = function.__code__.co_varnames[:nargs]
     config = {k: locals_[k] for k in args_ if k in locals_}
-    # Convert everything to json serializable
+    # Convert everything to toml serializable
     for key, value in config.items():
         if isinstance(value, Path):
             config[key] = str(value.resolve())
         elif isinstance(value, list):
             config[key] = [str(v.resolve()) if isinstance(v, Path) else v for v in value]
+        elif is_dataclass(value):
+            config[key] = asdict(value)
     with open(fpath, "w") as f:
-        json.dump(config, f)
+        toml.dump(config, f)
