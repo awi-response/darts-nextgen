@@ -111,8 +111,8 @@ def load_arcticdem(
     # Clip values to -100, 3000 range (see docs about bands)
     arcticdem["dem"] = arcticdem["dem"].clip(-100, 3000)
 
-    # Change dtype of arcticdem to float32 to save memory
-    arcticdem = arcticdem.astype("float32")
+    # Change dtype of arcticdem to float32 to save memory (original is float64)
+    arcticdem["dem"] = arcticdem["dem"].astype("float32")
 
     return arcticdem
 
