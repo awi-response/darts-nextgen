@@ -9,44 +9,16 @@ import ee
 import geopandas as gpd
 import odc.geo.xr
 import xarray as xr
-from darts_utils.tilecache import XarrayCacheManager
 from stopuhr import stopwatch
+from zarr.codecs import BloscCodec
 
 from darts_acquisition.s2.quality_mask import convert_masks
+from darts_acquisition.s2.raw_data_store import StoreManager
 
 logger = logging.getLogger(__name__.replace("darts_", "darts."))
 
 
-@stopwatch.f("Loading Sentinel-2 scene from GEE", printer=logger.debug, print_kwargs=["img"])
-def load_gee_s2_sr_scene(
-    img: str | ee.Image,
-    bands_mapping: dict | Literal["all"] = {"B2": "blue", "B3": "green", "B4": "red", "B8": "nir"},
-    cache: Path | None = None,
-    offline: bool = False,
-) -> xr.Dataset:
-    """Load a Sentinel-2 scene from Google Earth Engine and return it as an xarray dataset.
-
-    Args:
-        img (str | ee.Image): The Sentinel-2 image ID or the ee image object.
-        bands_mapping (dict[str, str] | Literal["all"], optional): A mapping from bands to obtain.
-            Will be renamed to the corresponding band names.
-            If "all" is provided, will load all optical bands and the SCL band.
-            Defaults to {"B2": "blue", "B3": "green", "B4": "red", "B8": "nir"}.
-        cache (Path | None, optional): The path to the cache directory. If None, no caching will be done.
-            Defaults to None.
-        offline (bool, optional): If True, will not attempt to download any missing data. Defaults to False.
-
-    Returns:
-        xr.Dataset: The loaded dataset
-
-    """
-    if isinstance(img, str):
-        s2id = img
-        img = ee.Image(f"COPERNICUS/S2_SR/{s2id}")
-    else:
-        s2id = img.id().getInfo().split("/")[-1]
-    logger.debug(f"Loading Sentinel-2 tile {s2id=} from GEE")
-
+def _get_band_mapping(bands_mapping: dict[str, str] | Literal["all"]) -> dict[str, str]:
     if bands_mapping == "all":
         # Mapping according to spyndex band common names:
         # for key, band in spyndex.bands.items():
@@ -69,18 +41,69 @@ def load_gee_s2_sr_scene(
 
     if "SCL" not in bands_mapping.keys():
         bands_mapping["SCL"] = "s2_scl"
+    return bands_mapping
 
-    img = img.select(list(bands_mapping.keys()))
 
-    def _get_tile():
+class GEEStoreManager(StoreManager[ee.Image]):
+    """Raw Data Store manager for GEE."""
+
+    def __init__(self, store: Path | str | None, bands_mapping: dict[str, str]):
+        """Initialize the store manager.
+
+        Args:
+            store (str | Path | None): Directory path for storing raw sentinel 2 data
+            bands_mapping (dict[str, str]): A mapping from bands to obtain.
+            aws_profile_name (str): AWS profile name for authentication
+
+        """
+        bands = list(bands_mapping.keys())
+        super().__init__(bands, store)
+
+    def identifier(self, s2item: str | ee.Image) -> str:  # noqa: D102
+        s2id = s2item.id().getInfo().split("/")[-1] if isinstance(s2item, ee.Image) else s2item
+        return f"gee-s2-sr-scene-{s2id}"
+
+    def encodings(self, bands: list[str]) -> dict[str, dict[str, str]]:  # noqa: D102
+        encodings = {
+            band: {
+                "dtype": "uint16",
+                "compressors": BloscCodec(cname="zstd", clevel=3, shuffle="bitshuffle"),
+                "chunks": (4096, 4096),
+            }
+            for band in bands
+        }
+        for band in set(bands) - {"SCL"}:
+            encodings[band]["_FillValue"] = 0
+        encodings["SCL"]["dtype"] = "uint8"
+        return encodings
+
+    def download_scene_from_source(self, s2item: str | ee.Image, bands: list[str]) -> xr.Dataset:
+        """Download a Sentinel-2 scene from GEE.
+
+        Args:
+            s2item (str | ee.Image): The Sentinel-2 image ID or the corresponding ee.Image.
+            bands (list[str]): List of bands to download.
+
+        Returns:
+            xr.Dataset: The downloaded scene as xarray Dataset.
+
+        """
+        if isinstance(s2item, str):
+            s2id = s2item
+            s2item = ee.Image(f"COPERNICUS/S2_SR/{s2id}")
+        else:
+            s2id = s2item.id().getInfo().split("/")[-1]
+
+        s2item = s2item.select(bands)
+
         ds_s2 = xr.open_dataset(
-            img,
+            s2item,
             engine="ee",
-            geometry=img.geometry(),
-            crs=img.select(0).projection().crs().getInfo(),
+            geometry=s2item.geometry(),
+            crs=s2item.select(0).projection().crs().getInfo(),
             scale=10,
         )
-        props = img.getInfo()["properties"]
+        props = s2item.getInfo()["properties"]
         ds_s2.attrs["azimuth"] = props.get("MEAN_SOLAR_AZIMUTH_ANGLE", float("nan"))
         ds_s2.attrs["elevation"] = props.get("MEAN_SOLAR_ZENITH_ANGLE", float("nan"))
 
@@ -91,18 +114,82 @@ def load_gee_s2_sr_scene(
             ds_s2.load()
         return ds_s2
 
-    cache_manager = XarrayCacheManager(cache)
-    cache_id = f"gee-s2sr-{s2id}-{''.join(bands_mapping.keys())}"
-    if not offline:
-        ds_s2 = cache_manager.get_or_create(
-            identifier=cache_id,
-            creation_func=_get_tile,
-            force=False,
-            use_band_manager=False,
-        )
+
+@stopwatch.f("Downloading Sentinel-2 scene from GEE if missing", printer=logger.debug, print_kwargs=["s2item"])
+def download_gee_s2_sr_scene(
+    s2item: str | ee.Image,
+    store: Path,
+    bands_mapping: dict | Literal["all"] = {"B2": "blue", "B3": "green", "B4": "red", "B8": "nir"},
+):
+    """Download a Sentinel-2 scene from CDSE via STAC API and stores it in the specified raw data store.
+
+    Note:
+        Must use the `darts.utils.copernicus.init_copernicus` function to setup authentification
+        with the Copernicus AWS S3 bucket before using this function.
+
+    Args:
+        s2item (str | Item): The Sentinel-2 image ID or the ee image object.
+        store (Path): The path to the raw data store.
+        bands_mapping (dict[str, str], optional): A mapping from bands to obtain.
+            Will be renamed to the corresponding band names.
+            Defaults to {"B2": "blue", "B3": "green", "B4": "red", "B8": "nir"}.
+
+    """
+    bands_mapping = _get_band_mapping(bands_mapping)
+    store_manager = GEEStoreManager(
+        store=store,
+        bands_mapping=bands_mapping,
+    )
+
+    store_manager.download_and_store(s2item)
+
+
+@stopwatch.f("Loading Sentinel-2 scene from GEE", printer=logger.debug, print_kwargs=["s2item"])
+def load_gee_s2_sr_scene(
+    s2item: str | ee.Image,
+    bands_mapping: dict | Literal["all"] = {"B2": "blue", "B3": "green", "B4": "red", "B8": "nir"},
+    store: Path | None = None,
+    offline: bool = False,
+    # TODO: debug-data flag
+) -> xr.Dataset:
+    """Load a Sentinel-2 scene from Google Earth Engine and return it as an xarray dataset.
+
+    Note:
+        Must use the `ee.Initialize` function to setup authentification
+        with google earth engine.
+
+    Args:
+        s2item (str | ee.Image): The Sentinel-2 image ID or the ee image object.
+        bands_mapping (dict[str, str] | Literal["all"], optional): A mapping from bands to obtain.
+            Will be renamed to the corresponding band names.
+            If "all" is provided, will load all optical bands and the SCL band.
+            Defaults to {"B2": "blue", "B3": "green", "B4": "red", "B8": "nir"}.
+        store (Path | None, optional): The path to the raw data store. If None, data will not be stored locally.
+            Defaults to None.
+        offline (bool, optional): If True, will not attempt to download any missing data. Defaults to False.
+
+    Returns:
+        xr.Dataset: The loaded dataset
+
+    """
+    if isinstance(s2item, str):
+        s2id = s2item
+        s2item = ee.Image(f"COPERNICUS/S2_SR/{s2id}")
     else:
-        assert cache is not None, "Cache must be provided in offline mode!"
-        ds_s2 = cache_manager.load_from_cache(identifier=cache_id)
+        s2id = s2item.id().getInfo().split("/")[-1]
+    logger.debug(f"Loading Sentinel-2 tile {s2id=} from GEE")
+
+    bands_mapping = _get_band_mapping(bands_mapping)
+    store_manager = GEEStoreManager(
+        store=store,
+        bands_mapping=bands_mapping,
+    )
+
+    if not offline:
+        ds_s2 = store_manager.load(s2item)
+    else:
+        assert store is not None, "Store must be provided in offline mode!"
+        ds_s2 = store_manager.open(s2item)
 
     ds_s2 = ds_s2.rename_vars(bands_mapping)
 
@@ -129,9 +216,7 @@ def load_gee_s2_sr_scene(
         ds_s2[band].attrs["data_source"] = "Sentinel-2 L2A via Google Earth Engine (COPERNICUS/S2_SR)"
 
     ds_s2 = convert_masks(ds_s2)
-    print(ds_s2.quality_data_mask.attrs)
     qdm_attrs = ds_s2["quality_data_mask"].attrs.copy()
-    print(qdm_attrs)
 
     # For some reason, there are some spatially random nan values in the data, not only at the borders
     # To workaround this, set all nan values to 0 and add this information to the quality_data_mask
@@ -144,47 +229,152 @@ def load_gee_s2_sr_scene(
             # Turn real nan values (s2_scl is nan) into invalid data
             ds_s2[band] = ds_s2[band].where(~ds_s2["s2_scl"].isnull())
 
-    print(qdm_attrs)
     ds_s2["quality_data_mask"].attrs = qdm_attrs
-    print(ds_s2.quality_data_mask.attrs)
-    ds_s2.attrs["s2_tile_id"] = img.getInfo()["properties"]["PRODUCT_ID"]
+    ds_s2.attrs["s2_tile_id"] = s2item.getInfo()["properties"]["PRODUCT_ID"]
     ds_s2.attrs["tile_id"] = s2id
 
     return ds_s2
 
 
-@stopwatch("Searching for Sentinel-2 scenes in Earth Engine from AOI", printer=logger.debug)
-def get_gee_s2_sr_scene_ids_from_geodataframe(
-    aoi: gpd.GeoDataFrame | Path | str,
-    start_date: str,
-    end_date: str,
-    max_cloud_cover: int = 100,
-) -> set[str]:
-    """Search for Sentinel-2 tiles via Earth Engine based on an aoi shapefile.
+def get_gee_s2_sr_scene_ids_from_tile_ids(
+    tiles: list[str],
+    start_date: str | None = None,
+    end_date: str | None = None,
+    max_cloud_cover: int | None = 10,
+    max_snow_cover: int | None = 10,
+):
+    """Search for Sentinel-2 scenes via Earth Engine based on a list of tile IDs.
 
     Args:
-        aoi (gpd.GeoDataFrame | Path | str): AOI as a GeoDataFrame or path to a shapefile.
-            If a path is provided, it will be read using geopandas.
+        tiles (list[str]): List of Sentinel-2 tile IDs.
         start_date (str): Starting date in a format readable by ee.
+            If None, months and years parameters will be used for filtering if set.
+            Defaults to None.
         end_date (str): Ending date in a format readable by ee.
-        max_cloud_cover (int, optional): Maximum percentage of cloud cover. Defaults to 100.
+            If None, months and years parameters will be used for filtering if set.
+            Defaults to None.
+        max_cloud_cover (int, optional): Maximum percentage of cloud cover. Defaults to 10.
+        max_snow_cover (int, optional): Maximum percentage of snow cover. Defaults to 10.
 
     Returns:
         set[str]: Unique Sentinel-2 tile IDs.
 
     """
+    # Disable max xxx cover if set to 100
+    if max_cloud_cover is not None and max_cloud_cover == 100:
+        max_cloud_cover = None
+    if max_snow_cover is not None and max_snow_cover == 100:
+        max_snow_cover = None
+
+    s2ids = set()
+    for tile in tiles:
+        if start_date is not None and end_date is not None:
+            ic = (
+                ee.ImageCollection("COPERNICUS/S2_SR")
+                .filterDate(start_date, end_date)
+                .filterMetadata("MGRS_TILE", "equals", tile)
+            )
+            if max_cloud_cover:
+                ic = ic.filterMetadata("CLOUDY_PIXEL_PERCENTAGE", "less_than", max_cloud_cover)
+            if max_snow_cover:
+                ic = ic.filterMetadata("SNOW_SNOW_ICE_PERCENTAGE", "less_than", max_snow_cover)
+            s2ids.update(ic.aggregate_array("system:index").getInfo())
+        else:
+            logger.warning("No valid date filtering provided. This may result in a too large number of scenes for GEE.")
+            ic = ee.ImageCollection("COPERNICUS/S2_SR").filterMetadata("MGRS_TILE", "equals", tile)
+            if max_cloud_cover:
+                ic = ic.filterMetadata("CLOUDY_PIXEL_PERCENTAGE", "less_than", max_cloud_cover)
+            if max_snow_cover:
+                ic = ic.filterMetadata("SNOW_SNOW_ICE_PERCENTAGE", "less_than", max_snow_cover)
+            s2ids.update(ic.aggregate_array("system:index").getInfo())
+
+    logger.debug(f"Found {len(s2ids)} Sentinel-2 tiles via ee.")
+    return s2ids
+
+
+@stopwatch("Searching for Sentinel-2 scenes in Earth Engine from AOI", printer=logger.debug)
+def get_gee_s2_sr_scene_ids_from_geodataframe(
+    aoi: gpd.GeoDataFrame | Path | str,
+    start_date: str | None = None,
+    end_date: str | None = None,
+    max_cloud_cover: int | None = 10,
+    max_snow_cover: int | None = 10,
+) -> set[str]:
+    """Search for Sentinel-2 scenes via Earth Engine based on an aoi shapefile.
+
+    Args:
+        aoi (gpd.GeoDataFrame | Path | str): AOI as a GeoDataFrame or path to a shapefile.
+            If a path is provided, it will be read using geopandas.
+        start_date (str): Starting date in a format readable by ee.
+            If None, months and years parameters will be used for filtering if set.
+            Defaults to None.
+        end_date (str): Ending date in a format readable by ee.
+            If None, months and years parameters will be used for filtering if set.
+            Defaults to None.
+        max_cloud_cover (int, optional): Maximum percentage of cloud cover. Defaults to 10.
+        max_snow_cover (int, optional): Maximum percentage of snow cover. Defaults to 10.
+
+    Returns:
+        set[str]: Unique Sentinel-2 tile IDs.
+
+    """
+    # Disable max xxx cover if set to 100
+    if max_cloud_cover is not None and max_cloud_cover == 100:
+        max_cloud_cover = None
+    if max_snow_cover is not None and max_snow_cover == 100:
+        max_snow_cover = None
+
     if isinstance(aoi, Path | str):
         aoi = gpd.read_file(aoi)
     aoi = aoi.to_crs("EPSG:4326")
     s2ids = set()
     for i, row in aoi.iterrows():
         geom = ee.Geometry.Polygon(list(row.geometry.exterior.coords))
-        ic = (
-            ee.ImageCollection("COPERNICUS/S2_SR_HARMONIZED")
-            .filterBounds(geom)
-            .filterDate(start_date, end_date)
-            .filterMetadata("CLOUDY_PIXEL_PERCENTAGE", "less_than", max_cloud_cover)
-        )
-        s2ids.update(ic.aggregate_array("system:index").getInfo())
+        if start_date is not None and end_date is not None:
+            ic = ee.ImageCollection("COPERNICUS/S2_SR").filterBounds(geom).filterDate(start_date, end_date)
+            if max_cloud_cover:
+                ic = ic.filterMetadata("CLOUDY_PIXEL_PERCENTAGE", "less_than", max_cloud_cover)
+            if max_snow_cover:
+                ic = ic.filterMetadata("SNOW_SNOW_ICE_PERCENTAGE", "less_than", max_snow_cover)
+            s2ids.update(ic.aggregate_array("system:index").getInfo())
+        else:
+            logger.warning("No valid date filtering provided. This may result in a too large number of scenes for GEE.")
+            ic = ee.ImageCollection("COPERNICUS/S2_SR").filterBounds(geom)
+            if max_cloud_cover:
+                ic = ic.filterMetadata("CLOUDY_PIXEL_PERCENTAGE", "less_than", max_cloud_cover)
+            if max_snow_cover:
+                ic = ic.filterMetadata("SNOW_SNOW_ICE_PERCENTAGE", "less_than", max_snow_cover)
+            s2ids.update(ic.aggregate_array("system:index").getInfo())
+
     logger.debug(f"Found {len(s2ids)} Sentinel-2 tiles via ee.")
     return s2ids
+
+
+def get_aoi_from_gee_scene_ids(
+    scene_ids: list[str],
+) -> gpd.GeoDataFrame:
+    """Get the area of interest (AOI) as a GeoDataFrame from a list of Sentinel-2 scene IDs.
+
+    Args:
+        scene_ids (list[str]): List of Sentinel-2 scene IDs.
+
+    Returns:
+        gpd.GeoDataFrame: The AOI as a GeoDataFrame.
+
+    Raises:
+        ValueError: If no Sentinel-2 items are found for the given scene IDs.
+
+    """
+    geoms = []
+    for s2id in scene_ids:
+        s2item = ee.Image(f"COPERNICUS/S2_SR/{s2id}")
+        geom = s2item.geometry().getInfo()
+        geoms.append(geom)
+
+    if not geoms:
+        raise ValueError("No Sentinel-2 items found for the given scene IDs.")
+
+    features = [{"type": "Feature", "geometry": geom, "properties": {}} for geom in geoms]
+    feature_collection = {"type": "FeatureCollection", "features": features}
+    gdf = gpd.GeoDataFrame.from_features(feature_collection, crs="EPSG:4326")
+    return gdf

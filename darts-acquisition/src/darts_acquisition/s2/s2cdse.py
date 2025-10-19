@@ -10,13 +10,14 @@ import numpy as np
 import odc.geo.xr
 import pandas as pd
 import xarray as xr
-from darts_utils.tilecache import XarrayCacheManager
 from odc.stac import stac_load
 from pystac import Item
 from pystac_client import Client
 from stopuhr import stopwatch
+from zarr.codecs import BloscCodec
 
 from darts_acquisition.s2.quality_mask import convert_masks
+from darts_acquisition.s2.raw_data_store import StoreManager
 from darts_acquisition.utils.copernicus import init_copernicus
 
 logger = logging.getLogger(__name__.replace("darts_", "darts."))
@@ -33,37 +34,7 @@ def _flatten_dict(d: MutableMapping, parent_key: str = "", sep: str = ".") -> Mu
     return dict(items)
 
 
-@stopwatch.f("Loading Sentinel-2 scene from STAC", printer=logger.debug, print_kwargs=["s2item"])
-def load_cdse_s2_sr_scene(
-    s2item: str | Item,
-    bands_mapping: dict = {"B02_10m": "blue", "B03_10m": "green", "B04_10m": "red", "B08_10m": "nir"},
-    cache: Path | None = None,
-    aws_profile_name: str = "default",
-    offline: bool = False,
-) -> xr.Dataset:
-    """Load a Sentinel-2 scene from CDSE via STAC API and return it as an xarray dataset.
-
-    Note:
-        Must use the `darts.utils.copernicus.init_copernicus` function to setup authentification
-        with the Copernicus AWS S3 bucket before using this function.
-
-    Args:
-        s2item (str | Item): The Sentinel-2 image ID or the corresponing STAC Item.
-        bands_mapping (dict[str, str], optional): A mapping from bands to obtain.
-            Will be renamed to the corresponding band names.
-            Defaults to {"B02_10m": "blue", "B03_10m": "green", "B04_10m": "red", "B08_10m": "nir"}.
-        cache (Path | None, optional): The path to the cache directory. If None, no caching will be done.
-            Defaults to None.
-        aws_profile_name (str, optional): The name of the AWS profile to use for authentication.
-            Defaults to "default".
-        offline (bool, optional): If True, will not attempt to download any missing data. Defaults to False.
-
-    Returns:
-        xr.Dataset: The loaded dataset
-
-    """
-    s2id = s2item.id if isinstance(s2item, Item) else s2item
-
+def _get_band_mapping(bands_mapping: dict[str, str] | Literal["all"]) -> dict[str, str]:
     if bands_mapping == "all":
         # Mapping according to spyndex band common names:
         # for key, band in spyndex.bands.items():
@@ -86,11 +57,55 @@ def load_cdse_s2_sr_scene(
 
     if "SCL_20m" not in bands_mapping.keys():
         bands_mapping["SCL_20m"] = "s2_scl"
+    return bands_mapping
 
-    def _get_tile():
-        nonlocal s2item
 
+class CDSEStoreManager(StoreManager[Item]):
+    """Raw Data Store manager for CDSE."""
+
+    def __init__(self, store: Path | str | None, bands_mapping: dict[str, str], aws_profile_name: str):
+        """Initialize the store manager.
+
+        Args:
+            store (str | Path | None): Directory path for storing raw sentinel 2 data
+            bands_mapping (dict[str, str]): A mapping from bands to obtain.
+            aws_profile_name (str): AWS profile name for authentication
+
+        """
         bands = list(bands_mapping.keys())
+        super().__init__(bands, store)
+        self.aws_profile_name = aws_profile_name
+
+    def identifier(self, s2item: str | Item) -> str:  # noqa: D102
+        s2id = s2item.id if isinstance(s2item, Item) else s2item
+        return f"cdse-s2-sr-scene-{s2id}"
+
+    def encodings(self, bands: list[str]) -> dict[str, dict[str, str]]:  # noqa: D102
+        encodings = {
+            band: {
+                "dtype": "uint16",
+                "compressors": BloscCodec(cname="zstd", clevel=3, shuffle="bitshuffle"),
+                "chunks": (4096, 4096),
+            }
+            for band in bands
+        }
+        for band in set(bands) - {"SCL_20m"}:
+            encodings[band]["_FillValue"] = 0
+        encodings["SCL_20m"]["dtype"] = "uint8"
+        return encodings
+
+    def download_scene_from_source(self, s2item: str | Item, bands: list[str]) -> xr.Dataset:
+        """Download a Sentinel-2 scene from CDSE via STAC API.
+
+        Args:
+            s2item (str | Item): The Sentinel-2 image ID or the corresponing STAC Item.
+            bands (list[str]): List of bands to download.
+
+        Returns:
+            xr.Dataset: The downloaded scene as xarray Dataset.
+
+        """
+        s2id = s2item.id if isinstance(s2item, Item) else s2item
 
         if isinstance(s2item, str):
             catalog = Client.open("https://stac.dataspace.copernicus.eu/v1/")
@@ -103,7 +118,7 @@ def load_cdse_s2_sr_scene(
         with stopwatch(f"Downloading data from STAC for {s2id=}", printer=logger.debug):
             # We can't use xpystac here, because they enforce chunking of 1024x1024, which results in long loading times
             # and a potential AWS limit error.
-            init_copernicus(profile_name=aws_profile_name)
+            init_copernicus(profile_name=self.aws_profile_name)
             ds_s2 = stac_load(
                 [s2item],
                 bands=bands,
@@ -120,21 +135,89 @@ def load_cdse_s2_sr_scene(
                 ds_s2.attrs[key] = int(value)
             elif isinstance(value, (list, dict, np.ndarray)):
                 ds_s2.attrs[key] = str(value)
-        ds_s2.attrs["time"] = str(ds_s2.time.values[0])
+        ds_s2.attrs["time"] = str(ds_s2.time.values[0])  # noqa: PD011
         ds_s2 = ds_s2.isel(time=0).drop_vars("time")
 
         # Because of the resampling to 10m, the SCL is a float -> fix it
-        ds_s2["SCL_20m"] = ds_s2["SCL_20m"].astype("uint8")
+        if "SCL_20m" in ds_s2.data_vars:
+            ds_s2["SCL_20m"] = ds_s2["SCL_20m"].astype("uint8")
 
         return ds_s2
 
-    cache_manager = XarrayCacheManager(cache)
-    cache_id = f"stac-s2l2a-{s2id}-{''.join(bands_mapping.keys())}"
+
+@stopwatch.f("Downloading Sentinel-2 scene from CDSE if missing", printer=logger.debug, print_kwargs=["s2item"])
+def download_cdse_s2_sr_scene(
+    s2item: str | Item,
+    store: Path,
+    bands_mapping: dict | Literal["all"] = {"B02_10m": "blue", "B03_10m": "green", "B04_10m": "red", "B08_10m": "nir"},
+    aws_profile_name: str = "default",
+):
+    """Download a Sentinel-2 scene from CDSE via STAC API and stores it in the specified raw data store.
+
+    Note:
+        Must use the `darts.utils.copernicus.init_copernicus` function to setup authentification
+        with the Copernicus AWS S3 bucket before using this function.
+
+    Args:
+        s2item (str | Item): The Sentinel-2 image ID or the corresponing STAC Item.
+        store (Path): The path to the raw data store.
+        bands_mapping (dict[str, str], optional): A mapping from bands to obtain.
+            Will be renamed to the corresponding band names.
+            Defaults to {"B02_10m": "blue", "B03_10m": "green", "B04_10m": "red", "B08_10m": "nir"}.
+        aws_profile_name (str, optional): The name of the AWS profile to use for authentication.
+            Defaults to "default".
+
+    """
+    bands_mapping = _get_band_mapping(bands_mapping)
+    store_manager = CDSEStoreManager(
+        store=store,
+        bands_mapping=bands_mapping,
+        aws_profile_name=aws_profile_name,
+    )
+
+    store_manager.download_and_store(s2item)
+
+
+@stopwatch.f("Loading Sentinel-2 scene from STAC", printer=logger.debug, print_kwargs=["s2item"])
+def load_cdse_s2_sr_scene(
+    s2item: str | Item,
+    bands_mapping: dict | Literal["all"] = {"B02_10m": "blue", "B03_10m": "green", "B04_10m": "red", "B08_10m": "nir"},
+    store: Path | None = None,
+    aws_profile_name: str = "default",
+    offline: bool = False,
+    # TODO: debug-data flag
+) -> xr.Dataset:
+    """Load a Sentinel-2 scene from CDSE via STAC API and return it as an xarray dataset.
+
+    Args:
+        s2item (str | Item): The Sentinel-2 image ID or the corresponing STAC Item.
+        bands_mapping (dict[str, str], optional): A mapping from bands to obtain.
+            Will be renamed to the corresponding band names.
+            Defaults to {"B02_10m": "blue", "B03_10m": "green", "B04_10m": "red", "B08_10m": "nir"}.
+        store (Path | None, optional): The path to the raw data store. If None, data will not be stored locally.
+            Defaults to None.
+        aws_profile_name (str, optional): The name of the AWS profile to use for authentication.
+            Defaults to "default".
+        offline (bool, optional): If True, will not attempt to download any missing data. Defaults to False.
+
+    Returns:
+        xr.Dataset: The loaded dataset
+
+    """
+    s2id = s2item.id if isinstance(s2item, Item) else s2item
+
+    bands_mapping = _get_band_mapping(bands_mapping)
+    store_manager = CDSEStoreManager(
+        store=store,
+        bands_mapping=bands_mapping,
+        aws_profile_name=aws_profile_name,
+    )
+
     if not offline:
-        ds_s2 = cache_manager.get_or_create(identifier=cache_id, creation_func=_get_tile, force=False)
+        ds_s2 = store_manager.load(s2item)
     else:
-        assert cache is not None, "Cache must be provided in offline mode!"
-        ds_s2 = cache_manager.load_from_cache(identifier=cache_id)
+        assert store is not None, "Store must be provided in offline mode!"
+        ds_s2 = store_manager.open(s2item)
 
     ds_s2 = ds_s2.rename_vars(bands_mapping)
     optical_bands = [band for name, band in bands_mapping.items() if name.startswith("B")]
@@ -169,12 +252,44 @@ def load_cdse_s2_sr_scene(
     return ds_s2
 
 
+def _build_cql2_filter(
+    tiles: list[str] | None = None,
+    max_cloud_cover: int | None = 10,
+    max_snow_cover: int | None = 10,
+) -> dict:
+    # Disable max xxx cover if set to 100
+    if max_cloud_cover is not None and max_cloud_cover == 100:
+        max_cloud_cover = None
+    if max_snow_cover is not None and max_snow_cover == 100:
+        max_snow_cover = None
+
+    if tiles is None and max_cloud_cover is None and max_snow_cover is None:
+        return None
+
+    filter = {}
+    filter["op"] = "and"
+    filter["args"] = []
+
+    if tiles is not None:
+        tiles = [f"MGRS-{tile.lstrip('T')}" for tile in tiles]
+        filter["args"].append({"op": "in", "args": [{"property": "grid:code"}, tiles]})
+    if max_cloud_cover is not None:
+        filter["args"].append({"op": "lte", "args": [{"property": "eo:cloud_cover"}, max_cloud_cover]})
+    if max_snow_cover is not None:
+        filter["args"].append({"op": "lte", "args": [{"property": "eo:snow_cover"}, max_snow_cover]})
+    return filter
+
+
 @stopwatch("Searching for Sentinel-2 scenes in CDSE", printer=logger.debug)
 def search_cdse_s2_sr(
-    intersects,
-    start_date: str,
-    end_date: str,
-    max_cloud_cover: int = 100,
+    intersects=None,
+    tiles: list[str] | None = None,
+    start_date: str | None = None,
+    end_date: str | None = None,
+    max_cloud_cover: int | None = 10,
+    max_snow_cover: int | None = 10,
+    months: list[int] | None = None,
+    years: list[int] | None = None,
 ) -> dict[str, Item]:
     """Search for Sentinel-2 scenes via STAC based on an area of interest (intersects) and date range.
 
@@ -185,22 +300,72 @@ def search_cdse_s2_sr(
     Args:
         intersects (any): The geometry object to search for Sentinel-2 tiles.
             Can be anything implementing the `__geo_interface__` protocol, such as a GeoDataFrame or a shapely geometry.
+            If None, and tiles is also None, the search will be performed globally.
+            If set and tiles is also set, will be ignored.
+        tiles (list[str] | None, optional): List of MGRS tile IDs to filter the search.
+            If set, ignores intersects parameter.
+            Defaults to None.
         start_date (str): Starting date in a format readable by pystac_client.
+            If None, months and years parameters will be used for filtering if set.
+            Defaults to None.
         end_date (str): Ending date in a format readable by pystac_client.
-        max_cloud_cover (int, optional): Maximum percentage of cloud cover. Defaults to 100.
+            If None, months and years parameters will be used for filtering if set.
+            Defaults to None.
+        max_cloud_cover (int, optional): Maximum percentage of cloud cover. Defaults to 10.
+        max_snow_cover (int, optional): Maximum percentage of snow cover. Defaults to 10.
+        months (list[int] | None, optional): List of months (1-12) to filter the search.
+            Only used if start_date and end_date are None.
+            Defaults to None.
+        years (list[int] | None, optional): List of years to filter the search.
+            Only used if start_date and end_date are None.
+            Defaults to None.
 
     Returns:
         dict[str, Item]: A dictionary of found Sentinel-2 items as values and the s2id as keys.
 
     """
     catalog = Client.open("https://stac.dataspace.copernicus.eu/v1/")
-    search = catalog.search(
-        collections=["sentinel-2-l2a"],
-        intersects=intersects,
-        datetime=f"{start_date}/{end_date}",
-        query=[f"eo:cloud_cover<={max_cloud_cover}"],
-    )
-    found_items = list(search.items())
+
+    if tiles is not None and intersects is not None:
+        logger.warning("Both tile and intersects provided. Ignoring intersects parameter.")
+        intersects = None
+
+    cql2_filter = _build_cql2_filter(tiles, max_cloud_cover, max_snow_cover)
+
+    if start_date is not None and end_date is not None:
+        if months is not None or years is not None:
+            logger.warning("Both date range and months/years filtering provided. Ignoring months/years filter.")
+        search = catalog.search(
+            collections=["sentinel-2-l2a"],
+            intersects=intersects,
+            datetime=f"{start_date}/{end_date}",
+            filter=cql2_filter,
+        )
+        found_items = list(search.items())
+    elif months is not None or years is not None:
+        if months is None:
+            months = list(range(1, 13))
+        if years is None:
+            years = list(range(2017, 2026))
+        found_items = set()
+        for year in years:
+            for month in months:
+                search = catalog.search(
+                    collections=["sentinel-2-l2a"],
+                    intersects=intersects,
+                    datetime=f"{year}-{month:02d}",
+                    filter=cql2_filter,
+                )
+                found_items.update(list(search.items()))
+    else:
+        logger.warning("No valid date filtering provided. This may result in a too large number of scenes for CDSE.")
+        search = catalog.search(
+            collections=["sentinel-2-l2a"],
+            intersects=intersects,
+            filter=cql2_filter,
+        )
+        found_items = list(search.items())
+
     if len(found_items) == 0:
         logger.debug(
             "No Sentinel-2 items found for the given parameters:"
@@ -211,22 +376,85 @@ def search_cdse_s2_sr(
     return {item.id: item for item in found_items}
 
 
+@stopwatch("Searching for Sentinel-2 scenes in CDSE from Tile-IDs", printer=logger.debug)
+def get_cdse_s2_sr_scene_ids_from_tile_ids(
+    tile_ids: list[str],
+    start_date: str | None = None,
+    end_date: str | None = None,
+    max_cloud_cover: int | None = 10,
+    max_snow_cover: int | None = 10,
+    months: list[int] | None = None,
+    years: list[int] | None = None,
+) -> dict[str, Item]:
+    """Search for Sentinel-2 scenes via STAC based on a list of tile IDs.
+
+    Args:
+        tile_ids (list[str]): List of MGRS tile IDs to search for.
+        start_date (str): Starting date in a format readable by pystac_client.
+            If None, months and years parameters will be used for filtering if set.
+            Defaults to None.
+        end_date (str): Ending date in a format readable by pystac_client.
+            If None, months and years parameters will be used for filtering if set.
+            Defaults to None.
+        max_cloud_cover (int, optional): Maximum percentage of cloud cover. Defaults to 10.
+        max_snow_cover (int, optional): Maximum percentage of snow cover. Defaults to 10.
+        months (list[int] | None, optional): List of months (1-12) to filter the search.
+            Only used if start_date and end_date are None.
+            Defaults to None.
+        years (list[int] | None, optional): List of years to filter the search.
+            Only used if start_date and end_date are None.
+            Defaults to None.
+
+    Returns:
+        dict[str, Item]: A dictionary of found Sentinel-2 items.
+
+    """
+    s2ids = {}
+    for tile in tile_ids:
+        s2ids.update(
+            search_cdse_s2_sr(
+                tile=tile,
+                start_date=start_date,
+                end_date=end_date,
+                max_cloud_cover=max_cloud_cover,
+                max_snow_cover=max_snow_cover,
+                months=months,
+                years=years,
+            )
+        )
+    return s2ids
+
+
 @stopwatch("Searching for Sentinel-2 scenes in CDSE from AOI", printer=logger.debug)
 def get_cdse_s2_sr_scene_ids_from_geodataframe(
     aoi: gpd.GeoDataFrame | Path | str,
-    start_date: str,
-    end_date: str,
-    max_cloud_cover: int = 100,
+    start_date: str | None = None,
+    end_date: str | None = None,
+    max_cloud_cover: int | None = 10,
+    max_snow_cover: int | None = 10,
+    months: list[int] | None = None,
+    years: list[int] | None = None,
     simplify_geometry: float | Literal[False] = False,
 ) -> dict[str, Item]:
-    """Search for Sentinel-2 tiles via STAC based on an area of interest (aoi) and date range.
+    """Search for Sentinel-2 scenes via STAC based on an area of interest (aoi).
 
     Args:
         aoi (gpd.GeoDataFrame | Path | str): AOI as a GeoDataFrame or path to a shapefile.
             If a path is provided, it will be read using geopandas.
         start_date (str): Starting date in a format readable by pystac_client.
+            If None, months and years parameters will be used for filtering if set.
+            Defaults to None.
         end_date (str): Ending date in a format readable by pystac_client.
-        max_cloud_cover (int, optional): Maximum percentage of cloud cover. Defaults to 100.
+            If None, months and years parameters will be used for filtering if set.
+            Defaults to None.
+        max_cloud_cover (int, optional): Maximum percentage of cloud cover. Defaults to 10.
+        max_snow_cover (int, optional): Maximum percentage of snow cover. Defaults to 10.
+        months (list[int] | None, optional): List of months (1-12) to filter the search.
+            Only used if start_date and end_date are None.
+            Defaults to None.
+        years (list[int] | None, optional): List of years to filter the search.
+            Only used if start_date and end_date are None.
+            Defaults to None.
         simplify_geometry (float | Literal[False], optional): If a float is provided, the geometry will be simplified
             using the `simplify` method of geopandas. If False, no simplification will be done.
             This may become useful for large / weird AOIs which are too large for the STAC API.
@@ -249,9 +477,42 @@ def get_cdse_s2_sr_scene_ids_from_geodataframe(
                 start_date=start_date,
                 end_date=end_date,
                 max_cloud_cover=max_cloud_cover,
+                max_snow_cover=max_snow_cover,
+                months=months,
+                years=years,
             )
         )
     return s2items
+
+
+def get_aoi_from_cdse_scene_ids(
+    scene_ids: list[str],
+) -> gpd.GeoDataFrame:
+    """Get the area of interest (AOI) as a GeoDataFrame from a list of Sentinel-2 scene IDs.
+
+    Args:
+        scene_ids (list[str]): List of Sentinel-2 scene IDs.
+
+    Returns:
+        gpd.GeoDataFrame: The AOI as a GeoDataFrame.
+
+    Raises:
+        ValueError: If no Sentinel-2 items are found for the given scene IDs.
+
+    """
+    catalog = Client.open("https://stac.dataspace.copernicus.eu/v1/")
+    search = catalog.search(
+        collections=["sentinel-2-l2a"],
+        ids=scene_ids,
+    )
+    items = list(search.items())
+    if not items:
+        raise ValueError("No Sentinel-2 items found for the given scene IDs.")
+    gdf = gpd.GeoDataFrame.from_features(
+        [item.to_dict() for item in items],
+        crs="EPSG:4326",
+    )
+    return gdf
 
 
 @stopwatch("Matching Sentinel-2 scenes in CDSE from AOI", printer=logger.debug)

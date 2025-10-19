@@ -5,7 +5,6 @@ import logging
 import time
 from abc import ABC, abstractmethod
 from dataclasses import asdict, dataclass, field
-from functools import cached_property
 from math import ceil, sqrt
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
@@ -546,19 +545,67 @@ class PlanetPipeline(_BasePipeline):
 
 
 @dataclass
-# TODO: This needs a complete rewrite
 class Sentinel2Pipeline(_BasePipeline):
-    """Pipeline for Sentinel 2 data based on an area of interest.
+    """Pipeline for Sentinel 2.
+
+    ### Source selection
+
+        Because of historical reasons, both the scene source can be specified via the `raw_data_source` parameter.
+        Currently, two sources are supported:
+
+            - "cdse": The Copernicus Data and Exploitation Service (CDSE).
+            - "gee": Google Earth Engine (GEE).
+
+        Please note that both sources need accounts and the credentials need to be setup on the system respectively.
+
+    ### Scene selection
+
+        There are 4 ways to select the scenes to process:
+
+        1. Provide a list of scene ids via the `scene_ids` parameter.
+        2. Provide a file containing a list of scene ids via the `scene_id_file` parameter.
+        3. Provide a list of tile ids via the `tile_ids` parameter along with filtering parameters.
+        4. Provide an area of interest shapefile via the `aoi_file` parameter along with filtering parameters.
+
+        The selection methods are mutually exclusive and will be used in the order listed above.
+
+    ### Filtering and Date selection
+
+        One can filter the scenes based on the cloud cover and snow cover percentage
+        using the `max_cloud_cover` and `max_snow_cover` parameters.
+
+        A temporal filtering can either be applied by passing a start and end date
+        via the `start_date` and `end_date` parameters,
+        or by providing a list of months and/or years via the `months` and `years` parameters.
+        Again, these two selection methods are mutually exclusive and the date range will be used first if provided.
+        If no temporal filtering is applied, all available scenes will be selected,
+        which may cause rate-limit errors from CDSE or GEE.
+        Also note, that the year+month filtering is not well tested and only implemented for CDSE at the moment.
 
     Args:
-        aoi_shapefile (Path): The shapefile containing the area of interest.
+        scene_ids (list[str] | None): A list of Sentinel 2 scene ids to process.
+        scene_id_file (Path | None): A file containing a list of Sentinel 2 scene ids to process.
+        tile_ids (list[str] | None): A list of Sentinel 2 tile ids to process.
+        aoi_file (Path | None): The shapefile containing the area of interest.
         start_date (str): The start date of the time series in YYYY-MM-DD format.
         end_date (str): The end date of the time series in YYYY-MM-DD format.
         max_cloud_cover (int): The maximum cloud cover percentage to use for filtering the Sentinel 2 scenes.
+        max_snow_cover (int): The maximum snow cover percentage to use for filtering the Sentinel 2 scenes.
+        months (list[int] | None): A list of months (1-12) to use for filtering the Sentinel 2 scenes.
+        years (list[int] | None): A list of years to use for filtering the Sentinel 2 scenes.
             Defaults to 10.
-        s2_download_cache (Path): The directory to use for caching the Sentinel 2 download data.
-            Defaults to Path("data/cache/s2gee").
-
+        prep_data_scene_id_file (Path | None): A file containing a list of Sentinel 2 scene ids to process.
+            This is only used for offline processing to avoid querying the data source again.
+            If None, will not use any pre-processed scene ids.
+            Defaults to None.
+        sentinel2_grid_dir (Path | None): The directory to use for storing the Sentinel 2 grid files.
+            This is only used for the prep-data step and not in normal mode.
+            If None, will use the default auxiliary directory based on the DARTS paths.
+            Defaults to None.
+        raw_data_store (Path | None): The directory to use for storing the raw Sentinel 2 data locally.
+            If None, will not store any data locally and process only in memory.
+            Defaults to None.
+        raw_data_source (Literal["gee", "cdse"]): The source to use for downloading the Sentinel 2 data.
         model_files (Path | list[Path] | None, optional): The path to the models to use for segmentation.
             Can also be a single Path to only use one model. This implies `write_model_outputs=False`
             If a list is provided, will use an ensemble of the models.
@@ -610,41 +657,115 @@ class Sentinel2Pipeline(_BasePipeline):
 
     """
 
-    aoi_shapefile: Path = None
-    start_date: str = None
-    end_date: str = None
-    max_cloud_cover: int = 10
-    s2_source: Literal["gee", "cdse"] = "cdse"
-    s2_download_cache: Path | None = None
+    # Scene selection
+    scene_ids: list[str] | None = None
+    scene_id_file: Path | None = None
+    tile_ids: list[str] | None = None
+    aoi_file: Path | None = None
+    # Scene selection filters (only used with tile_ids and aoi_file)
+    start_date: str | None = None
+    end_date: str | None = None
+    max_cloud_cover: int | None = 10
+    max_snow_cover: int | None = 10
+    months: list[int] | None = None
+    years: list[int] | None = None
+    # For offline use
+    prep_data_scene_id_file: Path | None = None
+    sentinel2_grid_dir: Path | None = None
+    raw_data_store: Path | None = None
+    raw_data_source: Literal["gee", "cdse"] = "cdse"
 
     def _arcticdem_resolution(self) -> Literal[10]:
         return 10
 
-    @cached_property
-    # TODO: Find a way to do this in offline mode
-    def _s2ids(self) -> list[str]:
-        if self.s2_source == "gee":
-            from darts_acquisition import get_gee_s2_sr_scene_ids_from_geodataframe
-
-            return sorted(
-                get_gee_s2_sr_scene_ids_from_geodataframe(
-                    self.aoi_shapefile,
-                    self.start_date,
-                    self.end_date,
-                    self.max_cloud_cover,
-                )
+    def _warn_invalid_selectors(self):
+        selectors = ["scene_ids", "scene_id_file", "tile_ids", "aoi_file"]
+        user_selectors = [s for s in selectors if getattr(self, s) is not None]
+        if len(user_selectors) > 1:
+            logger.warning(
+                f"Multiple scene selection methods provided: {user_selectors}. "
+                "Using only the first one in the order of scene_ids, scene_id_file, tile_ids, aoi_file."
             )
-        else:
+
+    def _get_s2ids(self) -> list[str]:
+        # Logic:
+        # Offline: Check for prep_data_scene_id_file first, then scene_ids, then scene_id_file,
+        # raise error if tile_ids or aoi_file used
+        # Online: Check for scene_ids first, then scene_id_file, then tile_ids, then aoi_file
+
+        if self.offline and self.prep_data_scene_id_file is not None and self.prep_data_scene_id_file.exists():
+            logger.debug(f"Using scene id file at {self.prep_data_scene_id_file=} for offline processing.")
+            s2ids: list[str] = json.loads(self.prep_data_scene_id_file.read_text())
+            return s2ids
+
+        self._warn_invalid_selectors()
+        if self.scene_ids is not None:
+            logger.debug(f"Using {len(self.scene_ids)} provided scene ids for processing.")
+            return self.scene_ids
+        elif self.scene_id_file is not None:
+            logger.debug(f"Loading scene ids from file {self.scene_id_file=}.")
+            s2ids: list[str] = json.loads(self.scene_id_file.read_text())
+            return s2ids
+        elif self.tile_ids is not None and self.s2_source == "cdse":
+            from darts_acquisition import get_cdse_s2_sr_scene_ids_from_tile_ids
+
+            logger.debug(f"Getting scene ids from {len(self.tile_ids)} tile ids via CDSE.")
+            s2ids = get_cdse_s2_sr_scene_ids_from_tile_ids(
+                self.tile_ids,
+                start_date=self.start_date,
+                end_date=self.end_date,
+                max_cloud_cover=self.max_cloud_cover,
+                max_snow_cover=self.max_snow_cover,
+                months=self.months,
+                years=self.years,
+            ).keys()
+        elif self.tile_ids is not None and self.s2_source == "gee":
+            from darts_acquisition import get_gee_s2_sr_scene_ids_from_tile_ids
+
+            logger.debug(f"Getting scene ids from {len(self.tile_ids)} tile ids via GEE.")
+            s2ids = get_gee_s2_sr_scene_ids_from_tile_ids(
+                self.tile_ids,
+                start_date=self.start_date,
+                end_date=self.end_date,
+                max_cloud_cover=self.max_cloud_cover,
+                max_snow_cover=self.max_snow_cover,
+            )
+        elif self.aoi_file is not None and self.s2_source == "cdse":
             from darts_acquisition import get_cdse_s2_sr_scene_ids_from_geodataframe
 
-            return sorted(
-                get_cdse_s2_sr_scene_ids_from_geodataframe(
-                    self.aoi_shapefile,
-                    self.start_date,
-                    self.end_date,
-                    self.max_cloud_cover,
-                ).keys()
+            logger.debug(f"Getting scene ids from AOI file {self.aoi_file=} via CDSE.")
+            s2ids = get_cdse_s2_sr_scene_ids_from_geodataframe(
+                self.aoi_file,
+                start_date=self.start_date,
+                end_date=self.end_date,
+                max_cloud_cover=self.max_cloud_cover,
+                max_snow_cover=self.max_snow_cover,
+                months=self.months,
+                years=self.years,
+            ).keys()
+        elif self.aoi_file is not None and self.s2_source == "gee":
+            from darts_acquisition import get_gee_s2_sr_scene_ids_from_geodataframe
+
+            logger.debug(f"Getting scene ids from AOI file {self.aoi_file=} via GEE.")
+            s2ids = get_gee_s2_sr_scene_ids_from_geodataframe(
+                self.aoi_file,
+                start_date=self.start_date,
+                end_date=self.end_date,
+                max_cloud_cover=self.max_cloud_cover,
+                max_snow_cover=self.max_snow_cover,
             )
+        else:
+            logger.error("No valid scene selection method provided.")
+            raise ValueError("No valid scene selection method provided.")
+
+        s2ids = sorted(set(s2ids))
+
+        # Note: This only happens if tile_ids or aoi_file were used
+        if self.prep_data_scene_id_file is not None:
+            logger.debug(f"Storing scene ids to file {self.prep_data_scene_id_file=} for offline processing.")
+            self.prep_data_scene_id_file.write_text(json.dumps(s2ids))
+
+        return s2ids
 
     def _get_tile_id(self, tilekey):
         # In case of the GEE tilekey is also the s2id
@@ -652,7 +773,7 @@ class Sentinel2Pipeline(_BasePipeline):
 
     def _tileinfos(self) -> list[tuple[str, Path]]:
         out = []
-        for s2id in self._s2ids:
+        for s2id in self._get_s2ids():
             outpath = self.output_data_dir / s2id
             out.append((s2id, outpath))
         out.sort()
@@ -661,34 +782,69 @@ class Sentinel2Pipeline(_BasePipeline):
     def _tile_aoi(self) -> "gpd.GeoDataFrame":
         import geopandas as gpd
 
-        return gpd.read_file(self.aoi_shapefile).to_crs("EPSG:4326")
+        assert not self.offline, "AOI extraction not possible in offline mode without aoi_file."
+
+        if self.scene_ids is not None:
+            s2ids = self.scene_ids
+        elif self.scene_id_file is not None:
+            s2ids = json.loads(self.scene_id_file.read_text())
+        elif self.tile_ids is not None:
+            from darts_acquisition import download_sentinel_2_grid
+
+            grid_dir = self.sentinel2_grid_dir or paths.aux / "sentinel2_grid"
+            grid_file = grid_dir.resolve() / "sentinel_2_index_shapefile.shp"
+            if not grid_file.exists():
+                download_sentinel_2_grid(grid_dir)
+            grid = gpd.read_file(grid_file).to_crs("EPSG:4326")
+            return grid[grid["Name"].isin(self.tile_ids)]
+        elif self.aoi_file is not None:
+            return gpd.read_file(self.aoi_file).to_crs("EPSG:4326")
+        else:
+            raise ValueError("No valid scene selection method provided.")
+
+        if self.s2_source == "cdse":
+            from darts_acquisition import get_aoi_from_cdse_scene_ids
+
+            return get_aoi_from_cdse_scene_ids(s2ids)
+        else:
+            from darts_acquisition import get_aoi_from_gee_scene_ids
+
+            return get_aoi_from_gee_scene_ids(s2ids)
 
     def _predownload_tile(self, s2id: str):
-        # TODO: write "native" predownload functions for STAC and GEE, which don't overhead
         self.s2_download_cache = self.s2_download_cache or paths.input / self.s2_source
         if self.s2_source == "gee":
-            from darts_acquisition import load_gee_s2_sr_scene
+            from darts_acquisition import download_gee_s2_sr_scene
 
-            return load_gee_s2_sr_scene(s2id, cache=self.s2_download_cache)
+            return download_gee_s2_sr_scene(s2id, store=self.s2_download_cache)
         else:
-            from darts_acquisition import load_cdse_s2_sr_scene
+            from darts_acquisition import download_cdse_s2_sr_scene
 
-            return load_cdse_s2_sr_scene(s2id, cache=self.s2_download_cache)
+            return download_cdse_s2_sr_scene(s2id, store=self.s2_download_cache)
 
     def _load_tile(self, s2id: str) -> "xr.Dataset":
         self.s2_download_cache = self.s2_download_cache or paths.input / self.s2_source
         if self.s2_source == "gee":
             from darts_acquisition import load_gee_s2_sr_scene
 
-            return load_gee_s2_sr_scene(s2id, cache=self.s2_download_cache, offline=self.offline)
+            return load_gee_s2_sr_scene(s2id, store=self.s2_download_cache, offline=self.offline)
         else:
             from darts_acquisition import load_cdse_s2_sr_scene
 
-            return load_cdse_s2_sr_scene(s2id, cache=self.s2_download_cache, offline=self.offline)
+            return load_cdse_s2_sr_scene(s2id, store=self.s2_download_cache, offline=self.offline)
 
     @staticmethod
     def pre_offline_cli(*, pipeline: "Sentinel2Pipeline"):
         """Download all necessary data for offline processing."""
+        assert not pipeline.offline, "Pipeline must be online to predownload data."
+
+        if pipeline.prep_data_scene_id_file is not None:
+            if pipeline.prep_data_scene_id_file.exists():
+                logger.warning(
+                    f"Prep-data scene id file {pipeline.prep_data_scene_id_file=} already exists. "
+                    "It will be overwritten."
+                )
+                pipeline.prep_data_scene_id_file.unlink()
         pipeline.predownload()
 
     @staticmethod

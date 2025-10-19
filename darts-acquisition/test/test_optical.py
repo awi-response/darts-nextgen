@@ -287,7 +287,7 @@ def test_load_gee_s2_sr_scene_from_cache(s2id: str):
     ee_project = os.environ.get("EE_PROJECT")
     ee.Authenticate()
     ee.Initialize(project=ee_project)
-    tile = load_gee_s2_sr_scene(s2id, cache=DATA_DIR / "gee")
+    tile = load_gee_s2_sr_scene(s2id, store=DATA_DIR / "gee")
     assert_optical_dataset(tile, satellite="s2")
 
 
@@ -303,9 +303,9 @@ def test_load_gee_s2_sr_scene_caching(s2id: str):
         file.unlink()
 
     # First call downloads, second call uses cache
-    downloaded_tile = load_gee_s2_sr_scene(s2id, cache=cache_dir)
+    downloaded_tile = load_gee_s2_sr_scene(s2id, store=cache_dir)
     assert_optical_dataset(downloaded_tile, satellite="s2")
-    cached_tile = load_gee_s2_sr_scene(s2id, cache=cache_dir)
+    cached_tile = load_gee_s2_sr_scene(s2id, store=cache_dir)
     assert_optical_dataset(cached_tile, satellite="s2")
     assert downloaded_tile.identical(cached_tile)
 
@@ -328,7 +328,7 @@ def test_load_cdse_s2_sr_scene_download(s2id: str):
 
 @pytest.mark.parametrize("s2id", STAC_IMAGES)
 def test_load_cdse_s2_sr_scene_from_cache(s2id: str):
-    tile = load_cdse_s2_sr_scene(s2id, cache=DATA_DIR / "stac")
+    tile = load_cdse_s2_sr_scene(s2id, store=DATA_DIR / "stac")
     assert_optical_dataset(tile, satellite="s2")
 
 
@@ -341,9 +341,9 @@ def test_load_cdse_s2_sr_scene_caching(s2id: str):
         file.unlink()
 
     # First call downloads, second call uses cache
-    downloaded_tile = load_cdse_s2_sr_scene(s2id, cache=cache_dir)
+    downloaded_tile = load_cdse_s2_sr_scene(s2id, store=cache_dir)
     assert_optical_dataset(downloaded_tile, satellite="s2")
-    cached_tile = load_cdse_s2_sr_scene(s2id, cache=cache_dir)
+    cached_tile = load_cdse_s2_sr_scene(s2id, store=cache_dir)
     assert_optical_dataset(cached_tile, satellite="s2")
     assert downloaded_tile.identical(cached_tile)
 
