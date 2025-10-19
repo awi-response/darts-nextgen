@@ -100,7 +100,7 @@ class _BasePipeline(ABC):
     def _tile_aoi(self) -> "gpd.GeoDataFrame":
         pass
 
-    def _predownload_tile(self, tileinfo: Any) -> None:
+    def _download_tile(self, tileinfo: Any) -> None:
         pass
 
     def _result_metadata(self, tilekey: Any) -> dict:
@@ -186,8 +186,8 @@ class _BasePipeline(ABC):
         needs_tcvis = len(required_bands.intersection(tcvis_bands)) > 0
         return needs_arcticdem, needs_tcvis
 
-    def predownload(self, optical: bool = False, aux: bool = False):
-        assert optical or aux, "Nothing to predownload. Please set optical and/or aux to True."
+    def prepare_data(self, optical: bool = False, aux: bool = False):
+        assert optical or aux, "Nothing to prepare. Please set optical and/or aux to True."
 
         self._validate()
         self._dump_config()
@@ -211,7 +211,7 @@ class _BasePipeline(ABC):
             needs_arcticdem, needs_tcvis = self._check_aux_needs(ensemble)
 
             if not needs_arcticdem and not needs_tcvis:
-                logger.warning("No auxiliary data required by the models. Skipping predownload of auxiliary data...")
+                logger.warning("No auxiliary data required by the models. Skipping download of auxiliary data...")
             else:
                 logger.info(f"Models {needs_tcvis=} {needs_arcticdem=}.")
                 self._create_auxiliary_datacubes(arcticdem=needs_arcticdem, tcvis=needs_tcvis)
@@ -234,13 +234,13 @@ class _BasePipeline(ABC):
         with timer("Loading Optical"):
             tileinfo = self._tileinfos()
             n_tiles = 0
-            logger.info(f"Found {len(tileinfo)} tiles to process.")
+            logger.info(f"Found {len(tileinfo)} tiles to download.")
             for i, (tilekey, _) in enumerate(tileinfo):
                 tile_id = self._get_tile_id(tilekey)
                 try:
-                    self._predownload_tile(tilekey)
+                    self._download_tile(tilekey)
                     n_tiles += 1
-                    logger.info(f"Processed sample {i + 1} of {len(tileinfo)} '{tilekey}' ({tile_id=}).")
+                    logger.info(f"Downloaded sample {i + 1} of {len(tileinfo)} '{tilekey}' ({tile_id=}).")
                 except (KeyboardInterrupt, SystemError, SystemExit) as e:
                     logger.warning(f"{type(e).__name__} detected.\nExiting...")
                     raise e
@@ -248,7 +248,7 @@ class _BasePipeline(ABC):
                     logger.warning(f"Could not process '{tilekey}' ({tile_id=}).\nSkipping...")
                     logger.exception(e)
             else:
-                logger.info(f"Processed {n_tiles} tiles to {self.output_data_dir.resolve()}.")
+                logger.info(f"Downloaded {n_tiles} tiles.")
 
     def run(self):  # noqa: C901
         current_time = self._validate()
@@ -464,6 +464,8 @@ class PlanetPipeline(_BasePipeline):
             Defaults to False.
         overwrite (bool, optional): Whether to overwrite existing files. Defaults to False.
         offline (bool, optional): If True, will not attempt to download any missing data. Defaults to False.
+        debug_data (bool, optional): If True, will write intermediate data for debugging purposes to output.
+            Defaults to False.
 
     """
 
@@ -534,9 +536,10 @@ class PlanetPipeline(_BasePipeline):
         return tile
 
     @staticmethod
-    def pre_offline_cli(*, pipeline: "PlanetPipeline", aux: bool = False):
+    def cli_prepare_data(*, pipeline: "PlanetPipeline", aux: bool = False):
         """Download all necessary data for offline processing."""
-        pipeline.predownload(optical=False, aux=aux)
+        assert not pipeline.offline, "Pipeline must be online to prepare data for offline usage."
+        pipeline.prepare_data(optical=False, aux=aux)
 
     @staticmethod
     def cli(*, pipeline: "PlanetPipeline"):
@@ -654,6 +657,8 @@ class Sentinel2Pipeline(_BasePipeline):
             Defaults to False.
         overwrite (bool, optional): Whether to overwrite existing files. Defaults to False.
         offline (bool, optional): If True, will not attempt to download any missing data. Defaults to False.
+        debug_data (bool, optional): If True, will write intermediate data for debugging purposes to output.
+            Defaults to False.
 
     """
 
@@ -811,7 +816,7 @@ class Sentinel2Pipeline(_BasePipeline):
 
             return get_aoi_from_gee_scene_ids(s2ids)
 
-    def _predownload_tile(self, s2id: str):
+    def _download_tile(self, s2id: str):
         self.s2_download_cache = self.s2_download_cache or paths.input / self.s2_source
         if self.s2_source == "gee":
             from darts_acquisition import download_gee_s2_sr_scene
@@ -834,9 +839,9 @@ class Sentinel2Pipeline(_BasePipeline):
             return load_cdse_s2_sr_scene(s2id, store=self.s2_download_cache, offline=self.offline)
 
     @staticmethod
-    def pre_offline_cli(*, pipeline: "Sentinel2Pipeline"):
+    def cli_prepare_data(*, pipeline: "Sentinel2Pipeline", optical: bool = False, aux: bool = False):
         """Download all necessary data for offline processing."""
-        assert not pipeline.offline, "Pipeline must be online to predownload data."
+        assert not pipeline.offline, "Pipeline must be online to prepare data for offline usage."
 
         if pipeline.prep_data_scene_id_file is not None:
             if pipeline.prep_data_scene_id_file.exists():
@@ -845,7 +850,7 @@ class Sentinel2Pipeline(_BasePipeline):
                     "It will be overwritten."
                 )
                 pipeline.prep_data_scene_id_file.unlink()
-        pipeline.predownload()
+        pipeline.prepare_data(optical=optical, aux=aux)
 
     @staticmethod
     def cli(*, pipeline: "Sentinel2Pipeline"):

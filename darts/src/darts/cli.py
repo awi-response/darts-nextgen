@@ -100,8 +100,8 @@ inference_app.command(group=utilities_group)(benchviz)
 
 inference_data_app = cyclopts.App(name="prep-data", group=utilities_group, help="Data preparation for offline use")
 inference_app.command(inference_data_app)
-inference_data_app.command(name="sentinel2")(Sentinel2Pipeline.pre_offline_cli)
-inference_data_app.command(name="planet")(PlanetPipeline.pre_offline_cli)
+inference_data_app.command(name="sentinel2")(Sentinel2Pipeline.cli_prepare_data)
+inference_data_app.command(name="planet")(PlanetPipeline.cli_prepare_data)
 
 training_app = cyclopts.App(name="training", group=subcommands_group, help="Predefined training pipelines")
 app.command(training_app)
