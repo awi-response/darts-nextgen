@@ -9,6 +9,7 @@ import geopandas as gpd
 import numpy as np
 import odc.geo.xr
 import pandas as pd
+import rioxarray
 import xarray as xr
 from odc.stac import stac_load
 from pystac import Item
@@ -16,6 +17,7 @@ from pystac_client import Client
 from stopuhr import stopwatch
 from zarr.codecs import BloscCodec
 
+from darts_acquisition.s2.debug_export import save_debug_geotiff
 from darts_acquisition.s2.quality_mask import convert_masks
 from darts_acquisition.s2.raw_data_store import StoreManager
 from darts_acquisition.utils.copernicus import init_copernicus
@@ -185,7 +187,7 @@ def load_cdse_s2_sr_scene(
     store: Path | None = None,
     aws_profile_name: str = "default",
     offline: bool = False,
-    # TODO: debug-data flag
+    output_dir_for_debug_geotiff: Path | None = None,
 ) -> xr.Dataset:
     """Load a Sentinel-2 scene from CDSE via STAC API and return it as an xarray dataset.
 
@@ -199,6 +201,9 @@ def load_cdse_s2_sr_scene(
         aws_profile_name (str, optional): The name of the AWS profile to use for authentication.
             Defaults to "default".
         offline (bool, optional): If True, will not attempt to download any missing data. Defaults to False.
+        output_dir_for_debug_geotiff (Path | None): Pipeline output directory.
+            If provided, will write the raw data as GeoTIFF file for debugging purposes.
+            Defaults to None.
 
     Returns:
         xr.Dataset: The loaded dataset
@@ -218,6 +223,14 @@ def load_cdse_s2_sr_scene(
     else:
         assert store is not None, "Store must be provided in offline mode!"
         ds_s2 = store_manager.open(s2item)
+
+    if output_dir_for_debug_geotiff is not None:
+        save_debug_geotiff(
+            dataset=ds_s2,
+            output_path=output_dir_for_debug_geotiff,
+            optical_bands=[band for band in bands_mapping.keys() if band.startswith("B")],
+            mask_bands=["SCL_20m"] if "SCL_20m" in bands_mapping.keys() else None,
+        )
 
     ds_s2 = ds_s2.rename_vars(bands_mapping)
     optical_bands = [band for name, band in bands_mapping.items() if name.startswith("B")]

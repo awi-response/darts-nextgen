@@ -8,10 +8,12 @@ from typing import Literal
 import ee
 import geopandas as gpd
 import odc.geo.xr
+import rioxarray
 import xarray as xr
 from stopuhr import stopwatch
 from zarr.codecs import BloscCodec
 
+from darts_acquisition.s2.debug_export import save_debug_geotiff
 from darts_acquisition.s2.quality_mask import convert_masks
 from darts_acquisition.s2.raw_data_store import StoreManager
 
@@ -150,7 +152,7 @@ def load_gee_s2_sr_scene(
     bands_mapping: dict | Literal["all"] = {"B2": "blue", "B3": "green", "B4": "red", "B8": "nir"},
     store: Path | None = None,
     offline: bool = False,
-    # TODO: debug-data flag
+    output_dir_for_debug_geotiff: Path | None = None,
 ) -> xr.Dataset:
     """Load a Sentinel-2 scene from Google Earth Engine and return it as an xarray dataset.
 
@@ -167,6 +169,9 @@ def load_gee_s2_sr_scene(
         store (Path | None, optional): The path to the raw data store. If None, data will not be stored locally.
             Defaults to None.
         offline (bool, optional): If True, will not attempt to download any missing data. Defaults to False.
+        output_dir_for_debug_geotiff (Path | None): Pipeline output directory.
+            If provided, will write the raw data as GeoTIFF file for debugging purposes.
+            Defaults to None.
 
     Returns:
         xr.Dataset: The loaded dataset
@@ -190,6 +195,14 @@ def load_gee_s2_sr_scene(
     else:
         assert store is not None, "Store must be provided in offline mode!"
         ds_s2 = store_manager.open(s2item)
+
+    if output_dir_for_debug_geotiff is not None:
+        save_debug_geotiff(
+            dataset=ds_s2,
+            output_path=output_dir_for_debug_geotiff,
+            optical_bands=[band for band in bands_mapping.keys() if band.startswith("B")],
+            mask_bands=["SCL"],
+        )
 
     ds_s2 = ds_s2.rename_vars(bands_mapping)
 

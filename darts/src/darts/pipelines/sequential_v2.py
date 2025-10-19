@@ -365,6 +365,7 @@ class _BasePipeline(ABC):
                         bands=self.export_bands,
                         ensemble_subsets=ensemble_subsets if self.write_model_outputs else [],
                         metadata=export_metadata,
+                        debug=self.debug_data,
                     )
 
                 n_tiles += 1
@@ -829,14 +830,29 @@ class Sentinel2Pipeline(_BasePipeline):
 
     def _load_tile(self, s2id: str) -> "xr.Dataset":
         self.s2_download_cache = self.s2_download_cache or paths.input / self.s2_source
+
+        output_dir_for_debug_geotiff = None
+        if self.debug_data:
+            output_dir_for_debug_geotiff = self.output_data_dir / s2id
+
         if self.s2_source == "gee":
             from darts_acquisition import load_gee_s2_sr_scene
 
-            return load_gee_s2_sr_scene(s2id, store=self.s2_download_cache, offline=self.offline)
+            return load_gee_s2_sr_scene(
+                s2id,
+                store=self.s2_download_cache,
+                offline=self.offline,
+                output_dir_for_debug_geotiff=output_dir_for_debug_geotiff,
+            )
         else:
             from darts_acquisition import load_cdse_s2_sr_scene
 
-            return load_cdse_s2_sr_scene(s2id, store=self.s2_download_cache, offline=self.offline)
+            return load_cdse_s2_sr_scene(
+                s2id,
+                store=self.s2_download_cache,
+                offline=self.offline,
+                output_dir_for_debug_geotiff=output_dir_for_debug_geotiff,
+            )
 
     @staticmethod
     def cli_prepare_data(*, pipeline: "Sentinel2Pipeline", optical: bool = False, aux: bool = False):
