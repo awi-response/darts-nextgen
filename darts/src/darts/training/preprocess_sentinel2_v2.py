@@ -268,6 +268,7 @@ def preprocess_s2_train_data(  # noqa: C901
     import geopandas as gpd
     import pandas as pd
     import rich
+    import smart_geocubes
     import xarray as xr
     from darts_acquisition import (
         load_arcticdem,
@@ -285,10 +286,20 @@ def preprocess_s2_train_data(  # noqa: C901
 
     from darts.utils.cuda import decide_device
     from darts.utils.earthengine import init_ee
+    from darts.utils.logging import LoggingManager
 
     device = decide_device(device)
     init_ee(ee_project, ee_use_highvolume)
     logger.info("Configured Rasterio")
+
+    # Create the datacubes if they do not exist
+    LoggingManager.apply_logging_handlers("smart_geocubes")
+    accessor = smart_geocubes.ArcticDEM10m(arcticdem_dir)
+    if not accessor.created:
+        accessor.create(overwrite=False)
+    accessor = smart_geocubes.TCTrend(tcvis_dir)
+    if not accessor.created:
+        accessor.create(overwrite=False)
 
     labels = (gpd.read_file(labels_file) for labels_file in labels_dir.glob("*/TrainingLabel*.gpkg"))
     labels = gpd.GeoDataFrame(pd.concat(labels, ignore_index=True))

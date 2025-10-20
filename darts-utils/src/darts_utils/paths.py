@@ -137,6 +137,7 @@ class PathManagerSingleton:
         logger.log(level, f"DARTS Out Directory: {self.out}")
         logger.log(level, f"DARTS Models Directory: {self.models}")
         logger.log(level, f"DARTS Input Directory: {self.input}")
+        logger.log(level, f"DARTS Archive Directory: {self.archive}")
         logger.log(level, f"DARTS Admin Directory: {self.admin()}")
         logger.log(level, f"DARTS ArcticDEM Directory (2m): {self.arcticdem(2)}")
         logger.log(level, f"DARTS ArcticDEM Directory (10m): {self.arcticdem(10)}")
@@ -181,7 +182,7 @@ class PathManagerSingleton:
 
     @property
     def out(self) -> Path:  # noqa: D102
-        return self.vast_dir / "out"
+        return self.vast_dir / "output"
 
     @property
     def models(self) -> Path:  # noqa: D102
@@ -190,6 +191,10 @@ class PathManagerSingleton:
     @property
     def input(self) -> Path:  # noqa: D102
         return self.vast_dir / "input"
+
+    @property
+    def archive(self) -> Path:  # noqa: D102
+        return self.vast_dir / "archive"
 
     def admin(self) -> Path:  # noqa: D102
         d = (self.aux / "admin").resolve()
@@ -202,17 +207,17 @@ class PathManagerSingleton:
         return d
 
     def tcvis(self) -> Path:  # noqa: D102
-        d = (self.aux / "tcvis").resolve()
+        d = (self.aux / "tcvis.icechunk").resolve()
         logger.debug(f"TCVIS path: {d}")
         return d
 
     def planet_orthotiles(self) -> Path:  # noqa: D102
-        d = (self.input / "planet" / "PSOrthoTile").resolve()
+        d = (self.input / "planet" / "tiles").resolve()
         logger.debug(f"Planet orthotiles path: {d}")
         return d
 
     def planet_scenes(self) -> Path:  # noqa: D102
-        d = (self.input / "planet" / "PSScene").resolve()
+        d = (self.input / "planet" / "scenes").resolve()
         logger.debug(f"Planet scenes path: {d}")
         return d
 
@@ -222,7 +227,7 @@ class PathManagerSingleton:
         return d
 
     def sentinel2_raw_data(self, source: Literal["cdse", "gee"]) -> Path:  # noqa: D102
-        d = (self.input / "sentinel2" / f"{source.upper()}Scene").resolve()
+        d = (self.input / "sentinel2" / f"{source}-scenes").resolve()
         logger.debug(f"Sentinel-2 raw data path for source '{source}': {d}")
         return d
 

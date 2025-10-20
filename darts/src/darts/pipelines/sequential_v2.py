@@ -63,6 +63,7 @@ class _BasePipeline(ABC):
 
     def __post_init__(self):
         paths.set_defaults(self.default_dirs)
+        # The defaults will be overwritten in the respective realizations
         self.output_data_dir = self.output_data_dir or paths.out
         self.model_files = self.model_files or list(self.paths.models.glob("*.pt"))
         if self.arcticdem_dir is None:
@@ -474,6 +475,7 @@ class PlanetPipeline(_BasePipeline):
 
     def __post_init__(self):  # noqa: D105
         super().__post_init__()
+        self.output_data_dir = self.output_data_dir or (paths.out / "planet")
         self.orthotiles_dir = self.orthotiles_dir or paths.planet_orthotiles()
         self.scenes_dir = self.scenes_dir or paths.planet_scenes()
 
@@ -681,6 +683,10 @@ class Sentinel2Pipeline(_BasePipeline):
     sentinel2_grid_dir: Path | None = None
     raw_data_store: Path | None = None
     raw_data_source: Literal["gee", "cdse"] = "cdse"
+
+    def __post_init__(self):  # noqa: D105
+        super().__post_init__()
+        self.output_data_dir = self.output_data_dir or (paths.out / "sentinel2")
 
     def _arcticdem_resolution(self) -> Literal[10]:
         return 10
