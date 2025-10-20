@@ -104,24 +104,27 @@ class LoggingManagerSingleton:
         current_time = time.strftime("%Y-%m-%d_%H-%M-%S")
 
         # Configure the rich console handler
-        supress_module_names = [
-            "torch",
-            "torch.utils.data",
-            "xarray",
-            "distributed",
-            "pandas",
-            # "lightning",
-            "stopuhr",
-            "contextlib",
-        ]
-        traceback_suppress = [cyclopts]
-        for module_name in supress_module_names:
-            try:
-                module = importlib.import_module(module_name)
-                traceback_suppress.append(module)
-            except ImportError:
-                logger.warning(f"Module {module_name} not found, skipping traceback suppression for it.")
-                continue
+        if verbosity <= VerbosityLevel.VERY_VERBOSE:
+            supress_module_names = [
+                "torch",
+                "torch.utils.data",
+                "xarray",
+                "distributed",
+                "pandas",
+                # "lightning",
+                "stopuhr",
+                "contextlib",
+            ]
+            traceback_suppress = [cyclopts]
+            for module_name in supress_module_names:
+                try:
+                    module = importlib.import_module(module_name)
+                    traceback_suppress.append(module)
+                except ImportError:
+                    logger.warning(f"Module {module_name} not found, skipping traceback suppression for it.")
+                    continue
+        else:
+            traceback_suppress = []
 
         if not log_plain:
             console_fmt = (

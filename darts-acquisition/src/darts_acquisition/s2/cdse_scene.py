@@ -11,6 +11,7 @@ import odc.geo.xr
 import pandas as pd
 import rioxarray
 import xarray as xr
+from darts_utils.cuda import DEFAULT_DEVICE, move_to_device, move_to_host
 from odc.stac import stac_load
 from pystac import Item
 from pystac_client import Client
@@ -188,6 +189,7 @@ def load_cdse_s2_sr_scene(
     aws_profile_name: str = "default",
     offline: bool = False,
     output_dir_for_debug_geotiff: Path | None = None,
+    device: Literal["cuda", "cpu"] | int = DEFAULT_DEVICE,
 ) -> xr.Dataset:
     """Load a Sentinel-2 scene from CDSE via STAC API and return it as an xarray dataset.
 
@@ -204,6 +206,7 @@ def load_cdse_s2_sr_scene(
         output_dir_for_debug_geotiff (Path | None): Pipeline output directory.
             If provided, will write the raw data as GeoTIFF file for debugging purposes.
             Defaults to None.
+        device (Literal["cuda", "cpu"] | int, optional): The device to load the data onto.
 
     Returns:
         xr.Dataset: The loaded dataset
@@ -233,31 +236,35 @@ def load_cdse_s2_sr_scene(
             mask_bands=["SCL_20m"] if "SCL_20m" in bands_mapping.keys() else None,
         )
 
-    # ? This takes approx. 2.5s on CPU
-    with stopwatch("Decode Sentinel-2 scene", printer=logger.debug):
-        ds_s2 = ds_s2.rename_vars(bands_mapping)
-        optical_bands = [band for name, band in bands_mapping.items() if name.startswith("B")]
-        for band in optical_bands:
-            # Set values where SCL_20m == 0 to NaN in all other bands
-            # This way the data is similar to data from gee or planet data
-            # We need to filter out 0 values, since they are not valid reflectance values
-            # But also not reflected in the SCL for some reason
-            ds_s2[band] = ds_s2[band].where(ds_s2.s2_scl != 0).where(ds_s2[band].astype("float32") != 0) / 10000.0 - 0.1
-            ds_s2[band].attrs["long_name"] = f"Sentinel-2 {band.capitalize()}"
-            ds_s2[band].attrs["units"] = "Reflectance"
-        ds_s2["s2_scl"].attrs = {
-            "long_name": "Sentinel-2 Scene Classification Layer",
-            "description": (
-                "0: NO_DATA - 1: SATURATED_OR_DEFECTIVE - 2: CAST_SHADOWS - 3: CLOUD_SHADOWS - 4: VEGETATION"
-                " - 5: NOT_VEGETATED - 6: WATER - 7: UNCLASSIFIED - 8: CLOUD_MEDIUM_PROBABILITY"
-                " - 9: CLOUD_HIGH_PROBABILITY - 10: THIN_CIRRUS - 11: SNOW or ICE"
-            ),
-        }
-        for band in ds_s2.data_vars:
-            ds_s2[band].attrs["data_source"] = "Sentinel-2 L2A via Copernicus STAC API (sentinel-2-l2a)"
+    # ? The following part takes ~2.5s on CPU and ~0.1 on GPU,
+    # however moving to GPU and back takes ~2.2s
+    ds_s2 = move_to_device(ds_s2, device)
+    ds_s2 = ds_s2.rename_vars(bands_mapping)
+    optical_bands = [band for name, band in bands_mapping.items() if name.startswith("B")]
+    for band in optical_bands:
+        # Set values where SCL_20m == 0 to NaN in all other bands
+        # This way the data is similar to data from gee or planet data
+        # We need to filter out 0 values, since they are not valid reflectance values
+        # But also not reflected in the SCL for some reason
+        ds_s2[band] = ds_s2[band].where(ds_s2.s2_scl != 0).where(ds_s2[band].astype("float32") != 0) / 10000.0 - 0.1
+        ds_s2[band].attrs["long_name"] = f"Sentinel-2 {band.capitalize()}"
+        ds_s2[band].attrs["units"] = "Reflectance"
+    ds_s2["s2_scl"].attrs = {
+        "long_name": "Sentinel-2 Scene Classification Layer",
+        "description": (
+            "0: NO_DATA - 1: SATURATED_OR_DEFECTIVE - 2: CAST_SHADOWS - 3: CLOUD_SHADOWS - 4: VEGETATION"
+            " - 5: NOT_VEGETATED - 6: WATER - 7: UNCLASSIFIED - 8: CLOUD_MEDIUM_PROBABILITY"
+            " - 9: CLOUD_HIGH_PROBABILITY - 10: THIN_CIRRUS - 11: SNOW or ICE"
+        ),
+    }
+    for band in ds_s2.data_vars:
+        ds_s2[band].attrs["data_source"] = "Sentinel-2 L2A via Copernicus STAC API (sentinel-2-l2a)"
 
-    # ? This takes approx. 1.5 s on CPU
+    # ? This takes approx. 1.5s on CPU
+    # For some reason, this takes ~1.2s on the GPU
     ds_s2 = convert_masks(ds_s2)
+
+    ds_s2 = move_to_host(ds_s2)
 
     # Convert sun elevation and azimuth to match our naming
     ds_s2.attrs["azimuth"] = ds_s2.attrs.get("view:azimuth", float("nan"))

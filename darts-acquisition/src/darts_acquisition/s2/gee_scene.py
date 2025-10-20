@@ -10,6 +10,7 @@ import geopandas as gpd
 import odc.geo.xr
 import rioxarray
 import xarray as xr
+from darts_utils.cuda import DEFAULT_DEVICE, move_to_device, move_to_host
 from stopuhr import stopwatch
 from zarr.codecs import BloscCodec
 
@@ -153,6 +154,7 @@ def load_gee_s2_sr_scene(
     store: Path | None = None,
     offline: bool = False,
     output_dir_for_debug_geotiff: Path | None = None,
+    device: Literal["cuda", "cpu"] | int = DEFAULT_DEVICE,
 ) -> xr.Dataset:
     """Load a Sentinel-2 scene from Google Earth Engine and return it as an xarray dataset.
 
@@ -172,6 +174,7 @@ def load_gee_s2_sr_scene(
         output_dir_for_debug_geotiff (Path | None): Pipeline output directory.
             If provided, will write the raw data as GeoTIFF file for debugging purposes.
             Defaults to None.
+        device (Literal["cuda", "cpu"] | int, optional): The device to load the data onto.
 
     Returns:
         xr.Dataset: The loaded dataset
@@ -212,6 +215,7 @@ def load_gee_s2_sr_scene(
     dt = datetime.strptime(ds_s2.attrs["time"], "%Y-%m-%dT%H:%M:%S.%f000")
     offset = 0.1 if dt >= datetime(2022, 1, 25) else 0.0
 
+    ds_s2 = move_to_device(ds_s2, device)
     for band in optical_bands:
         # Apply scale and offset
         ds_s2[band] = ds_s2[band].astype("float32") / 10000.0 - offset
@@ -241,6 +245,7 @@ def load_gee_s2_sr_scene(
             ds_s2[band] = ds_s2[band].fillna(0)
             # Turn real nan values (s2_scl is nan) into invalid data
             ds_s2[band] = ds_s2[band].where(~ds_s2["s2_scl"].isnull())
+    ds_s2 = move_to_host(ds_s2)
 
     ds_s2["quality_data_mask"].attrs = qdm_attrs
     ds_s2.attrs["s2_tile_id"] = s2item.getInfo()["properties"]["PRODUCT_ID"]

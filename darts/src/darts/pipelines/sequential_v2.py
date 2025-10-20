@@ -844,6 +844,7 @@ class Sentinel2Pipeline(_BasePipeline):
                 store=self.raw_data_store,
                 offline=self.offline,
                 output_dir_for_debug_geotiff=output_dir_for_debug_geotiff,
+                device=self.device,
             )
         else:
             from darts_acquisition import load_cdse_s2_sr_scene
@@ -853,6 +854,7 @@ class Sentinel2Pipeline(_BasePipeline):
                 store=self.raw_data_store,
                 offline=self.offline,
                 output_dir_for_debug_geotiff=output_dir_for_debug_geotiff,
+                device=self.device,
             )
 
     @staticmethod

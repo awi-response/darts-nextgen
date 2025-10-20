@@ -4,6 +4,11 @@ import logging
 
 import xarray as xr
 from stopuhr import stopwatch
+from xrspatial.utils import has_cuda_and_cupy
+
+if has_cuda_and_cupy():
+    import cupy as cp  # type: ignore
+    import cupy_xarray  # type: ignore
 
 logger = logging.getLogger(__name__.replace("darts_", "darts."))
 
@@ -28,8 +33,13 @@ def convert_masks(ds_s2: xr.Dataset) -> xr.Dataset:
     assert "s2_scl" in ds_s2.data_vars, "The dataset does not contain the SCL band."
 
     ds_s2["quality_data_mask"] = xr.zeros_like(ds_s2["s2_scl"], dtype="uint8")
-    invalids = ds_s2["s2_scl"].fillna(0).isin([0, 1])
-    low_quality = ds_s2["s2_scl"].isin([3, 8, 9, 11])
+
+    if has_cuda_and_cupy() and ds_s2.cupy.is_cupy:
+        invalids = ds_s2["s2_scl"].fillna(0).isin(cp.array([0, 1]))
+        low_quality = ds_s2["s2_scl"].isin(cp.array([3, 8, 9, 11]))
+    else:
+        invalids = ds_s2["s2_scl"].fillna(0).isin([0, 1])
+        low_quality = ds_s2["s2_scl"].isin([3, 8, 9, 11])
     high_quality = ~invalids & ~low_quality
     # ds_s2["quality_data_mask"] = ds_s2["quality_data_mask"].where(invalids, 0)
     ds_s2["quality_data_mask"] = xr.where(low_quality, 1, ds_s2["quality_data_mask"])

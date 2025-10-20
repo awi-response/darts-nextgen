@@ -20,8 +20,17 @@ def save_debug_geotiff(
         mask_bands (list[str]): List of mask band names
 
     """
+    output_path.mkdir(parents=True, exist_ok=True)
     optical = dataset[optical_bands].to_dataarray(dim="band").fillna(0).astype("uint16")
     optical.rio.to_raster(output_path / "optical_raw.tiff")
+
+    band_info = "Optical Bands:\n"
+    band_info += "\n".join([f" - {i + 1}: {band}" for i, band in enumerate(optical_bands)])
+
     if mask_bands:
         masks = dataset[mask_bands].to_dataarray(dim="band").fillna(0).astype("uint8")
         masks.rio.to_raster(output_path / "mask_raw.tiff")
+        band_info += "\n\nMask Bands:\n"
+        band_info += "\n".join([f" - {i + 1}: {band}" for i, band in enumerate(mask_bands)])
+
+    (output_path / "bands.txt").write_text(band_info)
