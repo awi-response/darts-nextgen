@@ -543,11 +543,13 @@ class PlanetPipeline(_BasePipeline):
     def cli_prepare_data(*, pipeline: "PlanetPipeline", aux: bool = False):
         """Download all necessary data for offline processing."""
         assert not pipeline.offline, "Pipeline must be online to prepare data for offline usage."
+        pipeline.__post_init__()
         pipeline.prepare_data(optical=False, aux=aux)
 
     @staticmethod
     def cli(*, pipeline: "PlanetPipeline"):
         """Run the sequential pipeline for Planet data."""
+        pipeline.__post_init__()
         pipeline.run()
 
 
@@ -685,8 +687,10 @@ class Sentinel2Pipeline(_BasePipeline):
     raw_data_source: Literal["gee", "cdse"] = "cdse"
 
     def __post_init__(self):  # noqa: D105
+        logger.debug("Before super")
         super().__post_init__()
-        self.output_data_dir = self.output_data_dir or (paths.out / "sentinel2")
+        logger.debug("After super")
+        self.output_data_dir = self.output_data_dir or (paths.out / f"sentinel2-{self.raw_data_source}")
 
     def _arcticdem_resolution(self) -> Literal[10]:
         return 10
@@ -868,6 +872,11 @@ class Sentinel2Pipeline(_BasePipeline):
         """Download all necessary data for offline processing."""
         assert not pipeline.offline, "Pipeline must be online to prepare data for offline usage."
 
+        # !: Because of an unknown bug, __post_init__ is not initialized automatically
+        pipeline.__post_init__()
+
+        logger.debug(f"Preparing data with {optical=}, {aux=}.")
+
         if pipeline.prep_data_scene_id_file is not None:
             if pipeline.prep_data_scene_id_file.exists():
                 logger.warning(
@@ -880,4 +889,5 @@ class Sentinel2Pipeline(_BasePipeline):
     @staticmethod
     def cli(*, pipeline: "Sentinel2Pipeline"):
         """Run the sequential pipeline for Sentinel 2 data."""
+        pipeline.__post_init__()
         pipeline.run()

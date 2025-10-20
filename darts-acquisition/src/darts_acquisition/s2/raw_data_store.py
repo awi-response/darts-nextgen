@@ -106,7 +106,6 @@ class StoreManager(ABC, Generic[SceneItem]):
 
         Args:
             identifier (str): Unique identifier for the scene
-            bands (list[str]): List of requested bands
 
         Returns:
             bool: True if all requested bands are present, False otherwise

@@ -56,7 +56,6 @@ class GEEStoreManager(StoreManager[ee.Image]):
         Args:
             store (str | Path | None): Directory path for storing raw sentinel 2 data
             bands_mapping (dict[str, str]): A mapping from bands to obtain.
-            aws_profile_name (str): AWS profile name for authentication
 
         """
         bands = list(bands_mapping.keys())

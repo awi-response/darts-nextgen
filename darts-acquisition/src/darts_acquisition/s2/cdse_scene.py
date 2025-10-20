@@ -138,7 +138,7 @@ class CDSEStoreManager(StoreManager[Item]):
                 ds_s2.attrs[key] = int(value)
             elif isinstance(value, (list, dict, np.ndarray)):
                 ds_s2.attrs[key] = str(value)
-        ds_s2.attrs["time"] = str(ds_s2.time.values[0])  # noqa: PD011
+        ds_s2.attrs["time"] = str(ds_s2.time.values[0])
         ds_s2 = ds_s2.isel(time=0).drop_vars("time")
 
         # Because of the resampling to 10m, the SCL is a float -> fix it

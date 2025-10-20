@@ -27,6 +27,12 @@ def _download_zip(url: str, grid_dir: Path):
             # Extract the files to the specified directory
             zip_ref.extractall(grid_dir)
 
+    # Move the extracted files one level up
+    extracted_folder = grid_dir / "Sentinel-2-Shapefile-Index-master"
+    for item in extracted_folder.iterdir():
+        item.rename(grid_dir / item.name)
+    extracted_folder.rmdir()
+
 
 @stopwatch.f("Downloading Sentinel 2 grid", printer=logger.debug)
 def download_sentinel_2_grid(grid_dir: Path):

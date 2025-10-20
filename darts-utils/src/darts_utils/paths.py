@@ -222,7 +222,7 @@ class PathManagerSingleton:
         return d
 
     def sentinel2_grid(self) -> Path:  # noqa: D102
-        d = (self.aux / "S2Grid").resolve()
+        d = (self.input / "sentinel2" / "grid").resolve()
         logger.debug(f"Sentinel-2 grid path: {d}")
         return d
 

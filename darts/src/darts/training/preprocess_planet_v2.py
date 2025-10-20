@@ -52,7 +52,7 @@ def _get_region_name(footprint: "gpd.GeoSeries", admin2: "gpd.GeoDataFrame") -> 
     return region_name
 
 
-def preprocess_planet_train_data(
+def preprocess_planet_train_data(  # noqa: C901
     *,
     data_dir: Path,
     labels_dir: Path,
