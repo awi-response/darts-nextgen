@@ -15,6 +15,7 @@ from darts_segmentation.training import (
     tune_smp,
     validate_dataset,
 )
+from darts_utils.paths import DefaultPaths, paths
 
 from darts import __version__
 from darts.pipelines import (
@@ -85,6 +86,20 @@ def env_info():
 
     logger.debug(f"PATH: {os.environ.get('PATH', 'UNSET')}")
     debug_info()
+
+
+@app.command
+def debug_paths(default_paths: DefaultPaths = DefaultPaths()):
+    """Debug and print the current DARTS paths.
+
+    Args:
+        default_paths (DefaultPaths, optional): Default paths to set before logging.
+            Defaults to DefaultPaths().
+
+    """
+    paths_instance = paths
+    paths_instance.set_defaults(default_paths)
+    paths_instance.log_all_paths(level=logging.INFO)
 
 
 inference_app = cyclopts.App(name="inference", group=subcommands_group, help="Predefined inference pipelines")

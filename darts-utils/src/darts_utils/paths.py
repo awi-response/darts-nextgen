@@ -125,6 +125,32 @@ class PathManagerSingleton:
         self.vast_dir = _parse_path(defaults.vast_dir) or darts_dir or self.vast_dir
         logger.debug(f"Set DARTS default paths: fast_dir={self.fast_dir}, vast_dir={self.vast_dir}")
 
+    def log_all_paths(self, level: int = logging.DEBUG):
+        """Log all paths managed."""
+        logger.log(level, f"DARTS Fast Directory: {self.fast_dir}")
+        logger.log(level, f"DARTS Vast Directory: {self.vast_dir}")
+        logger.log(level, f"DARTS Aux Directory: {self.aux}")
+        logger.log(level, f"DARTS Artifacts Directory: {self.artifacts}")
+        logger.log(level, f"DARTS Training Directory: {self.training}")
+        logger.log(level, f"DARTS Cache Directory: {self.cache}")
+        logger.log(level, f"DARTS Logs Directory: {self.logs}")
+        logger.log(level, f"DARTS Out Directory: {self.out}")
+        logger.log(level, f"DARTS Models Directory: {self.models}")
+        logger.log(level, f"DARTS Input Directory: {self.input}")
+        logger.log(level, f"DARTS Admin Directory: {self.admin()}")
+        logger.log(level, f"DARTS ArcticDEM Directory (2m): {self.arcticdem(2)}")
+        logger.log(level, f"DARTS ArcticDEM Directory (10m): {self.arcticdem(10)}")
+        logger.log(level, f"DARTS ArcticDEM Directory (32m): {self.arcticdem(32)}")
+        logger.log(level, f"DARTS TCVIS Directory: {self.tcvis()}")
+        logger.log(level, f"DARTS Planet Orthotiles Directory: {self.planet_orthotiles()}")
+        logger.log(level, f"DARTS Planet Scenes Directory: {self.planet_scenes()}")
+        logger.log(level, f"DARTS Sentinel-2 Grid Directory: {self.sentinel2_grid()}")
+        logger.log(level, f"DARTS Sentinel-2 Raw Data Directory (CDSE): {self.sentinel2_raw_data('cdse')}")
+        logger.log(level, f"DARTS Sentinel-2 Raw Data Directory (GEE): {self.sentinel2_raw_data('gee')}")
+        logger.log(
+            level, f"DARTS Training Data Directory ('pipeline', 256x256): {self.train_data_dir('pipeline', 256)}"
+        )
+
     @property
     def fast(self) -> Path:  # noqa: D102
         return self.fast_dir
@@ -134,13 +160,7 @@ class PathManagerSingleton:
         return self.vast_dir
 
     @property
-    def aux(self) -> Path:
-        """Get the default aux data directory.
-
-        Returns:
-            Path: The default aux data directory.
-
-        """
+    def aux(self) -> Path:  # noqa: D102
         return self.vast_dir / "aux"
 
     @property
