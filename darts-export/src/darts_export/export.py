@@ -118,6 +118,9 @@ def export_tile(  # noqa: C901
 
     raster_tags = metadata
 
+    if debug:
+        manager.to_netcdf(tile, out_dir / "darts_inference_debug.nc", crop=False)
+
     for band in bands:
         match band:
             case "polygonized":
@@ -147,6 +150,3 @@ def export_tile(  # noqa: C901
                     )
                 # Export the band as a raster
                 _export_raster(tile, band, out_dir, tags=raster_tags)
-
-    if debug:
-        manager.to_netcdf(tile, out_dir / "darts_inference_debug.nc", crop=False)
