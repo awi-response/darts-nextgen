@@ -96,7 +96,6 @@ class CDSEStoreManager(StoreManager[Item]):
         encodings["SCL_20m"]["dtype"] = "uint8"
         return encodings
 
-    @stopwatch.f("Downloading Sentinel-2 scene from CDSE", printer=logger.debug, print_kwargs=["s2item"])
     def download_scene_from_source(self, s2item: str | Item, bands: list[str]) -> xr.Dataset:
         """Download a Sentinel-2 scene from CDSE via STAC API.
 
@@ -118,7 +117,7 @@ class CDSEStoreManager(StoreManager[Item]):
             )
             s2item = next(search.items())
 
-        with stopwatch(f"Downloading data from STAC for {s2id=}", printer=logger.debug):
+        with stopwatch("Downloading data from CDSE", printer=logger.debug):
             # We can't use xpystac here, because they enforce chunking of 1024x1024, which results in long loading times
             # and a potential AWS limit error.
             init_copernicus(profile_name=self.aws_profile_name)
@@ -219,11 +218,12 @@ def load_cdse_s2_sr_scene(
         aws_profile_name=aws_profile_name,
     )
 
-    if not offline:
-        ds_s2 = store_manager.load(s2item)
-    else:
-        assert store is not None, "Store must be provided in offline mode!"
-        ds_s2 = store_manager.open(s2item)
+    with stopwatch("Load Sentinel-2 scene from store", printer=logger.debug):
+        if not offline:
+            ds_s2 = store_manager.load(s2item)
+        else:
+            assert store is not None, "Store must be provided in offline mode!"
+            ds_s2 = store_manager.open(s2item)
 
     if output_dir_for_debug_geotiff is not None:
         save_debug_geotiff(
@@ -233,27 +233,30 @@ def load_cdse_s2_sr_scene(
             mask_bands=["SCL_20m"] if "SCL_20m" in bands_mapping.keys() else None,
         )
 
-    ds_s2 = ds_s2.rename_vars(bands_mapping)
-    optical_bands = [band for name, band in bands_mapping.items() if name.startswith("B")]
-    for band in optical_bands:
-        # Set values where SCL_20m == 0 to NaN in all other bands
-        # This way the data is similar to data from gee or planet data
-        # We need to filter out 0 values, since they are not valid reflectance values
-        # But also not reflected in the SCL for some reason
-        ds_s2[band] = ds_s2[band].where(ds_s2.s2_scl != 0).where(ds_s2[band].astype("float32") != 0) / 10000.0 - 0.1
-        ds_s2[band].attrs["long_name"] = f"Sentinel-2 {band.capitalize()}"
-        ds_s2[band].attrs["units"] = "Reflectance"
-    ds_s2["s2_scl"].attrs = {
-        "long_name": "Sentinel-2 Scene Classification Layer",
-        "description": (
-            "0: NO_DATA - 1: SATURATED_OR_DEFECTIVE - 2: CAST_SHADOWS - 3: CLOUD_SHADOWS - 4: VEGETATION"
-            " - 5: NOT_VEGETATED - 6: WATER - 7: UNCLASSIFIED - 8: CLOUD_MEDIUM_PROBABILITY - 9: CLOUD_HIGH_PROBABILITY"
-            " - 10: THIN_CIRRUS - 11: SNOW or ICE"
-        ),
-    }
-    for band in ds_s2.data_vars:
-        ds_s2[band].attrs["data_source"] = "Sentinel-2 L2A via Copernicus STAC API (sentinel-2-l2a)"
+    # ? This takes approx. 2.5s on CPU
+    with stopwatch("Decode Sentinel-2 scene", printer=logger.debug):
+        ds_s2 = ds_s2.rename_vars(bands_mapping)
+        optical_bands = [band for name, band in bands_mapping.items() if name.startswith("B")]
+        for band in optical_bands:
+            # Set values where SCL_20m == 0 to NaN in all other bands
+            # This way the data is similar to data from gee or planet data
+            # We need to filter out 0 values, since they are not valid reflectance values
+            # But also not reflected in the SCL for some reason
+            ds_s2[band] = ds_s2[band].where(ds_s2.s2_scl != 0).where(ds_s2[band].astype("float32") != 0) / 10000.0 - 0.1
+            ds_s2[band].attrs["long_name"] = f"Sentinel-2 {band.capitalize()}"
+            ds_s2[band].attrs["units"] = "Reflectance"
+        ds_s2["s2_scl"].attrs = {
+            "long_name": "Sentinel-2 Scene Classification Layer",
+            "description": (
+                "0: NO_DATA - 1: SATURATED_OR_DEFECTIVE - 2: CAST_SHADOWS - 3: CLOUD_SHADOWS - 4: VEGETATION"
+                " - 5: NOT_VEGETATED - 6: WATER - 7: UNCLASSIFIED - 8: CLOUD_MEDIUM_PROBABILITY"
+                " - 9: CLOUD_HIGH_PROBABILITY - 10: THIN_CIRRUS - 11: SNOW or ICE"
+            ),
+        }
+        for band in ds_s2.data_vars:
+            ds_s2[band].attrs["data_source"] = "Sentinel-2 L2A via Copernicus STAC API (sentinel-2-l2a)"
 
+    # ? This takes approx. 1.5 s on CPU
     ds_s2 = convert_masks(ds_s2)
 
     # Convert sun elevation and azimuth to match our naming
@@ -349,6 +352,9 @@ def search_cdse_s2_sr(
     if start_date is not None and end_date is not None:
         if months is not None or years is not None:
             logger.warning("Both date range and months/years filtering provided. Ignoring months/years filter.")
+        logger.debug(
+            f"Searching CDSE for scenes between {start_date} and {end_date} ({cql2_filter}, {type(intersects)})."
+        )
         search = catalog.search(
             collections=["sentinel-2-l2a"],
             intersects=intersects,
@@ -423,20 +429,15 @@ def get_cdse_s2_sr_scene_ids_from_tile_ids(
         dict[str, Item]: A dictionary of found Sentinel-2 items.
 
     """
-    s2ids = {}
-    for tile in tile_ids:
-        s2ids.update(
-            search_cdse_s2_sr(
-                tile=tile,
-                start_date=start_date,
-                end_date=end_date,
-                max_cloud_cover=max_cloud_cover,
-                max_snow_cover=max_snow_cover,
-                months=months,
-                years=years,
-            )
-        )
-    return s2ids
+    return search_cdse_s2_sr(
+        tiles=tile_ids,
+        start_date=start_date,
+        end_date=end_date,
+        max_cloud_cover=max_cloud_cover,
+        max_snow_cover=max_snow_cover,
+        months=months,
+        years=years,
+    )
 
 
 @stopwatch("Searching for Sentinel-2 scenes in CDSE from AOI", printer=logger.debug)

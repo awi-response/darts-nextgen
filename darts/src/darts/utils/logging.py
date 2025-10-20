@@ -111,6 +111,8 @@ class LoggingManagerSingleton:
             "distributed",
             "pandas",
             # "lightning",
+            "stopuhr",
+            "contextlib",
         ]
         traceback_suppress = [cyclopts]
         for module_name in supress_module_names:
@@ -175,21 +177,17 @@ class LoggingManagerSingleton:
                 "pandas",
             ]
             module_level = logging.DEBUG if verbosity >= VerbosityLevel.DEBUG else logging.INFO
-            for module_name in very_verbose_modules:
-                self.apply_logging_handlers(module_name, level=module_level)
+            self.apply_logging_handlers(*very_verbose_modules, level=module_level)
 
-    def apply_logging_handlers(self, *names: str, level: int | None = None):
+    def apply_logging_handlers(self, *names: str, level: int = logging.INFO):
         """Apply the logging handlers to a (third-party) logger.
 
         Args:
             names (str): The names of the loggers to apply the handlers to.
-            level (int | None, optional): The log level to set for the loggers. If None, use the manager level.
-                Defaults to None.
+            level (int, optional): The log level to set for the loggers.
+                Defaults to logging.INFO.
 
         """
-        if level is None:
-            level = self._log_level
-
         for name in names:
             third_party_logger = logging.getLogger(name)
             if name in self._managed_loggers:

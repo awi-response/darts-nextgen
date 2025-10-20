@@ -72,11 +72,6 @@ class _BasePipeline(ABC):
         if self.edge_erosion_size is None:
             self.edge_erosion_size = self.mask_erosion_size
 
-    @property
-    @abstractmethod
-    def _is_local(self) -> bool:
-        pass
-
     @abstractmethod
     def _arcticdem_resolution(self) -> Literal[2, 10, 32]:
         """Return the resolution of the ArcticDEM data."""
@@ -254,8 +249,8 @@ class _BasePipeline(ABC):
                 logger.info(f"Downloaded {n_tiles} tiles.")
 
     def run(self):  # noqa: C901
-        current_time = self._validate()
-        self._dump_config()
+        self._validate()
+        current_time = self._dump_config()
 
         from darts.utils.cuda import debug_info
 
@@ -718,7 +713,7 @@ class Sentinel2Pipeline(_BasePipeline):
             logger.debug(f"Loading scene ids from file {self.scene_id_file=}.")
             s2ids: list[str] = json.loads(self.scene_id_file.read_text())
             return s2ids
-        elif self.tile_ids is not None and self.s2_source == "cdse":
+        elif self.tile_ids is not None and self.raw_data_source == "cdse":
             from darts_acquisition import get_cdse_s2_sr_scene_ids_from_tile_ids
 
             logger.debug(f"Getting scene ids from {len(self.tile_ids)} tile ids via CDSE.")
@@ -731,7 +726,7 @@ class Sentinel2Pipeline(_BasePipeline):
                 months=self.months,
                 years=self.years,
             ).keys()
-        elif self.tile_ids is not None and self.s2_source == "gee":
+        elif self.tile_ids is not None and self.raw_data_source == "gee":
             from darts_acquisition import get_gee_s2_sr_scene_ids_from_tile_ids
 
             logger.debug(f"Getting scene ids from {len(self.tile_ids)} tile ids via GEE.")
@@ -742,7 +737,7 @@ class Sentinel2Pipeline(_BasePipeline):
                 max_cloud_cover=self.max_cloud_cover,
                 max_snow_cover=self.max_snow_cover,
             )
-        elif self.aoi_file is not None and self.s2_source == "cdse":
+        elif self.aoi_file is not None and self.raw_data_source == "cdse":
             from darts_acquisition import get_cdse_s2_sr_scene_ids_from_geodataframe
 
             logger.debug(f"Getting scene ids from AOI file {self.aoi_file=} via CDSE.")
@@ -755,7 +750,7 @@ class Sentinel2Pipeline(_BasePipeline):
                 months=self.months,
                 years=self.years,
             ).keys()
-        elif self.aoi_file is not None and self.s2_source == "gee":
+        elif self.aoi_file is not None and self.raw_data_source == "gee":
             from darts_acquisition import get_gee_s2_sr_scene_ids_from_geodataframe
 
             logger.debug(f"Getting scene ids from AOI file {self.aoi_file=} via GEE.")
@@ -814,7 +809,7 @@ class Sentinel2Pipeline(_BasePipeline):
         else:
             raise ValueError("No valid scene selection method provided.")
 
-        if self.s2_source == "cdse":
+        if self.raw_data_source == "cdse":
             from darts_acquisition import get_aoi_from_cdse_scene_ids
 
             return get_aoi_from_cdse_scene_ids(s2ids)
@@ -827,7 +822,7 @@ class Sentinel2Pipeline(_BasePipeline):
         # We default to a path here because the download functions need a path to store the data
         # Note that in the normal load tile function, we can pass None to process in memory
         raw_data_store = self.raw_data_store or paths.sentinel2_raw_data(self.raw_data_source)
-        if self.s2_source == "gee":
+        if self.raw_data_source == "gee":
             from darts_acquisition import download_gee_s2_sr_scene
 
             return download_gee_s2_sr_scene(s2id, store=raw_data_store)
@@ -841,7 +836,7 @@ class Sentinel2Pipeline(_BasePipeline):
         if self.debug_data:
             output_dir_for_debug_geotiff = self.output_data_dir / s2id
 
-        if self.s2_source == "gee":
+        if self.raw_data_source == "gee":
             from darts_acquisition import load_gee_s2_sr_scene
 
             return load_gee_s2_sr_scene(

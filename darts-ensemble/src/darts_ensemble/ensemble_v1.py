@@ -44,7 +44,9 @@ class EnsembleV1:
     @property
     def required_bands(self) -> set[str]:
         """The combined bands required by all models in this ensemble."""
-        bands = {model.required_bands for model in self.models.values()}
+        bands = set()
+        for model in self.models.values():
+            bands.update(model.required_bands)
         return bands
 
     @stopwatch.f(

@@ -79,7 +79,6 @@ class GEEStoreManager(StoreManager[ee.Image]):
         encodings["SCL"]["dtype"] = "uint8"
         return encodings
 
-    @stopwatch.f("Downloading Sentinel-2 scene from GEE", printer=logger.debug, print_kwargs=["s2item"])
     def download_scene_from_source(self, s2item: str | ee.Image, bands: list[str]) -> xr.Dataset:
         """Download a Sentinel-2 scene from GEE.
 
@@ -113,7 +112,7 @@ class GEEStoreManager(StoreManager[ee.Image]):
         ds_s2.attrs["time"] = str(ds_s2.time.values[0])
         ds_s2 = ds_s2.isel(time=0).drop_vars("time").rename({"X": "x", "Y": "y"}).transpose("y", "x")
         ds_s2 = ds_s2.odc.assign_crs(ds_s2.attrs["crs"])
-        with stopwatch(f"Downloading data from GEE for {s2id=}", printer=logger.debug):
+        with stopwatch("Downloading data from GEE", printer=logger.debug):
             ds_s2.load()
         return ds_s2
 
