@@ -169,6 +169,7 @@ def preprocess_planet_train_data_pingo(
     import geopandas as gpd
     import pandas as pd
     import rich
+    import smart_geocubes
     import xarray as xr
     from darts_acquisition import load_arcticdem, load_planet_masks, load_planet_scene, load_tcvis
     from darts_acquisition.admin import download_admin_files
@@ -180,11 +181,21 @@ def preprocess_planet_train_data_pingo(
 
     from darts.utils.cuda import decide_device
     from darts.utils.earthengine import init_ee
+    from darts.utils.logging import LoggingManager
 
     device = decide_device(device)
     init_ee(ee_project, ee_use_highvolume)
     configure_rio(cloud_defaults=True, aws={"aws_unsigned": True})
     logger.info("Configured Rasterio")
+
+    # Create the datacubes if they do not exist
+    LoggingManager.apply_logging_handlers("smart_geocubes")
+    accessor = smart_geocubes.ArcticDEM2m(arcticdem_dir)
+    if not accessor.created:
+        accessor.create(overwrite=False)
+    accessor = smart_geocubes.TCTrend(tcvis_dir)
+    if not accessor.created:
+        accessor.create(overwrite=False)
 
     labels = (gpd.read_file(labels_file) for labels_file in labels_dir.glob("*/TrainingLabel*.gpkg"))
     labels = gpd.GeoDataFrame(pd.concat(labels, ignore_index=True))
