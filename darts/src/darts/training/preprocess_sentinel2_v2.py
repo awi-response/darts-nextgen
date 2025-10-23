@@ -3,6 +3,7 @@
 import json
 import logging
 import time
+from contextlib import suppress
 from math import ceil, sqrt
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal
@@ -16,25 +17,33 @@ if TYPE_CHECKING:
     import xarray as xr
 
 
+def __validate_dir(imgdir):
+    if not imgdir.is_dir():
+        return None
+
+    with suppress(StopIteration):
+        return next(imgdir.glob("*_SR.tif")).parent
+    with suppress(StopIteration):
+        return next(imgdir.glob("*_SR_clip.tif")).parent
+
+    return None
+
+
 def _planet_legacy_path_gen(data_dir: Path):
     for iterdir in data_dir.iterdir():
         if iterdir.stem == "iteration001":
             for sitedir in (iterdir).iterdir():
                 for imgdir in (sitedir).iterdir():
-                    if not imgdir.is_dir():
+                    imgdir_valid = __validate_dir(imgdir)
+                    if imgdir_valid is None:
                         continue
-                    try:
-                        yield next(imgdir.glob("*_SR.tif")).parent
-                    except StopIteration:
-                        yield next(imgdir.glob("*_SR_clip.tif")).parent
+                    yield imgdir_valid
         else:
             for imgdir in (iterdir).iterdir():
-                if not imgdir.is_dir():
+                imgdir_valid = __validate_dir(imgdir)
+                if imgdir_valid is None:
                     continue
-                try:
-                    yield next(imgdir.glob("*_SR.tif")).parent
-                except StopIteration:
-                    yield next(imgdir.glob("*_SR_clip.tif")).parent
+                yield imgdir_valid
 
 
 def _get_region_name(footprint: "gpd.GeoSeries", admin2: "gpd.GeoDataFrame") -> str:
