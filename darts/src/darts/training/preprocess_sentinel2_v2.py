@@ -115,8 +115,10 @@ def preprocess_s2_train_data(  # noqa: C901
     admin_dir: Path | None = None,
     planet_data_dir: Path | None = None,
     raw_data_store: Path | None = None,
+    no_raw_data_store: bool = False,
     preprocess_cache: Path | None = None,
     matching_cache: Path | None = None,
+    no_matching_cache: bool = False,
     force_preprocess: bool = False,
     append: bool = True,
     device: Literal["cuda", "cpu", "auto"] | int | None = None,
@@ -199,8 +201,11 @@ def preprocess_s2_train_data(  # noqa: C901
             Can be set to None if no alignment is wished.
             Defaults to None.
         raw_data_store (Path | None): The directory to use for storing the raw Sentinel 2 data locally.
-            If None, will not store any data locally and process only in memory.
+            If None, will use the default raw data directory based on the DARTS paths.
             Defaults to None.
+        no_raw_data_store (bool, optional): If True, will not store any raw data locally.
+            This overrides the `raw_data_store` parameter.
+            Defaults to False.
         preprocess_cache (Path | None, optional): The directory to store the preprocessed data.
             If None, will neither use nor store preprocessed data.
             Defaults to None.
@@ -245,6 +250,12 @@ def preprocess_s2_train_data(  # noqa: C901
     arcticdem_dir = arcticdem_dir or paths.arcticdem(10)
     tcvis_dir = tcvis_dir or paths.tcvis()
     admin_dir = admin_dir or paths.admin()
+    raw_data_store = raw_data_store or paths.sentinel2_raw_data("cdse")
+    if no_raw_data_store:
+        raw_data_store = None
+    matching_cache = matching_cache or train_data_dir / "matching-cache.json"
+    if no_matching_cache:
+        matching_cache = None
 
     # Storing the configuration as JSON file
     train_data_dir.mkdir(parents=True, exist_ok=True)

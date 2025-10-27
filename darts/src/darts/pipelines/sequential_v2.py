@@ -612,8 +612,11 @@ class Sentinel2Pipeline(_BasePipeline):
             If None, will use the default auxiliary directory based on the DARTS paths.
             Defaults to None.
         raw_data_store (Path | None): The directory to use for storing the raw Sentinel 2 data locally.
-            If None, will not store any data locally and process only in memory.
+            If None, will use the default raw data directory based on the DARTS paths.
             Defaults to None.
+        no_raw_data_store (bool, optional): If True, will not store any raw data locally.
+            This overrides the `raw_data_store` parameter.
+            Defaults to False.
         raw_data_source (Literal["gee", "cdse"]): The source to use for downloading the Sentinel 2 data.
         model_files (Path | list[Path] | None, optional): The path to the models to use for segmentation.
             Can also be a single Path to only use one model. This implies `write_model_outputs=False`
@@ -684,6 +687,7 @@ class Sentinel2Pipeline(_BasePipeline):
     prep_data_scene_id_file: Path | None = None
     sentinel2_grid_dir: Path | None = None
     raw_data_store: Path | None = None
+    no_raw_data_store: bool = False
     raw_data_source: Literal["gee", "cdse"] = "cdse"
 
     def __post_init__(self):  # noqa: D105
@@ -691,6 +695,9 @@ class Sentinel2Pipeline(_BasePipeline):
         super().__post_init__()
         logger.debug("After super")
         self.output_data_dir = self.output_data_dir or (paths.out / f"sentinel2-{self.raw_data_source}")
+        self.raw_data_store = self.raw_data_store or paths.sentinel2_raw_data(self.raw_data_source)
+        if self.no_raw_data_store:
+            self.raw_data_store = None
 
     def _arcticdem_resolution(self) -> Literal[10]:
         return 10
