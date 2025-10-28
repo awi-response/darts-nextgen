@@ -419,7 +419,9 @@ def preprocess_s2_train_data(  # noqa: C901
         try:
             logger.info(f"Processing sample {info_id}")
 
-            if planet_data_dir is not None and (not footprint.fpath or (not footprint.fpath.exists())):
+            if planet_data_dir is not None and (
+                not footprint.fpath or pd.isna(footprint.fpath) or (not footprint.fpath.exists())
+            ):
                 logger.warning(
                     f"Footprint image {planet_id} at {footprint.fpath} does not exist. Skipping sample {info_id}..."
                 )
