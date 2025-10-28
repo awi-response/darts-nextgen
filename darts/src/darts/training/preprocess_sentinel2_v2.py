@@ -290,6 +290,7 @@ def preprocess_s2_train_data(  # noqa: C901
     import rich
     import smart_geocubes
     import xarray as xr
+    from botocore.exceptions import ProfileNotFound
     from darts_acquisition import (
         load_arcticdem,
         load_cdse_s2_sr_scene,
@@ -332,8 +333,11 @@ def preprocess_s2_train_data(  # noqa: C901
         fpaths = {fpath.stem: fpath for fpath in _planet_legacy_path_gen(planet_data_dir)}
         footprints["fpath"] = footprints.image_id.map(fpaths)
 
+    logger.info(f"label directory contained {len(footprints)} footprints")
+
     # Find S2 scenes that intersect with the Planet footprints
     if matching_cache is None or not matching_cache.exists():
+        logger.info("evaluating online CDSE catalogue for matching Sentinel-2 scenes")
         matches = match_cdse_s2_sr_scene_ids_from_geodataframe(
             aoi=footprints,
             day_range=matching_day_range,
@@ -488,7 +492,9 @@ def preprocess_s2_train_data(  # noqa: C901
         except (KeyboardInterrupt, SystemExit, SystemError):
             logger.info("Interrupted by user.")
             break
-
+        except ProfileNotFound:
+            logger.error("tried to download from CDSE@AWS but no CDSE credentials found. ")
+            return
         except Exception as e:
             logger.warning(f"Could not process sample {info_id}. Skipping...")
             logger.exception(e)

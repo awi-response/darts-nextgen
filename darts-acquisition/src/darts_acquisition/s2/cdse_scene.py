@@ -591,7 +591,7 @@ def match_cdse_s2_sr_scene_ids_from_geodataframe(
             max_cloud_cover=max_cloud_cover,
         )
         if not intersecting_items:
-            logger.info(f"No Sentinel-2 items found for {i} in the date range {start_date} to {end_date}.")
+            logger.info(f"No Sentinel-2 items found for footprint #{i} in the date range {start_date} to {end_date}.")
             matches[i] = None
             continue
         intersecting_items_gdf = gpd.GeoDataFrame.from_features(
@@ -604,7 +604,9 @@ def match_cdse_s2_sr_scene_ids_from_geodataframe(
         # We will drop those items, since they cannot be used for intersection calculations
         intersecting_items_gdf = intersecting_items_gdf[intersecting_items_gdf.geometry.is_valid]
         if intersecting_items_gdf.empty:
-            logger.info(f"No valid Sentinel-2 items found for {i} in the date range {start_date} to {end_date}.")
+            logger.info(
+                f"No valid Sentinel-2 items found for footprint #{i} in the date range {start_date} to {end_date}."
+            )
             matches[i] = None
             continue
         # Get to UTM zone for better area calculations
