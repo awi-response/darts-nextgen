@@ -66,6 +66,12 @@ and finally
       --end-date 2024-09
     ```
    
+` darts run-sequential-aoi-sentinel2-pipeline   --aoi-shapefile /taiga/toddn/rts-files/tiles_nwt_2010_2016_small.geojson  --device=0 --start-date 2024-07   --end-date 2024-09 --input-cache=/taiga/toddn/data/cache --verbose
+`
+   
+`   darts run-sequential-aoi-sentinel2-pipeline   --aoi-shapefile /taiga/toddn/rts-files/tiles_nwt_2010_2016_small.geojson   --start-date 2024-07   --end-date 2024-09 --input-cache=/taiga/toddn/data/cache --verbose`
+
+   
 `   darts run-ray-aoi-sentinel2-pipeline   --aoi-shapefile /taiga/toddn/rts-files/tiles_nwt_2010_2016_small.geojson   --start-date 2024-07   --end-date 2024-09 --input-cache=/taiga/toddn/data/cache --verbose
 `
 ## Contribute
