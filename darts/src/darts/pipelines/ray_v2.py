@@ -524,6 +524,7 @@ class Sentinel2RayPipeline(_BaseRayPipeline):
     start_date: str = None
     end_date: str = None
     max_cloud_cover: int = 10
+    max_snow_cover: int | None = 10
     input_cache: Path = Path("data/cache/input")
 
     def _arcticdem_resolution(self) -> Literal[10]:
@@ -535,7 +536,7 @@ class Sentinel2RayPipeline(_BaseRayPipeline):
 
         return sorted(
             get_gee_s2_sr_scene_ids_from_geodataframe(
-                self.aoi_shapefile, self.start_date, self.end_date, self.max_cloud_cover
+                self.aoi_shapefile, self.start_date, self.end_date, self.max_cloud_cover, self.max_snow_cover
             )
         )
 
@@ -552,12 +553,21 @@ class Sentinel2RayPipeline(_BaseRayPipeline):
         return out
 
     def _load_tile(self, tileinfo: RayInputDict) -> "RayDataDict":
-        from darts_acquisition import load_s2_from_gee
+        from darts_acquisition import load_gee_s2_sr_scene
 
         from darts.pipelines._ray_wrapper import RayDataset
 
         s2id: str = tileinfo["tilekey"]
-        tile = load_s2_from_gee(s2id, cache=self.input_cache)
+        output_dir_for_debug_geotiff = None
+        if self.debug_data:
+            output_dir_for_debug_geotiff = self.output_data_dir / s2id
+        tile = load_gee_s2_sr_scene(
+            s2id,
+            store=self.input_cache,
+            offline=self.offline,
+            output_dir_for_debug_geotiff=output_dir_for_debug_geotiff,
+            device=self.device,
+        )
         tile = RayDataset(dataset=tile)
         return {"tile": tile, **tileinfo}
 
