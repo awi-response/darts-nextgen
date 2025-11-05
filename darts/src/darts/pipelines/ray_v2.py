@@ -5,13 +5,15 @@ import logging
 import os
 import time
 from abc import ABC, abstractmethod
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, is_dataclass
 from functools import cached_property
 from math import ceil, sqrt
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal, TypedDict
 
+import toml
 from cyclopts import Parameter
+from darts_utils.paths import DefaultPaths, paths
 
 if TYPE_CHECKING:
     from darts.pipelines._ray_wrapper import RayDataDict
@@ -48,11 +50,13 @@ class _BaseRayPipeline(ABC):
     """
 
     model_files: list[Path] = None
-    output_data_dir: Path = Path("data/output")
-    arcticdem_dir: Path = Path("data/download/arcticdem")
-    tcvis_dir: Path = Path("data/download/tcvis")
+    default_dirs: DefaultPaths = field(default_factory=lambda: DefaultPaths())
+    output_data_dir: Path | None = None
+    arcticdem_dir: Path | None = None
+    tcvis_dir: Path | None = None
     num_cpus: int = 1
     devices: list[int] | None = None
+    device: Literal["cuda", "cpu", "auto"] | int | None = None
     ee_project: str | None = None
     ee_use_highvolume: bool = True
     tpi_outer_radius: int = 100
@@ -63,6 +67,7 @@ class _BaseRayPipeline(ABC):
     reflection: int = 0
     binarization_threshold: float = 0.5
     mask_erosion_size: int = 10
+    edge_erosion_size: int | None = None
     min_object_size: int = 32
     quality_level: int | Literal["high_quality", "low_quality", "none"] = 1
     export_bands: list[str] = field(
@@ -70,6 +75,19 @@ class _BaseRayPipeline(ABC):
     )
     write_model_outputs: bool = False
     overwrite: bool = False
+    offline: bool = False
+    debug_data: bool = False
+
+    def __post_init__(self):
+        paths.set_defaults(self.default_dirs)
+        self.output_data_dir = self.output_data_dir or paths.out
+        self.model_files = self.model_files or list(paths.models.glob("*.pt"))
+        if self.arcticdem_dir is None:
+            arcticdem_resolution = self._arcticdem_resolution()
+            self.arcticdem_dir = paths.arcticdem(arcticdem_resolution)
+        self.tcvis_dir = self.tcvis_dir or paths.tcvis()
+        if self.edge_erosion_size is None:
+            self.edge_erosion_size = self.mask_erosion_size
 
     @abstractmethod
     def _arcticdem_resolution(self) -> Literal[2, 10, 32]:
@@ -91,26 +109,88 @@ class _BaseRayPipeline(ABC):
     def _load_tile(self, tileinfo: RayInputDict) -> "RayDataDict":
         pass
 
-    def run(self):  # noqa: C901
+    def _validate(self):
         if self.model_files is None or len(self.model_files) == 0:
             raise ValueError("No model files provided. Please provide a list of model files.")
         if len(self.export_bands) == 0:
             raise ValueError("No export bands provided. Please provide a list of export bands.")
 
+    def _dump_config(self) -> str:
         current_time = time.strftime("%Y-%m-%d_%H-%M-%S")
         logger.info(f"Starting pipeline at {current_time}.")
 
-        # Storing the configuration as JSON file
+        # Storing the configuration as TOML file
         self.output_data_dir.mkdir(parents=True, exist_ok=True)
-        with open(self.output_data_dir / f"{current_time}.config.json", "w") as f:
+        with open(self.output_data_dir / f"{current_time}.config.toml", "w") as f:
             config = asdict(self)
-            # Convert everything to json serializable
             for key, value in config.items():
                 if isinstance(value, Path):
                     config[key] = str(value.resolve())
                 elif isinstance(value, list):
                     config[key] = [str(v.resolve()) if isinstance(v, Path) else v for v in value]
-            json.dump(config, f)
+                elif is_dataclass(value):
+                    config[key] = asdict(value)
+            toml.dump(config, f)
+        return current_time
+
+    def _create_auxiliary_datacubes(self, arcticdem: bool = True, tcvis: bool = True):
+        import smart_geocubes
+        from darts.utils.logging import LoggingManager
+
+        LoggingManager.apply_logging_handlers("smart_geocubes")
+        if arcticdem:
+            arcticdem_resolution = self._arcticdem_resolution()
+            if arcticdem_resolution == 2:
+                accessor = smart_geocubes.ArcticDEM2m(self.arcticdem_dir)
+            elif arcticdem_resolution == 10:
+                accessor = smart_geocubes.ArcticDEM10m(self.arcticdem_dir)
+            if not accessor.created:
+                accessor.create(overwrite=False)
+        if tcvis:
+            accessor = smart_geocubes.TCTrend(self.tcvis_dir)
+            if not accessor.created:
+                accessor.create(overwrite=False)
+
+    def _load_ensemble(self):
+        import torch
+        from darts_ensemble import EnsembleV1
+
+        if isinstance(self.model_files, Path):
+            self.model_files = [self.model_files]
+        if len(self.model_files) == 1:
+            self.write_model_outputs = False
+        models = {model_file.stem: model_file for model_file in self.model_files}
+        ensemble = EnsembleV1(models, device=torch.device(self.device))
+        return ensemble, models
+
+    def _check_aux_needs(self, ensemble) -> tuple[bool, bool]:
+        required_bands = ensemble.required_bands
+        arcticdem_bands = {"dem", "relative_elevation", "slope", "aspect", "hillshade", "curvature"}
+        tcvis_bands = {"tc_brightness", "tc_greenness", "tc_wetness"}
+        needs_arcticdem = len(required_bands.intersection(arcticdem_bands)) > 0
+        needs_tcvis = len(required_bands.intersection(tcvis_bands)) > 0
+        return needs_arcticdem, needs_tcvis
+
+    def _result_metadata(self, tilekey: Any) -> dict:
+        export_metadata = {
+            "tileid": self._get_tile_id(tilekey),
+            "modelfiles": [f.name for f in self.model_files],
+            "tpiouter": self.tpi_outer_radius,
+            "tpiinner": self.tpi_inner_radius,
+            "patchsize": self.patch_size,
+            "overlap": self.overlap,
+            "reflection": self.reflection,
+            "binarizethreshold": self.binarization_threshold,
+            "maskerosion": self.mask_erosion_size,
+            "edgeerosion": self.edge_erosion_size,
+            "mmu": self.min_object_size,
+            "qualitymask": self.quality_level,
+        }
+        return {f"DARTS_{k}": v for k, v in export_metadata.items()}
+
+    def run(self):  # noqa: C901
+        self._validate()
+        current_time = self._dump_config()
 
         if self.devices is not None:
             os.environ["CUDA_VISIBLE_DEVICES"] = ",".join(str(d) for d in self.devices)
@@ -118,9 +198,12 @@ class _BaseRayPipeline(ABC):
 
         debug_info()
 
+        from darts.utils.cuda import decide_device
         from darts.utils.earthengine import init_ee
 
-        init_ee(self.ee_project, self.ee_use_highvolume)
+        self.device = decide_device(self.device)
+        if not self.offline:
+            init_ee(self.ee_project, self.ee_use_highvolume)
 
         import ray
 
@@ -138,9 +221,10 @@ class _BaseRayPipeline(ABC):
         def init_worker():
             init_ee(self.ee_project, self.ee_use_highvolume)
 
-        num_workers = int(ray.cluster_resources().get("CPU", 1))
-        logger.info(f"Initializing {num_workers} Ray workers with Earth Engine.")
-        ray.get([init_worker.remote() for _ in range(num_workers)])
+        if not self.offline:
+            num_workers = int(ray.cluster_resources().get("CPU", 1))
+            logger.info(f"Initializing {num_workers} Ray workers with Earth Engine.")
+            ray.get([init_worker.remote() for _ in range(num_workers)])
 
         import smart_geocubes
         from darts_export import missing_outputs
@@ -155,11 +239,7 @@ class _BaseRayPipeline(ABC):
         from darts.utils.logging import LoggingManager
 
         # determine models to use
-        if isinstance(self.model_files, Path):
-            self.model_files = [self.model_files]
-            self.write_model_outputs = False
-        models = {model_file.stem: model_file for model_file in self.model_files}
-        # ray_ensemble = _RayEnsembleV1.remote(models)
+        ensemble, models = self._load_ensemble()
 
         # Create the datacubes if they do not exist
         LoggingManager.apply_logging_handlers("smart_geocubes")
@@ -176,44 +256,52 @@ class _BaseRayPipeline(ABC):
         adem_buffer = ceil(self.tpi_outer_radius / arcticdem_resolution * sqrt(2))
 
         # Get files to process
+        needs_arcticdem, needs_tcvis = self._check_aux_needs(ensemble)
         tileinfo: list[RayInputDict] = []
         for i, (tilekey, outpath) in enumerate(self._tileinfos()):
             tile_id = self._get_tile_id(tilekey)
             if not self.overwrite:
-                mo = missing_outputs(outpath, bands=self.export_bands, ensemble_subsets=models.keys())
+                mo = missing_outputs(outpath, bands=self.export_bands, ensemble_subsets=ensemble.model_names)
                 if mo == "none":
                     logger.info(f"Tile {tile_id} already processed. Skipping...")
                     continue
                 if mo == "some":
                     logger.warning(
-                        f"Tile {tile_id} already processed. Some outputs are missing."
-                        " Skipping because overwrite=False..."
+                        f"Tile {tile_id} seems to be already processed, but some outputs are missing. "
+                        "Skipping because overwrite=False..."
                     )
                     continue
-            tileinfo.append({"tilekey": tilekey, "outpath": str(outpath.resolve()), "tile_id": tile_id})
-        tileinfo = tileinfo[:10]
+            tileinfo.append({
+                "tilekey": tilekey,
+                "outpath": str(outpath.resolve()),
+                "tile_id": tile_id,
+                "metadata": self._result_metadata(tilekey),
+                "debug_data": self.debug_data,
+            })
         logger.info(f"Found {len(tileinfo)} tiles to process.")
 
         # Ray data pipeline
         # TODO: setup device stuff correctly
         ds = ray.data.from_items(tileinfo)
         ds = ds.map(self._load_tile, num_cpus=1)
-        ds = ds.map(
-            _load_aux,
-            fn_kwargs={
-                "arcticdem_dir": self.arcticdem_dir,
-                "arcticdem_resolution": arcticdem_resolution,
-                "buffer": adem_buffer,
-                "tcvis_dir": self.tcvis_dir,
-            },
-            num_cpus=1,
-        )
+        if needs_arcticdem or needs_tcvis:
+            ds = ds.map(
+                _load_aux,
+                fn_kwargs={
+                    "arcticdem_dir": self.arcticdem_dir,
+                    "arcticdem_resolution": arcticdem_resolution,
+                    "buffer": adem_buffer,
+                    "tcvis_dir": self.tcvis_dir,
+                    "offline": self.offline,
+                },
+                num_cpus=1,
+            )
         ds = ds.map(
             _preprocess_ray,
             fn_kwargs={
                 "tpi_outer_radius": self.tpi_outer_radius,
                 "tpi_inner_radius": self.tpi_inner_radius,
-                "device": "cuda",  # Ray will handle the device allocation
+                "device": "cuda" if self.device == "cuda" or isinstance(self.device, int) else "cpu",
             },
             num_cpus=1,
             num_gpus=0.1,
@@ -242,7 +330,8 @@ class _BaseRayPipeline(ABC):
                 "quality_level": self.quality_level,
                 "models": models,
                 "write_model_outputs": self.write_model_outputs,
-                "device": "cuda",  # Ray will handle the device allocation
+                "device": "cuda" if self.device == "cuda" or isinstance(self.device, int) else "cpu",
+                "edge_erosion_size": self.edge_erosion_size,
             },
             num_cpus=1,
             num_gpus=0.1,

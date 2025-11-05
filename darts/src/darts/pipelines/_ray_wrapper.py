@@ -9,7 +9,7 @@ from darts_acquisition import load_arcticdem, load_tcvis
 from darts_ensemble import EnsembleV1
 from darts_export import export_tile
 from darts_postprocessing import prepare_export
-from darts_preprocessing import preprocess_legacy_fast
+from darts_preprocessing import preprocess_v2
 
 logger = logging.getLogger(__name__)
 
@@ -41,6 +41,8 @@ class RayDataDict(TypedDict):
     tilekey: Any  # The key to identify the tile, e.g. a path or a tile id
     outpath: str  # The path to the output directory
     tile_id: str  # The id of the tile, e.g. the name of the file or the tile id
+    metadata: dict | None
+    debug_data: bool | None
 
 
 # @ray.remote(num_cpus=1, num_gpus=1)
@@ -60,7 +62,7 @@ class _RayEnsembleV1:
         write_model_outputs: bool,
     ) -> RayDataDict:
         tile = row["tile"].dataset
-        tile = self.ensemble(
+        tile = self.ensemble.segment_tile(
             tile,
             patch_size=patch_size,
             overlap=overlap,
@@ -81,6 +83,7 @@ def _load_aux(
     arcticdem_resolution: int,
     buffer: int,
     tcvis_dir: Path,
+    offline: bool = False,
 ) -> RayDataDict:
     tile = row["tile"].dataset
     arcticdem = load_arcticdem(
@@ -88,8 +91,9 @@ def _load_aux(
         data_dir=arcticdem_dir,
         resolution=arcticdem_resolution,
         buffer=buffer,
+        offline=offline,
     )
-    tcvis = load_tcvis(tile.odc.geobox, tcvis_dir)
+    tcvis = load_tcvis(tile.odc.geobox, tcvis_dir, offline=offline)
     row["adem"] = RayDataset(arcticdem)
     row["tcvis"] = RayDataset(tcvis)
     return row
@@ -103,9 +107,9 @@ def _preprocess_ray(
     device: int | Literal["cuda", "cpu"],
 ):
     tile = row["tile"].dataset
-    arcticdem = row["adem"].dataset
-    tcvis = row["tcvis"].dataset
-    tile = preprocess_legacy_fast(
+    arcticdem = row["adem"].dataset if row["adem"] is not None else None
+    tcvis = row["tcvis"].dataset if row["tcvis"] is not None else None
+    tile = preprocess_v2(
         tile,
         arcticdem,
         tcvis,
@@ -129,13 +133,14 @@ def _prepare_export_ray(
     models: dict[str, Any],
     write_model_outputs: bool,
     device: int | Literal["cuda", "cpu"],
+    edge_erosion_size: int | None = None,
 ):
     tile = row["tile"].dataset
     tile = prepare_export(
         tile,
         bin_threshold=binarization_threshold,
         mask_erosion_size=mask_erosion_size,
-        # TODO: edge_erosion_size
+        edge_erosion_size=edge_erosion_size,
         min_object_size=min_object_size,
         quality_level=quality_level,
         ensemble_subsets=models.keys() if write_model_outputs else [],
@@ -159,6 +164,8 @@ def _export_tile_ray(
         outpath,
         bands=export_bands,
         ensemble_subsets=models.keys() if write_model_outputs else [],
+        metadata=row.get("metadata") or {},
+        debug=row.get("debug_data") or False,
     )
     del row["tile"]
 

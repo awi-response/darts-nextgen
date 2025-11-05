@@ -49,3 +49,4 @@ scripts-local/
 # pixi environments
 .pixi
 *.egg-info
+.idea/
