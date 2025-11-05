@@ -19,8 +19,8 @@ else:
 
 
 def move_to_device(
-    tile: xr.Dataset,
-    device: Literal["cuda", "cpu"] | int,
+        tile: xr.Dataset,
+        device: Literal["cuda", "cpu"] | int,
 ):
     """Context manager to ensure a dataset is on the correct device.
 
@@ -54,19 +54,60 @@ def move_to_device(
     return tile
 
 
-def move_to_host(tile: xr.Dataset) -> xr.Dataset:
-    """Move a dataset from GPU to CPU.
+def move_to_host(tile: xr.Dataset | xr.DataArray | "cp.ndarray") -> xr.Dataset | xr.DataArray | "np.ndarray":
+    """Ensure data are moved from GPU (CuPy) memory to CPU (NumPy) memory.
+
+    This function converts CuPy-backed arrays inside an xarray Dataset or DataArray
+    into NumPy arrays, ensuring full CPU compatibility for serialization or
+    downstream processing (e.g., Ray pipelines).
+
+    Handles the following cases:
+        1. **Raw CuPy array** → returns NumPy array via `cp.asnumpy`.
+        2. **xarray.DataArray** backed by CuPy → returns a new DataArray
+           with its data copied to NumPy.
+        3. **xarray.Dataset** with CuPy-backed variables → returns a new Dataset
+           where each variable is NumPy-backed.
+
+    If the input is already CPU-backed or CuPy is unavailable, it is returned unchanged.
 
     Args:
-        tile (xr.Dataset): The xarray dataset to move.
+        tile: The data object to move. Can be:
+            - `cupy.ndarray`
+            - `xarray.DataArray`
+            - `xarray.Dataset`
 
     Returns:
-        xr.Dataset: _description_
+        The same type of object, but backed by NumPy arrays on CPU.
 
+    Raises:
+        AttributeError: Only if unexpected object types or data attributes are missing.
     """
-    if tile.cupy.is_cupy:
-        tile = tile.cupy.as_numpy()
-        free_cupy()
+    if has_cuda_and_cupy():
+        try:
+            # Case 1: raw CuPy array
+            if isinstance(tile, cp.ndarray):
+                return cp.asnumpy(tile)
+
+            # Case 2 & 3: DataArray or Dataset backed by CuPy
+            if isinstance(tile, xr.DataArray):
+                data = tile.data
+                if hasattr(data, "__cuda_array_interface__"):
+                    return tile.copy(data=cp.asnumpy(data))
+                return tile
+
+            # Case 3: Dataset containing CuPy-backed DataArrays
+            if isinstance(tile, xr.Dataset):
+                vars_cpu = {}
+                for name, da in tile.data_vars.items():
+                    data = da.data
+                    if hasattr(data, "__cuda_array_interface__"):
+                        data = cp.asnumpy(data)
+                    vars_cpu[name] = (da.dims, data, da.attrs)
+                return xr.Dataset(vars_cpu, attrs=tile.attrs)
+
+        except AttributeError:
+            # Dataset doesn't have cupy attribute, already on CPU
+            pass
     return tile
 
 
