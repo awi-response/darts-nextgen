@@ -50,3 +50,4 @@ scripts-local/
 .pixi
 *.egg-info
 .idea/
+*.toml

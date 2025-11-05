@@ -1,6 +1,5 @@
 """Ray implementation of the v2 pipelines."""
 
-import json
 import logging
 import os
 import time
@@ -135,6 +134,7 @@ class _BaseRayPipeline(ABC):
 
     def _create_auxiliary_datacubes(self, arcticdem: bool = True, tcvis: bool = True):
         import smart_geocubes
+
         from darts.utils.logging import LoggingManager
 
         LoggingManager.apply_logging_handlers("smart_geocubes")
@@ -531,10 +531,12 @@ class Sentinel2RayPipeline(_BaseRayPipeline):
 
     @cached_property
     def _s2ids(self) -> list[str]:
-        from darts_acquisition import get_s2ids_from_geodataframe_ee
+        from darts_acquisition import get_gee_s2_sr_scene_ids_from_geodataframe
 
         return sorted(
-            get_s2ids_from_geodataframe_ee(self.aoi_shapefile, self.start_date, self.end_date, self.max_cloud_cover)
+            get_gee_s2_sr_scene_ids_from_geodataframe(
+                self.aoi_shapefile, self.start_date, self.end_date, self.max_cloud_cover
+            )
         )
 
     def _get_tile_id(self, tilekey):
