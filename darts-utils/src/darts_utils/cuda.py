@@ -6,6 +6,7 @@ from typing import Literal
 
 import xarray as xr
 from xrspatial.utils import has_cuda_and_cupy
+from typing import Any
 
 logger = logging.getLogger(__name__.replace("darts_", "darts."))
 
@@ -54,7 +55,9 @@ def move_to_device(
     return tile
 
 
-def move_to_host(tile: xr.Dataset | xr.DataArray | "cp.ndarray") -> xr.Dataset | xr.DataArray | "np.ndarray":
+def move_to_host(
+            tile: xr.Dataset | xr.DataArray | Any,
+    ) -> xr.Dataset | xr.DataArray | Any:
     """Ensure data are moved from GPU (CuPy) memory to CPU (NumPy) memory.
 
     This function converts CuPy-backed arrays inside an xarray Dataset or DataArray
