@@ -234,7 +234,6 @@ class _BaseRayPipeline(ABC):
             logger.info(f"Initializing {num_workers} Ray workers with Earth Engine.")
             ray.get([init_worker.remote() for _ in range(num_workers)])
 
-        import smart_geocubes
         from darts_export import missing_outputs
 
         from darts.pipelines._ray_wrapper import (
@@ -246,21 +245,12 @@ class _BaseRayPipeline(ABC):
         )
         from darts.utils.logging import LoggingManager
 
+        # Create the datacubes if they do not exist (empty containers that get filled over time)
+        self._create_auxiliary_datacubes()
+
         # determine models to use
         ensemble, models = self._load_ensemble()
-
-        # Create the datacubes if they do not exist
-        LoggingManager.apply_logging_handlers("smart_geocubes")
         arcticdem_resolution = self._arcticdem_resolution()
-        if arcticdem_resolution == 2:
-            accessor = smart_geocubes.ArcticDEM2m(self.arcticdem_dir)
-        elif arcticdem_resolution == 10:
-            accessor = smart_geocubes.ArcticDEM10m(self.arcticdem_dir)
-        if not accessor.created:
-            accessor.create(overwrite=False)
-        accessor = smart_geocubes.TCTrend(self.tcvis_dir)
-        if not accessor.created:
-            accessor.create(overwrite=False)
         adem_buffer = ceil(self.tpi_outer_radius / arcticdem_resolution * sqrt(2))
 
         # Get files to process
