@@ -207,10 +207,18 @@ class _BaseRayPipeline(ABC):
 
         import ray
 
-        ray_context = ray.init(
-            num_cpus=self.num_cpus,  # We use one CPU per Ray task
-            num_gpus=len(self.devices) if self.devices is not None else None,
-        )
+        if os.getenv("RAY_ADDRESS"):
+            # Connect to an existing Ray cluster (e.g., on GKE)
+            ray_context = ray.init(address=os.getenv("RAY_ADDRESS"))
+            logger.info(f"Connected to Ray cluster at {os.getenv('RAY_ADDRESS')}")
+        else:
+            # Fallback to local
+            ray_context = ray.init(
+                num_cpus=self.num_cpus,
+                num_gpus=len(self.devices) if self.devices is not None else None,
+            )
+            logger.info("Started local Ray instance for debugging.")
+
         logger.debug(f"Ray initialized with context: {ray_context}")
         logger.info(f"Ray Dashboard URL: {ray_context.dashboard_url}")
         logger.debug(f"Ray cluster resources: {ray.cluster_resources()}")
