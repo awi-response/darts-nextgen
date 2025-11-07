@@ -123,18 +123,44 @@ def download_gee_s2_sr_scene(
     store: Path,
     bands_mapping: dict | Literal["all"] = {"B2": "blue", "B3": "green", "B4": "red", "B8": "nir"},
 ):
-    """Download a Sentinel-2 scene from CDSE via STAC API and stores it in the specified raw data store.
+    """Download a Sentinel-2 scene from Google Earth Engine and store it in the local data store.
 
-    Note:
-        Must use the `darts.utils.copernicus.init_copernicus` function to setup authentification
-        with the Copernicus AWS S3 bucket before using this function.
+    This function downloads Sentinel-2 Level-2A surface reflectance data from Google Earth
+    Engine (GEE) and stores it locally in a compressed zarr store for efficient repeated access.
 
     Args:
-        s2item (str | Item): The Sentinel-2 image ID or the ee image object.
-        store (Path): The path to the raw data store.
-        bands_mapping (dict[str, str], optional): A mapping from bands to obtain.
-            Will be renamed to the corresponding band names.
+        s2item (str | ee.Image): Sentinel-2 scene identifier (e.g., "20230615T123456_20230615T123659_T33UUP")
+            or an ee.Image object from the COPERNICUS/S2_SR collection.
+        store (Path): Path to the local zarr store directory where the scene will be saved.
+        bands_mapping (dict | Literal["all"], optional): Mapping of Sentinel-2 band names to
+            custom band names. Keys should be GEE band names (e.g., "B2", "B3"), values are
+            the desired output names. Use "all" to load all optical bands and SCL.
             Defaults to {"B2": "blue", "B3": "green", "B4": "red", "B8": "nir"}.
+
+    Note:
+        - Requires Google Earth Engine authentication. Use `ee.Initialize()` before calling.
+        - All bands are downloaded at 10m resolution.
+        - Data is stored with zstd compression for efficient storage.
+        - The SCL (Scene Classification Layer) band is automatically included if not specified.
+
+    Example:
+        Download Sentinel-2 scenes from GEE:
+
+        ```python
+        import ee
+        from pathlib import Path
+        from darts_acquisition import download_gee_s2_sr_scene
+
+        # Initialize Earth Engine
+        ee.Initialize()
+
+        # Download scene with all bands
+        download_gee_s2_sr_scene(
+            s2item="20230615T123456_20230615T123659_T33UUP",
+            store=Path("/data/s2_store"),
+            bands_mapping="all"
+        )
+        ```
 
     """
     bands_mapping = _get_band_mapping(bands_mapping)
@@ -155,28 +181,120 @@ def load_gee_s2_sr_scene(
     output_dir_for_debug_geotiff: Path | None = None,
     device: Literal["cuda", "cpu"] | int = DEFAULT_DEVICE,
 ) -> xr.Dataset:
-    """Load a Sentinel-2 scene from Google Earth Engine and return it as an xarray dataset.
+    """Load a Sentinel-2 scene from Google Earth Engine, downloading if necessary.
 
-    Note:
-        Must use the `ee.Initialize` function to setup authentification
-        with google earth engine.
+    This function loads Sentinel-2 Level-2A surface reflectance data from Google Earth Engine.
+    If a local store is provided, the data is cached for efficient repeated access. The function
+    handles quality masking, reflectance scaling with time-dependent offsets, and optional GPU
+    acceleration. It also handles NaN values in the data by masking them as invalid.
+
+    The download logic is basically as follows:
+
+    ```
+    IF flag:raw-data-store THEN
+        IF exist_local THEN
+            open -> memory
+        ELIF online THEN
+            download -> memory
+            save
+        ELIF offline THEN
+            RAISE ERROR
+        ENDIF
+    ELIF online THEN
+        download -> memory
+    ELIF offline THEN
+        RAISE ERROR
+    ENDIF
+    ```
 
     Args:
-        s2item (str | ee.Image): The Sentinel-2 image ID or the ee image object.
-        bands_mapping (dict[str, str] | Literal["all"], optional): A mapping from bands to obtain.
-            Will be renamed to the corresponding band names.
-            If "all" is provided, will load all optical bands and the SCL band.
+        s2item (str | ee.Image): Sentinel-2 scene identifier or ee.Image object from COPERNICUS/S2_SR.
+        bands_mapping (dict | Literal["all"], optional): Mapping of Sentinel-2 band names to
+            custom band names. Keys should be GEE band names (e.g., "B2", "B3"), values are
+            output names. Use "all" to load all optical bands and SCL.
             Defaults to {"B2": "blue", "B3": "green", "B4": "red", "B8": "nir"}.
-        store (Path | None, optional): The path to the raw data store. If None, data will not be stored locally.
-            Defaults to None.
-        offline (bool, optional): If True, will not attempt to download any missing data. Defaults to False.
-        output_dir_for_debug_geotiff (Path | None): Pipeline output directory.
-            If provided, will write the raw data as GeoTIFF file for debugging purposes.
-            Defaults to None.
-        device (Literal["cuda", "cpu"] | int, optional): The device to load the data onto.
+        store (Path | None, optional): Path to local zarr store for caching. If None, data is
+            loaded directly without caching. Defaults to None.
+        offline (bool, optional): If True, only loads from local store without downloading.
+            Requires `store` to be provided. If False, missing data is downloaded.
+            Defaults to False.
+        output_dir_for_debug_geotiff (Path | None, optional): If provided, writes raw data as
+            GeoTIFF files for debugging. Defaults to None.
+        device (Literal["cuda", "cpu"] | int, optional): Device for processing (GPU or CPU).
+            Defaults to DEFAULT_DEVICE.
 
     Returns:
-        xr.Dataset: The loaded dataset
+        xr.Dataset: Sentinel-2 dataset with the following data variables based on bands_mapping:
+            - Optical bands (float32): Surface reflectance values [~-0.1 to ~1.0 for newer scenes,
+              ~0.0 to ~1.0 for scenes before 2022-01-25]
+              Default bands: blue, green, red, nir
+              Additional bands available: coastal, rededge071, rededge075, rededge078,
+              nir08, nir09, swir16, swir22
+              Each has attributes:
+              - long_name: "Sentinel 2 {Band}"
+              - units: "Reflectance"
+              - data_source: "Sentinel-2 L2A via Google Earth Engine (COPERNICUS/S2_SR)"
+            - s2_scl (uint8): Scene Classification Layer
+              Attributes: long_name, description of class values (0=NO_DATA, 1=SATURATED, etc.)
+            - quality_data_mask (uint8): Derived quality mask
+              - 0 = Invalid (no data, saturated, defective, or NaN values)
+              - 1 = Low quality (shadows, clouds, cirrus, snow/ice, water)
+              - 2 = High quality (clear vegetation or non-vegetated land)
+            - valid_data_mask (uint8): Binary validity mask (1=valid, 0=invalid)
+
+            Dataset attributes:
+            - azimuth (float): Solar azimuth angle from MEAN_SOLAR_AZIMUTH_ANGLE
+            - elevation (float): Solar elevation angle from MEAN_SOLAR_ZENITH_ANGLE
+            - s2_tile_id (str): Full PRODUCT_ID from GEE
+            - tile_id (str): Scene identifier
+            - time (str): Acquisition timestamp
+
+    Note:
+        The `offline` parameter controls data fetching:
+        - When `offline=False`: Automatically downloads missing data from GEE and stores it
+          in the local zarr store (if store is provided).
+        - When `offline=True`: Only reads from the local store. Raises an error if data is
+          missing or if store is None.
+
+        Reflectance processing:
+        - For scenes >= 2022-01-25: (DN / 10000.0) - 0.1 (processing baseline 04.00+)
+        - For scenes < 2022-01-25: DN / 10000.0 (older processing baseline)
+        - NaN values are filled with 0 and marked as invalid in quality_data_mask
+        - Pixels where SCL is NaN are also masked as invalid
+
+        This function handles spatially random NaN values that can occur in GEE data by
+        marking them as invalid and filling with 0 to prevent propagation in calculations.
+
+        Quality mask derivation from SCL:
+        - Invalid (0): NO_DATA, SATURATED_OR_DEFECTIVE, or NaN values
+        - Low quality (1): CAST_SHADOWS, CLOUD_SHADOWS, CLOUD_*, THIN_CIRRUS, SNOW/ICE, WATER
+        - High quality (2): VEGETATION, NOT_VEGETATED
+
+    Example:
+        Load scene with local caching:
+
+        ```python
+        import ee
+        from pathlib import Path
+        from darts_acquisition import load_gee_s2_sr_scene
+
+        # Initialize Earth Engine
+        ee.Initialize()
+
+        # Load with caching
+        s2_ds = load_gee_s2_sr_scene(
+            s2item="20230615T123456_20230615T123659_T33UUP",
+            bands_mapping="all",
+            store=Path("/data/s2_store"),
+            offline=False  # Download if not cached
+        )
+
+        # Compute NDVI
+        ndvi = (s2_ds.nir - s2_ds.red) / (s2_ds.nir + s2_ds.red)
+
+        # Filter to high quality pixels
+        s2_filtered = s2_ds.where(s2_ds.quality_data_mask == 2)
+        ```
 
     """
     if isinstance(s2item, str):
@@ -259,7 +377,7 @@ def get_gee_s2_sr_scene_ids_from_tile_ids(
     end_date: str | None = None,
     max_cloud_cover: int | None = 10,
     max_snow_cover: int | None = 10,
-):
+) -> set[str]:
     """Search for Sentinel-2 scenes via Earth Engine based on a list of tile IDs.
 
     Args:

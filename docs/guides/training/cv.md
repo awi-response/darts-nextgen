@@ -1,7 +1,7 @@
 # Cross-Validation
 
 ```sh
-[uv run] darts cross-validation-smp ...
+[uv run] darts training crossval-smp ...
 ```
 
 ## Fold strategies
@@ -28,11 +28,6 @@ This is useful for e.g. the final training of a model before deployment.
 
     The data splitting is implemented by the [darts_segmentation.training.data.DartsDataModule][] and can therefore be used in other settings as well.
 
-    ::: darts_segmentation.training.data.DartsDataModule
-        options:
-            heading_level: 3
-            members: false
-
 ## Scoring strategies
 
 To turn the information (metrics) gathered of a single cross-validation into a useful score, we need to somehow aggregate the metrics.
@@ -52,10 +47,10 @@ The scores for very low loss values where so high that the scores needed to be c
 However, especially the geometric mean shows a smoother curve than the harmonic mean for the multi-metric scoring with IoU and Recall.
 This should show that the strategy should be chosen carefully and in respect to the metrics used.
 
-|              |                                                                                                              |
-| -----------: | ------------------------------------------------------------------------------------------------------------ |
-|   IoU & Loss | ![Scoring strategies for JaccardIndex and Loss](../assets/score_strategies_iou_loss.png){ loading=lazy }     |
-| IoU & Recall | ![Scoring strategies for JaccardIndex and Recall](../assets/score_strategies_iou_recall.png){ loading=lazy } |
+|              |                                                                                                                 |
+| -----------: | --------------------------------------------------------------------------------------------------------------- |
+|   IoU & Loss | ![Scoring strategies for JaccardIndex and Loss](../../assets/score_strategies_iou_loss.png){ loading=lazy }     |
+| IoU & Recall | ![Scoring strategies for JaccardIndex and Recall](../../assets/score_strategies_iou_recall.png){ loading=lazy } |
 
 ??? tip "Code to reproduce the visualization"
 

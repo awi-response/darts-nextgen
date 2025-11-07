@@ -26,12 +26,59 @@ logger = logging.getLogger(__name__)
 class _BasePipeline(ABC):
     """Base class for all v2 pipelines.
 
-    This class provides the run method which is the main entry point for all pipelines.
+    This class provides the `run` and `prepare_data` methods which are the main entry points for all pipelines.
 
-    This class is meant to be subclassed by the specific pipelines.
-    These pipeliens must implement the _aqdata_generator method.
+    This class is meant to be subclassed by the specific pipelines (e.g., PlanetPipeline, Sentinel2Pipeline).
+    Subclasses must implement the following abstract methods:
+        - `_arcticdem_resolution`: Return the ArcticDEM resolution to use (2, 10, or 32 meters).
+        - `_get_tile_id`: Extract a tile identifier from a tilekey.
+        - `_tileinfos`: Return a list of (tilekey, output_path) tuples for all tiles to process.
+        - `_load_tile`: Load optical data for a given tilekey.
+        - `_tile_aoi`: Return a GeoDataFrame representing the area of interest for all tiles.
 
-    The main class must be also a dataclass, to fully inherit all parameter of this class (and the mixins).
+    Optionally, subclasses can override `_download_tile` to implement data download functionality.
+
+    The subclass must also be a dataclass to fully inherit all parameters of this class.
+
+    Args:
+        model_files (list[Path] | None): List of model file paths to use for segmentation.
+            If None, will search the default model directory for all .pt files. Defaults to None.
+        default_dirs (DefaultPaths): Default directory paths configuration. Defaults to DefaultPaths().
+        output_data_dir (Path | None): The output directory for results.
+            If None, will use the default output directory based on DARTS paths. Defaults to None.
+        arcticdem_dir (Path | None): Directory containing ArcticDEM datacube and extent files.
+            If None, will use the default directory based on DARTS paths and resolution. Defaults to None.
+        tcvis_dir (Path | None): Directory containing TCVis data.
+            If None, will use the default TCVis directory. Defaults to None.
+        device (Literal["cuda", "cpu", "auto"] | int | None): Device for computation.
+            "cuda" uses GPU 0, int specifies GPU index, "auto" selects free GPU, "cpu" uses CPU.
+            Defaults to None (auto-selected).
+        ee_project (str | None): Earth Engine project ID. May be omitted if defined in persistent credentials.
+            Defaults to None.
+        ee_use_highvolume (bool): Whether to use Earth Engine high-volume server. Defaults to True.
+        tpi_outer_radius (int): Outer radius in meters for TPI (Topographic Position Index) calculation.
+            Defaults to 100.
+        tpi_inner_radius (int): Inner radius in meters for TPI calculation. Defaults to 0.
+        patch_size (int): Patch size for inference. Defaults to 1024.
+        overlap (int): Overlap between patches during inference. Defaults to 256.
+        batch_size (int): Batch size for inference. Defaults to 8.
+        reflection (int): Reflection padding for inference. Defaults to 0.
+        binarization_threshold (float): Threshold for binarizing probabilities. Defaults to 0.5.
+        mask_erosion_size (int): Size of disk for mask erosion and inner edge cropping. Defaults to 10.
+        edge_erosion_size (int | None): Size for outer edge cropping.
+            If None, defaults to `mask_erosion_size`. Defaults to None.
+        min_object_size (int): Minimum object size in pixels to keep. Defaults to 32.
+        quality_level (int | Literal["high_quality", "low_quality", "none"]): Quality filtering level.
+            Can be 0="none", 1="low_quality", 2="high_quality". Defaults to 1.
+        export_bands (list[str]): Bands to export, e.g., "probabilities", "binarized", "polygonized",
+            "extent", "thumbnail", "optical", "dem", "tcvis", "metadata", or specific band names.
+            Defaults to ["probabilities", "binarized", "polygonized", "extent", "thumbnail"].
+        write_model_outputs (bool): Whether to save individual model outputs (not just ensemble).
+            Automatically set to False if only one model is used. Defaults to False.
+        overwrite (bool): Whether to overwrite existing output files. Defaults to False.
+        offline (bool): If True, will not attempt to download any missing data. Defaults to False.
+        debug_data (bool): If True, writes intermediate data for debugging purposes. Defaults to False.
+
     """
 
     model_files: list[Path] = None
@@ -65,7 +112,7 @@ class _BasePipeline(ABC):
         paths.set_defaults(self.default_dirs)
         # The defaults will be overwritten in the respective realizations
         self.output_data_dir = self.output_data_dir or paths.out
-        self.model_files = self.model_files or list(self.paths.models.glob("*.pt"))
+        self.model_files = self.model_files or list(paths.models.glob("*.pt"))
         if self.arcticdem_dir is None:
             arcticdem_resolution = self._arcticdem_resolution()
             self.arcticdem_dir = paths.arcticdem(arcticdem_resolution)
@@ -75,32 +122,84 @@ class _BasePipeline(ABC):
 
     @abstractmethod
     def _arcticdem_resolution(self) -> Literal[2, 10, 32]:
-        """Return the resolution of the ArcticDEM data."""
+        """Return the resolution of the ArcticDEM data.
+
+        Returns:
+            The ArcticDEM resolution in meters (2, 10, or 32).
+
+        """
         pass
 
     @abstractmethod
     def _get_tile_id(self, tilekey: Any) -> str:
+        """Extract a string identifier from a tilekey.
+
+        Args:
+            tilekey: The tilekey (e.g., file path or scene ID).
+
+        Returns:
+            A string identifier for the tile.
+
+        """
         pass
 
     @abstractmethod
     def _tileinfos(self) -> list[tuple[Any, Path]]:
-        # Yields a tuple
-        # str: anything which id needed to load the tile, e.g. a path or a tile id
-        # Path: the path to the output directory
+        """Generate list of tiles to process.
+
+        Returns:
+            List of tuples containing:
+                - tilekey: Anything needed to load the tile (e.g., path or tile ID)
+                - output_path: Path to the output directory for this tile
+
+        """
         pass
 
     @abstractmethod
     def _load_tile(self, tileinfo: Any) -> "xr.Dataset":
+        """Load optical data for a given tile.
+
+        Args:
+            tileinfo: Information needed to load the tile (from _tileinfos).
+
+        Returns:
+            xarray Dataset containing optical bands and masks.
+
+        """
         pass
 
     @abstractmethod
     def _tile_aoi(self) -> "gpd.GeoDataFrame":
+        """Return a GeoDataFrame representing the area of interest for all tiles.
+
+        Returns:
+            GeoDataFrame in EPSG:4326 containing geometries for all tiles.
+
+        """
         pass
 
     def _download_tile(self, tileinfo: Any) -> None:
+        """Download optical data for a given tile.
+
+        Optional method that can be overridden by subclasses to implement
+        data download functionality for offline processing.
+
+        Args:
+            tileinfo: Information needed to download the tile.
+
+        """
         pass
 
     def _result_metadata(self, tilekey: Any) -> dict:
+        """Generate metadata dictionary for export.
+
+        Args:
+            tilekey: The tilekey for the current tile.
+
+        Returns:
+            Dictionary with DARTS_ prefixed metadata keys and values.
+
+        """
         export_metadata = {
             "tileid": self._get_tile_id(tilekey),
             "modelfiles": [f.name for f in self.model_files],
@@ -119,12 +218,26 @@ class _BasePipeline(ABC):
         return {f"DARTS_{k}": v for k, v in export_metadata.items()}
 
     def _validate(self):
+        """Validate pipeline configuration.
+
+        Raises:
+            ValueError: If no model files or export bands are provided.
+
+        """
         if self.model_files is None or len(self.model_files) == 0:
             raise ValueError("No model files provided. Please provide a list of model files.")
         if len(self.export_bands) == 0:
             raise ValueError("No export bands provided. Please provide a list of export bands.")
 
     def _dump_config(self) -> str:
+        """Save pipeline configuration to TOML file.
+
+        Creates a timestamped configuration file in the output directory.
+
+        Returns:
+            Timestamp string used for the configuration filename.
+
+        """
         current_time = time.strftime("%Y-%m-%d_%H-%M-%S")
         logger.info(f"Starting pipeline at {current_time}.")
 
@@ -144,6 +257,13 @@ class _BasePipeline(ABC):
         return current_time
 
     def _create_auxiliary_datacubes(self, arcticdem: bool = True, tcvis: bool = True):
+        """Create auxiliary data datacubes if they don't exist.
+
+        Args:
+            arcticdem: If True, creates ArcticDEM datacube. Defaults to True.
+            tcvis: If True, creates TCVis datacube. Defaults to True.
+
+        """
         import smart_geocubes
 
         from darts.utils.logging import LoggingManager
@@ -164,6 +284,12 @@ class _BasePipeline(ABC):
                 accessor.create(overwrite=False)
 
     def _load_ensemble(self) -> "EnsembleV1":
+        """Load and initialize the ensemble of segmentation models.
+
+        Returns:
+            Initialized EnsembleV1 instance with loaded models.
+
+        """
         import torch
         from darts_ensemble import EnsembleV1
 
@@ -177,6 +303,15 @@ class _BasePipeline(ABC):
         return ensemble
 
     def _check_aux_needs(self, ensemble: "EnsembleV1") -> tuple[bool, bool]:
+        """Check which auxiliary data is required by the ensemble.
+
+        Args:
+            ensemble: The loaded ensemble instance.
+
+        Returns:
+            Tuple of (needs_arcticdem, needs_tcvis) booleans.
+
+        """
         # Get the ensemble to check which auxiliary data is necessary
         required_bands = ensemble.required_bands
         arcticdem_bands = {"dem", "relative_elevation", "slope", "aspect", "hillshade", "curvature"}
@@ -186,6 +321,16 @@ class _BasePipeline(ABC):
         return needs_arcticdem, needs_tcvis
 
     def prepare_data(self, optical: bool = False, aux: bool = False):
+        """Download and prepare data for offline processing.
+
+        Validates configuration, determines data requirements from models,
+        and downloads requested data (optical imagery and/or auxiliary data).
+
+        Args:
+            optical: If True, downloads optical imagery. Defaults to False.
+            aux: If True, downloads auxiliary data (ArcticDEM, TCVis) as needed. Defaults to False.
+
+        """
         assert optical or aux, "Nothing to prepare. Please set optical and/or aux to True."
 
         self._validate()
@@ -250,6 +395,28 @@ class _BasePipeline(ABC):
                 logger.info(f"Downloaded {n_tiles} tiles.")
 
     def run(self):  # noqa: C901
+        """Run the complete segmentation pipeline.
+
+        Executes the full pipeline including:
+        1. Configuration validation and dumping
+        2. Loading ensemble models
+        3. Creating/loading auxiliary datacubes
+        4. Processing each tile:
+           - Loading optical data
+           - Loading auxiliary data (ArcticDEM, TCVis) as needed
+           - Preprocessing
+           - Segmentation
+           - Postprocessing
+           - Exporting results
+        5. Saving results and timing information
+
+        Results are saved to the output directory with timestamped configuration,
+        results parquet file, and timing information.
+
+        Raises:
+            KeyboardInterrupt: If user interrupts execution.
+
+        """
         self._validate()
         current_time = self._dump_config()
 
@@ -408,64 +575,59 @@ class _BasePipeline(ABC):
 # =============================================================================
 @dataclass
 class PlanetPipeline(_BasePipeline):
-    """Pipeline for PlanetScope data.
+    """Pipeline for processing PlanetScope data.
+
+    Processes PlanetScope imagery (both orthotiles and scenes) for RTS segmentation.
+    Supports both offline and online processing modes.
+
+    Data Structure:
+        Expects PlanetScope data organized as:
+        - Orthotiles: `orthotiles_dir/tile_id/scene_id/`
+        - Scenes: `scenes_dir/scene_id/`
 
     Args:
-        orthotiles_dir (Path): The directory containing the PlanetScope orthotiles.
-        scenes_dir (Path): The directory containing the PlanetScope scenes.
-        image_ids (list): The list of image ids to process. If None, all images in the directory will be processed.
-
-
-        model_files (Path | list[Path] | None, optional): The path to the models to use for segmentation.
-            Can also be a single Path to only use one model. This implies `write_model_outputs=False`
-            If a list is provided, will use an ensemble of the models.
-            If None, will search the default model directory based on the DARTS paths for all .pt files.
-            Defaults to None.
-        output_data_dir (Path | None, optional): The "output" directory.
-            If None, will use the default output directory based on the DARTS paths.
-            Defaults to None.
-        arcticdem_dir (Path | None, optional): The directory containing the ArcticDEM data
-            (the datacube and the extent files).
-            Will be created and downloaded if it does not exist.
-            If None, will use the default auxiliary directory based on the DARTS paths.
-            Defaults to None.
-        tcvis_dir (Path | None, optional): The directory containing the TCVis data.
-            If None, will use the default TCVis directory based on the DARTS paths.
-            Defaults to None.
-        device (Literal["cuda", "cpu"] | int, optional): The device to run the model on.
-            If "cuda" take the first device (0), if int take the specified device.
-            If "auto" try to automatically select a free GPU (<50% memory usage).
-            Defaults to "cuda" if available, else "cpu".
-        ee_project (str, optional): The Earth Engine project ID or number to use. May be omitted if
-            project is defined within persistent API credentials obtained via `earthengine authenticate`.
-        ee_use_highvolume (bool, optional): Whether to use the high volume server (https://earthengine-highvolume.googleapis.com).
-        tpi_outer_radius (int, optional): The outer radius of the annulus kernel for the tpi calculation
-            in m. Defaults to 100m.
-        tpi_inner_radius (int, optional): The inner radius of the annulus kernel for the tpi calculation
-            in m. Defaults to 0.
-        patch_size (int, optional): The patch size to use for inference. Defaults to 1024.
-        overlap (int, optional): The overlap to use for inference. Defaults to 16.
-        batch_size (int, optional): The batch size to use for inference. Defaults to 8.
-        reflection (int, optional): The reflection padding to use for inference. Defaults to 0.
-        binarization_threshold (float, optional): The threshold to binarize the probabilities. Defaults to 0.5.
-        mask_erosion_size (int, optional): The size of the disk to use for mask erosion and the edge-cropping.
-            Defaults to 10.
-        edge_erosion_size (int, optional): If the edge-cropping should have a different witdth, than the (inner) mask
-            erosion, set it here. Defaults to `mask_erosion_size`.
-        min_object_size (int, optional): The minimum object size to keep in pixel. Defaults to 32.
-        quality_level (int | Literal["high_quality", "low_quality", "none"], optional):
-            The quality level to use for the segmentation. Can also be an int.
-            In this case 0="none" 1="low_quality" 2="high_quality". Defaults to 1.
-        export_bands (list[str], optional): The bands to export.
-            Can be a list of "probabilities", "binarized", "polygonized", "extent", "thumbnail", "optical", "dem",
-            "tcvis", "metadata" or concrete band-names.
+        orthotiles_dir (Path | None): Directory containing PlanetScope orthotiles.
+            If None, uses default path from DARTS paths. Defaults to None.
+        scenes_dir (Path | None): Directory containing PlanetScope scenes.
+            If None, uses default path from DARTS paths. Defaults to None.
+        image_ids (list | None): List of image/scene IDs to process.
+            If None, processes all images found in orthotiles_dir and scenes_dir. Defaults to None.
+        model_files (Path | list[Path] | None): Path(s) to model file(s) for segmentation.
+            Single Path implies `write_model_outputs=False`.
+            If None, searches default model directory for all .pt files. Defaults to None.
+        output_data_dir (Path | None): Output directory for results.
+            If None, uses `{default_out}/planet`. Defaults to None.
+        arcticdem_dir (Path | None): Directory for ArcticDEM datacube.
+            Will be created/downloaded if needed. If None, uses default path. Defaults to None.
+        tcvis_dir (Path | None): Directory for TCVis data.
+            If None, uses default path. Defaults to None.
+        device (Literal["cuda", "cpu", "auto"] | int | None): Computation device.
+            "cuda" uses GPU 0, int specifies GPU index, "auto" selects free GPU. Defaults to None.
+        ee_project (str | None): Earth Engine project ID.
+            May be omitted if defined in persistent credentials. Defaults to None.
+        ee_use_highvolume (bool): Whether to use EE high-volume server. Defaults to True.
+        tpi_outer_radius (int): Outer radius (m) for TPI calculation. Defaults to 100.
+        tpi_inner_radius (int): Inner radius (m) for TPI calculation. Defaults to 0.
+        patch_size (int): Patch size for inference. Defaults to 1024.
+        overlap (int): Overlap between patches. Defaults to 256.
+        batch_size (int): Batch size for inference. Defaults to 8.
+        reflection (int): Reflection padding for inference. Defaults to 0.
+        binarization_threshold (float): Threshold for binarizing probabilities. Defaults to 0.5.
+        mask_erosion_size (int): Disk size for mask erosion and inner edge cropping. Defaults to 10.
+        edge_erosion_size (int | None): Size for outer edge cropping.
+            If None, uses `mask_erosion_size`. Defaults to None.
+        min_object_size (int): Minimum object size (pixels) to keep. Defaults to 32.
+        quality_level (int | Literal["high_quality", "low_quality", "none"]): Quality filtering level.
+            0="none", 1="low_quality", 2="high_quality". Defaults to 1.
+        export_bands (list[str]): Bands to export.
+            Can include "probabilities", "binarized", "polygonized", "extent", "thumbnail",
+            "optical", "dem", "tcvis", "metadata", or specific band names.
             Defaults to ["probabilities", "binarized", "polygonized", "extent", "thumbnail"].
-        write_model_outputs (bool, optional): Also save the model outputs, not only the ensemble result.
+        write_model_outputs (bool): Save individual model outputs (not just ensemble).
             Defaults to False.
-        overwrite (bool, optional): Whether to overwrite existing files. Defaults to False.
-        offline (bool, optional): If True, will not attempt to download any missing data. Defaults to False.
-        debug_data (bool, optional): If True, will write intermediate data for debugging purposes to output.
-            Defaults to False.
+        overwrite (bool): Overwrite existing output files. Defaults to False.
+        offline (bool): Skip downloading missing data. Defaults to False.
+        debug_data (bool): Write intermediate debugging data. Defaults to False.
 
     """
 
@@ -541,133 +703,121 @@ class PlanetPipeline(_BasePipeline):
 
     @staticmethod
     def cli_prepare_data(*, pipeline: "PlanetPipeline", aux: bool = False):
-        """Download all necessary data for offline processing."""
+        """Download all necessary data for offline processing.
+
+        Args:
+            pipeline: Configured PlanetPipeline instance.
+            aux: If True, downloads auxiliary data (ArcticDEM, TCVis). Defaults to False.
+
+        """
         assert not pipeline.offline, "Pipeline must be online to prepare data for offline usage."
         pipeline.__post_init__()
         pipeline.prepare_data(optical=False, aux=aux)
 
     @staticmethod
     def cli(*, pipeline: "PlanetPipeline"):
-        """Run the sequential pipeline for Planet data."""
+        """Run the sequential pipeline for PlanetScope data.
+
+        Args:
+            pipeline: Configured PlanetPipeline instance.
+
+        """
         pipeline.__post_init__()
         pipeline.run()
 
 
 @dataclass
 class Sentinel2Pipeline(_BasePipeline):
-    """Pipeline for Sentinel 2.
+    """Pipeline for processing Sentinel-2 data.
 
-    ### Source selection
+    Processes Sentinel-2 Surface Reflectance (SR) imagery from either CDSE or Google Earth Engine.
+    Supports multiple scene selection methods and flexible filtering options.
 
-        Because of historical reasons, both the scene source can be specified via the `raw_data_source` parameter.
-        Currently, two sources are supported:
+    Source Selection:
+        The data source is specified via the `raw_data_source` parameter:
+        - "cdse": Copernicus Data Space Ecosystem (CDSE)
+        - "gee": Google Earth Engine (GEE)
 
-            - "cdse": The Copernicus Data and Exploitation Service (CDSE).
-            - "gee": Google Earth Engine (GEE).
+        Both sources require accounts and proper credential setup on the system.
 
-        Please note that both sources need accounts and the credentials need to be setup on the system respectively.
+    Scene Selection:
+        Scenes can be selected using one of four mutually exclusive methods (priority order):
 
-    ### Scene selection
+        1. `scene_ids`: Direct list of Sentinel-2 scene IDs
+        2. `scene_id_file`: JSON file containing scene IDs
+        3. `tile_ids`: List of Sentinel-2 tile IDs (e.g., "33UVP") with optional filters
+        4. `aoi_file`: Shapefile defining area of interest with optional filters
 
-        There are 4 ways to select the scenes to process:
+    Filtering Options:
+        When using `tile_ids` or `aoi_file`, scenes can be filtered by:
+        - Cloud/snow cover: `max_cloud_cover`, `max_snow_cover`
+        - Date range: `start_date` and `end_date` (YYYY-MM-DD format)
+        - OR specific months/years: `months` (1-12) and `years`
 
-        1. Provide a list of scene ids via the `scene_ids` parameter.
-        2. Provide a file containing a list of scene ids via the `scene_id_file` parameter.
-        3. Provide a list of tile ids via the `tile_ids` parameter along with filtering parameters.
-        4. Provide an area of interest shapefile via the `aoi_file` parameter along with filtering parameters.
+        Note: Date range takes priority over month/year filtering.
+        Warning: No temporal filtering may cause rate-limit errors.
+        Note: Month/year filtering is experimental and only implemented for CDSE.
 
-        The selection methods are mutually exclusive and will be used in the order listed above.
-
-    ### Filtering and Date selection
-
-        One can filter the scenes based on the cloud cover and snow cover percentage
-        using the `max_cloud_cover` and `max_snow_cover` parameters.
-
-        A temporal filtering can either be applied by passing a start and end date
-        via the `start_date` and `end_date` parameters,
-        or by providing a list of months and/or years via the `months` and `years` parameters.
-        Again, these two selection methods are mutually exclusive and the date range will be used first if provided.
-        If no temporal filtering is applied, all available scenes will be selected,
-        which may cause rate-limit errors from CDSE or GEE.
-        Also note, that the year+month filtering is not well tested and only implemented for CDSE at the moment.
+    Offline Processing:
+        Use `cli_prepare_data` to download data for offline use.
+        The `prep_data_scene_id_file` stores scene IDs from queries for offline reuse.
 
     Args:
-        scene_ids (list[str] | None): A list of Sentinel 2 scene ids to process.
-        scene_id_file (Path | None): A file containing a list of Sentinel 2 scene ids to process.
-        tile_ids (list[str] | None): A list of Sentinel 2 tile ids to process.
-        aoi_file (Path | None): The shapefile containing the area of interest.
-        start_date (str): The start date of the time series in YYYY-MM-DD format.
-        end_date (str): The end date of the time series in YYYY-MM-DD format.
-        max_cloud_cover (int): The maximum cloud cover percentage to use for filtering the Sentinel 2 scenes.
-        max_snow_cover (int): The maximum snow cover percentage to use for filtering the Sentinel 2 scenes.
-        months (list[int] | None): A list of months (1-12) to use for filtering the Sentinel 2 scenes.
-        years (list[int] | None): A list of years to use for filtering the Sentinel 2 scenes.
-            Defaults to 10.
-        prep_data_scene_id_file (Path | None): A file containing a list of Sentinel 2 scene ids to process.
-            This is only used for offline processing to avoid querying the data source again.
-            If None, will not use any pre-processed scene ids.
-            Defaults to None.
-        sentinel2_grid_dir (Path | None): The directory to use for storing the Sentinel 2 grid files.
-            This is only used for the prep-data step and not in normal mode.
-            If None, will use the default auxiliary directory based on the DARTS paths.
-            Defaults to None.
-        raw_data_store (Path | None): The directory to use for storing the raw Sentinel 2 data locally.
-            If None, will use the default raw data directory based on the DARTS paths.
-            Defaults to None.
-        no_raw_data_store (bool, optional): If True, will not store any raw data locally.
-            This overrides the `raw_data_store` parameter.
-            Defaults to False.
-        raw_data_source (Literal["gee", "cdse"]): The source to use for downloading the Sentinel 2 data.
-        model_files (Path | list[Path] | None, optional): The path to the models to use for segmentation.
-            Can also be a single Path to only use one model. This implies `write_model_outputs=False`
-            If a list is provided, will use an ensemble of the models.
-            If None, will search the default model directory based on the DARTS paths for all .pt files.
-            Defaults to None.
-        output_data_dir (Path | None, optional): The "output" directory.
-            If None, will use the default output directory based on the DARTS paths.
-            Defaults to None.
-        arcticdem_dir (Path | None, optional): The directory containing the ArcticDEM data
-            (the datacube and the extent files).
-            Will be created and downloaded if it does not exist.
-            If None, will use the default auxiliary directory based on the DARTS paths.
-            Defaults to None.
-        tcvis_dir (Path | None, optional): The directory containing the TCVis data.
-            If None, will use the default TCVis directory based on the DARTS paths.
-            Defaults to None.
-        device (Literal["cuda", "cpu"] | int, optional): The device to run the model on.
-            If "cuda" take the first device (0), if int take the specified device.
-            If "auto" try to automatically select a free GPU (<50% memory usage).
-            Defaults to "cuda" if available, else "cpu".
-        ee_project (str, optional): The Earth Engine project ID or number to use. May be omitted if
-            project is defined within persistent API credentials obtained via `earthengine authenticate`.
-        ee_use_highvolume (bool, optional): Whether to use the high volume server (https://earthengine-highvolume.googleapis.com).
-        tpi_outer_radius (int, optional): The outer radius of the annulus kernel for the tpi calculation
-            in m. Defaults to 100m.
-        tpi_inner_radius (int, optional): The inner radius of the annulus kernel for the tpi calculation
-            in m. Defaults to 0.
-        patch_size (int, optional): The patch size to use for inference. Defaults to 1024.
-        overlap (int, optional): The overlap to use for inference. Defaults to 16.
-        batch_size (int, optional): The batch size to use for inference. Defaults to 8.
-        reflection (int, optional): The reflection padding to use for inference. Defaults to 0.
-        binarization_threshold (float, optional): The threshold to binarize the probabilities. Defaults to 0.5.
-        mask_erosion_size (int, optional): The size of the disk to use for mask erosion and the edge-cropping.
-            Defaults to 10.
-        edge_erosion_size (int, optional): If the edge-cropping should have a different witdth, than the (inner) mask
-            erosion, set it here. Defaults to `mask_erosion_size`.
-        min_object_size (int, optional): The minimum object size to keep in pixel. Defaults to 32.
-        quality_level (int | Literal["high_quality", "low_quality", "none"], optional):
-            The quality level to use for the segmentation. Can also be an int.
-            In this case 0="none" 1="low_quality" 2="high_quality". Defaults to 1.
-        export_bands (list[str], optional): The bands to export.
-            Can be a list of "probabilities", "binarized", "polygonized", "extent", "thumbnail", "optical", "dem",
-            "tcvis", "metadata" or concrete band-names.
+        scene_ids (list[str] | None): Direct list of Sentinel-2 scene IDs to process. Defaults to None.
+        scene_id_file (Path | None): JSON file containing scene IDs to process. Defaults to None.
+        tile_ids (list[str] | None): List of Sentinel-2 tile IDs (requires filtering params). Defaults to None.
+        aoi_file (Path | None): Shapefile with area of interest (requires filtering params). Defaults to None.
+        start_date (str | None): Start date for filtering (YYYY-MM-DD format). Defaults to None.
+        end_date (str | None): End date for filtering (YYYY-MM-DD format). Defaults to None.
+        max_cloud_cover (int | None): Maximum cloud cover percentage (0-100). Defaults to 10.
+        max_snow_cover (int | None): Maximum snow cover percentage (0-100). Defaults to 10.
+        months (list[int] | None): Filter by months (1-12). Defaults to None.
+        years (list[int] | None): Filter by years. Defaults to None.
+        prep_data_scene_id_file (Path | None): File to store/load scene IDs for offline processing.
+            Written during `prepare_data`, read during offline `run`. Defaults to None.
+        sentinel2_grid_dir (Path | None): Directory for Sentinel-2 grid shapefiles.
+            Used only in `prepare_data` with `tile_ids`. If None, uses default path. Defaults to None.
+        raw_data_store (Path | None): Directory for storing raw Sentinel-2 data locally.
+            If None, uses default path based on `raw_data_source`. Defaults to None.
+        no_raw_data_store (bool): If True, processes data in-memory without local storage.
+            Overrides `raw_data_store`. Defaults to False.
+        raw_data_source (Literal["gee", "cdse"]): Data source to use. Defaults to "cdse".
+        model_files (Path | list[Path] | None): Path(s) to model file(s) for segmentation.
+            Single Path implies `write_model_outputs=False`.
+            If None, searches default model directory for all .pt files. Defaults to None.
+        output_data_dir (Path | None): Output directory for results.
+            If None, uses `{default_out}/sentinel2-{raw_data_source}`. Defaults to None.
+        arcticdem_dir (Path | None): Directory for ArcticDEM datacube.
+            Will be created/downloaded if needed. If None, uses default path. Defaults to None.
+        tcvis_dir (Path | None): Directory for TCVis data.
+            If None, uses default path. Defaults to None.
+        device (Literal["cuda", "cpu", "auto"] | int | None): Computation device.
+            "cuda" uses GPU 0, int specifies GPU index, "auto" selects free GPU. Defaults to None.
+        ee_project (str | None): Earth Engine project ID.
+            May be omitted if defined in persistent credentials. Defaults to None.
+        ee_use_highvolume (bool): Whether to use EE high-volume server. Defaults to True.
+        tpi_outer_radius (int): Outer radius (m) for TPI calculation. Defaults to 100.
+        tpi_inner_radius (int): Inner radius (m) for TPI calculation. Defaults to 0.
+        patch_size (int): Patch size for inference. Defaults to 1024.
+        overlap (int): Overlap between patches. Defaults to 256.
+        batch_size (int): Batch size for inference. Defaults to 8.
+        reflection (int): Reflection padding for inference. Defaults to 0.
+        binarization_threshold (float): Threshold for binarizing probabilities. Defaults to 0.5.
+        mask_erosion_size (int): Disk size for mask erosion and inner edge cropping. Defaults to 10.
+        edge_erosion_size (int | None): Size for outer edge cropping.
+            If None, uses `mask_erosion_size`. Defaults to None.
+        min_object_size (int): Minimum object size (pixels) to keep. Defaults to 32.
+        quality_level (int | Literal["high_quality", "low_quality", "none"]): Quality filtering level.
+            0="none", 1="low_quality", 2="high_quality". Defaults to 1.
+        export_bands (list[str]): Bands to export.
+            Can include "probabilities", "binarized", "polygonized", "extent", "thumbnail",
+            "optical", "dem", "tcvis", "metadata", or specific band names.
             Defaults to ["probabilities", "binarized", "polygonized", "extent", "thumbnail"].
-        write_model_outputs (bool, optional): Also save the model outputs, not only the ensemble result.
+        write_model_outputs (bool): Save individual model outputs (not just ensemble).
             Defaults to False.
-        overwrite (bool, optional): Whether to overwrite existing files. Defaults to False.
-        offline (bool, optional): If True, will not attempt to download any missing data. Defaults to False.
-        debug_data (bool, optional): If True, will write intermediate data for debugging purposes to output.
-            Defaults to False.
+        overwrite (bool): Overwrite existing output files. Defaults to False.
+        offline (bool): Skip downloading missing data. Requires pre-downloaded data. Defaults to False.
+        debug_data (bool): Write intermediate debugging data to output directory. Defaults to False.
 
     """
 
@@ -876,7 +1026,17 @@ class Sentinel2Pipeline(_BasePipeline):
 
     @staticmethod
     def cli_prepare_data(*, pipeline: "Sentinel2Pipeline", optical: bool = False, aux: bool = False):
-        """Download all necessary data for offline processing."""
+        """Download all necessary data for offline processing.
+
+        Queries the data source (CDSE or GEE) for scene IDs and downloads optical and/or auxiliary data.
+        Stores scene IDs in `prep_data_scene_id_file` if specified for later offline use.
+
+        Args:
+            pipeline: Configured Sentinel2Pipeline instance.
+            optical: If True, downloads optical (Sentinel-2) imagery. Defaults to False.
+            aux: If True, downloads auxiliary data (ArcticDEM, TCVis). Defaults to False.
+
+        """
         assert not pipeline.offline, "Pipeline must be online to prepare data for offline usage."
 
         # !: Because of an unknown bug, __post_init__ is not initialized automatically
@@ -895,6 +1055,11 @@ class Sentinel2Pipeline(_BasePipeline):
 
     @staticmethod
     def cli(*, pipeline: "Sentinel2Pipeline"):
-        """Run the sequential pipeline for Sentinel 2 data."""
+        """Run the sequential pipeline for Sentinel-2 data.
+
+        Args:
+            pipeline: Configured Sentinel2Pipeline instance.
+
+        """
         pipeline.__post_init__()
         pipeline.run()

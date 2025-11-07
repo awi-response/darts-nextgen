@@ -9,7 +9,12 @@ logger = logging.getLogger(__name__)
 
 
 def debug_info():  # noqa: C901
-    """Print debug information about the CUDA devices and library installations."""  # noqa: DOC501
+    """Print debug information about the CUDA devices and library installations.
+
+    Raises:
+        ImportError: If pynvml cannot be imported properly.
+
+    """
     logger.debug("===vvv CUDA DEBUG INFO vvv===")
     important_env_vars = [
         "CUDA_HOME",
@@ -75,6 +80,7 @@ def debug_info():  # noqa: C901
 
     try:
         import cupy  # type: ignore
+        import cupyx
 
         logger.debug(f"Cupy version: {cupy.__version__}")
         cupy_driver_version = cupy.cuda.runtime.driverGetVersion()
@@ -99,6 +105,8 @@ def debug_info():  # noqa: C901
                 "This can happen if cupy was compiled using a different CUDA runtime version. "
                 "Things should still work, note that Cupy will use the dynamically linked version."
             )
+
+        logger.debug(f"Cupy config:\n{cupyx.get_runtime_info(full=True)}")
     except ImportError:
         logger.debug("Module 'cupy' not found, darts is probably installed without CUDA support.")
 

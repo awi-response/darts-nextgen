@@ -16,6 +16,8 @@ nav:
       - Installation: guides/installation.md
       - Pipeline v2: guides/pipeline-v2.md
       - DARTS Components: guides/components.md
+      - Paths and Data Management: guides/paths.md
+      - Downloads and Offline mode: guides/offline.md
       - Devices: guides/devices.md
       - Config Files: guides/config.md
       - Logging: guides/logging.md
@@ -208,6 +210,7 @@ markdown_extensions:
   - attr_list
   - md_in_html
   - admonition
+  - footnotes
   - tables
   - def_list
   - toc:

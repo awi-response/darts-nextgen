@@ -7,6 +7,12 @@ This is a collection of known issues and potential fixes for CUDA-related proble
     There exist multiple CUDA versions at a time: the driver version installed on the system, and the runtime version which is set by the environment.
     Read more [here](https://stackoverflow.com/questions/53422407/different-cuda-versions-shown-by-nvcc-and-nvidia-smi)
 
+If using the CLI, there is a command to output information about the current environment setup:
+
+```sh
+uv run darts env-info
+```
+
 ## CUCIM import
 
 ```sh

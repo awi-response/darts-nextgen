@@ -1,4 +1,4 @@
-"""PLANET preprocessing functions for training with the v2 data preprocessing."""
+"""Planet preprocessing functions for training with the v2 data preprocessing."""
 
 import logging
 import time
@@ -111,7 +111,7 @@ def preprocess_planet_train_data(  # noqa: C901
     │   ├── x/          # Input patches [n_patches, n_bands, patch_size, patch_size]
     │   └── y/          # Label patches [n_patches, patch_size, patch_size]
     ├── metadata.parquet
-    └── {timestamp}.cli.json
+    └── {timestamp}.cli.toml
     ```
 
     Args:
