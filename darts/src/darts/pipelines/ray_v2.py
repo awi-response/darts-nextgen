@@ -3,6 +3,7 @@
 import json
 import logging
 import os
+import sys
 import time
 from abc import ABC, abstractmethod
 from dataclasses import asdict, dataclass, field
@@ -51,7 +52,8 @@ class _BaseRayPipeline(ABC):
     output_data_dir: Path = Path("data/output")
     arcticdem_dir: Path = Path("data/download/arcticdem")
     tcvis_dir: Path = Path("data/download/tcvis")
-    num_cpus: int = 1
+    # TODO
+    num_cpus: int | None = None # None use automatic detection
     devices: list[int] | None = None
     ee_project: str | None = None
     ee_use_highvolume: bool = True
@@ -100,6 +102,11 @@ class _BaseRayPipeline(ABC):
         current_time = time.strftime("%Y-%m-%d_%H-%M-%S")
         logger.info(f"Starting pipeline at {current_time}.")
 
+        from darts.utils.cuda import get_default_network_interface
+
+        current_network_interface = get_default_network_interface()
+        logger.debug(f"Current network interface {current_network_interface}")
+
         # Storing the configuration as JSON file
         self.output_data_dir.mkdir(parents=True, exist_ok=True)
         with open(self.output_data_dir / f"{current_time}.config.json", "w") as f:
@@ -124,18 +131,123 @@ class _BaseRayPipeline(ABC):
 
         import ray
 
-        ray_context = ray.init(
-            num_cpus=self.num_cpus,  # We use one CPU per Ray task
-            num_gpus=len(self.devices) if self.devices is not None else None,
-        )
-        logger.debug(f"Ray initialized with context: {ray_context}")
-        logger.info(f"Ray Dashboard URL: {ray_context.dashboard_url}")
-        logger.debug(f"Ray cluster resources: {ray.cluster_resources()}")
-        logger.debug(f"Ray available resources: {ray.available_resources()}")
+        if self.num_cpus is None:
+            logger.debug(f"No num cpus provided, using automatic detection of resources")
+            # First initialization - let Ray autodetect all resources
+            initial_context = ray.init(
+                ignore_reinit_error=True,
+                include_dashboard=True,
+                runtime_env={"python": sys.executable}
+            )
+
+            # Give Ray a moment to discover all resources
+            time.sleep(60)
+
+            # Get total resources after full discovery
+            cluster_res = ray.cluster_resources()
+            total_cpus = int(cluster_res.get('CPU', 1))
+            total_gpus = int(cluster_res.get('GPU', 0))
+
+            logger.debug(f"Discovered resources - CPUs: {total_cpus}, GPUs: {total_gpus} were found")
+
+            available_cpus = max(1, int(os.cpu_count()) - 2)
+            # Use 75% of available CPUs for safety
+            safe_cpus = max(1, int(available_cpus * 0.75))
+            safe_gpus = total_gpus
+
+            # Use configured num_cpus if set, otherwise use safe_cpus
+            final_cpus = self.num_cpus if self.num_cpus != 1 else safe_cpus
+            final_gpus = len(self.devices) if self.devices is not None else safe_gpus
+
+            logger.info(f"Final resource allocation - CPUs: {final_cpus}, GPUs: {final_gpus}")
+
+            # Only reinitialize if we need different resources
+            if (final_cpus != total_cpus) or (final_gpus != total_gpus):
+                ray.shutdown()
+                ray_context = ray.init(
+                    num_cpus=final_cpus,
+                    num_gpus=final_gpus,
+                    include_dashboard=True,
+                    runtime_env={
+                            "env_vars": {
+                            "CUDA_VISIBLE_DEVICES": "0",
+                            "NCCL_DEBUG": "INFO",
+                            "NCCL_SOCKET_IFNAME": current_network_interface,
+                        },
+                        "python": sys.executable
+                    },
+                    _system_config={"worker_register_timeout_seconds": 60,
+                                    "metrics_report_interval_ms": 1000,  # Faster metric updates
+                                    "enable_metrics_collection": True,
+                                    },
+                )
+            else:
+                ray_context = ray.get_context()
+
+            # Debug logging
+            logger.info(f"Final resource allocation - CPUs: {final_cpus}, GPUs: {final_gpus}")
+            logger.debug(f"Total cluster resources: {cluster_res}")
+
+            # Log resource information
+            logger.debug(f"Ray initialized with context: {ray_context}")
+            logger.info(f"Ray Dashboard URL: {ray_context.dashboard_url}")
+            logger.debug(f"Cluster resources: {ray.cluster_resources()}")
+            logger.debug(f"Available resources: {ray.available_resources()}")
+
+        else:
+            logger.debug(f"Initialize with {self.num_cpus} cpus and devices {self.devices}")
+            # TODO how to handle the devices properly?
+            # Convert devices to appropriate format for Ray
+            if self.devices is not None:
+                # If devices is a list of GPU indices, convert to comma-separated string
+                if isinstance(self.devices, list):
+                    cuda_visible_devices = ",".join(str(device) for device in self.devices)
+                    num_gpus = len(self.devices)
+                else:
+                    cuda_visible_devices = str(self.devices)
+                    num_gpus = 1
+            else:
+                cuda_visible_devices = ""
+                num_gpus = 0
+
+            # Initialize Ray with specified resources
+            ray_context = ray.init(
+                num_cpus=self.num_cpus,
+                num_gpus=num_gpus,
+                ignore_reinit_error=True,
+                include_dashboard=True,
+                runtime_env={
+                    "env_vars": {
+                        "CUDA_VISIBLE_DEVICES": cuda_visible_devices,
+                        "NCCL_DEBUG": "INFO",
+                        "NCCL_SOCKET_IFNAME": current_network_interface,
+                    },
+                    "python":sys.executable
+                },
+                _system_config={
+                    "worker_register_timeout_seconds": 60,
+                    "metrics_report_interval_ms": 1000,
+                    "enable_metrics_collection": True,
+                },
+            )
+            # Log resource information
+            logger.debug(f"Ray initialized with context: {ray_context}")
+            logger.info(f"Ray Dashboard URL: {ray_context.dashboard_url}")
+            logger.debug(f"Cluster resources: {ray.cluster_resources()}")
+            logger.debug(f"Available resources: {ray.available_resources()}")
 
         # Initlize ee in every worker
         @ray.remote
         def init_worker():
+            # Set critical CUDA variables before any imports
+            os.environ["CUDA_VISIBLE_DEVICES"] = "0"  # Or your device index
+            os.environ["NVIDIA_VISIBLE_DEVICES"] = "all"
+            os.environ["NCCL_DEBUG"] = "INFO"
+            os.environ["NCCL_SOCKET_IFNAME"] = current_network_interface
+            os.environ["GLOO_SOCKET_IFNAME"] = current_network_interface
+            import torch
+            if not torch.cuda.is_available():
+                raise RuntimeError("CUDA not available in worker!")
             init_ee(self.ee_project, self.ee_use_highvolume)
 
         num_workers = int(ray.cluster_resources().get("CPU", 1))
