@@ -363,9 +363,11 @@ class _BasePipeline(ABC):
                 # Predownload auxiliary
                 aoi = self._tile_aoi()
                 if needs_arcticdem:
+                    logger.info("start download ArcticDEM")
                     with timer("Downloading ArcticDEM"):
                         download_arcticdem(aoi, self.arcticdem_dir, resolution=self._arcticdem_resolution())
                 if needs_tcvis:
+                    logger.info("start download TCVIS")
                     init_ee(self.ee_project, self.ee_use_highvolume)
                     with timer("Downloading TCVis"):
                         download_tcvis(aoi, self.tcvis_dir)
