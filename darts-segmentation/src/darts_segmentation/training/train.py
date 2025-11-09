@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, Literal
 
 import cyclopts
 import toml
+from darts_utils.paths import DefaultPaths, paths
 
 from darts_segmentation.training.hparams import Hyperparameters
 
@@ -33,7 +34,7 @@ class DataConfig:
     Defines the script inputs for the training script and can be propagated by the cross-validation and tuning scripts.
 
     Attributes:
-        train_data_dir (Path): The path (top-level) to the data to be used for training.
+        train_data_dir (Path |None, optional): The path (top-level) to the data to be used for training.
             Expects a directory containing:
             1. a zarr group called "data.zarr" containing a "x" and "y" array
             2. a geoparquet file called "metadata.parquet" containing the metadata for the data.
@@ -43,8 +44,8 @@ class DataConfig:
                 - "empty": Whether the image is empty
                 The index should refer to the index of the sample in the zarr data.
             This directory should be created by a preprocessing script.
-            Defaults to "train".
-        batch_size (int): Batch size for training and validation.
+            If None, will use the default training data directory based on the DARTS paths.
+            Defaults to None.
         data_split_method (Literal["random", "region", "sample"] | None, optional):
             The method to use for splitting the data into a train and a test set.
             "random" will split the data randomly, the seed is always 42 and the test size can be specified
@@ -59,7 +60,7 @@ class DataConfig:
             Defaults to None.
         data_split_by (list[str | float] | None, optional): Select by which regions/samples to split or
             the size of test set. Defaults to None.
-        fold_method (Literal["kfold", "shuffle", "stratified", "region", "region-stratified"], optional):
+        fold_method (Literal["kfold", "shuffle", "stratified", "region", "region-stratified", "none"], optional):
             Method for cross-validation split. Defaults to "kfold".
         total_folds (int, optional): Total number of folds in cross-validation. Defaults to 5.
         subsample (int | None, optional): If set, will subsample the dataset to this number of samples.
@@ -68,10 +69,10 @@ class DataConfig:
 
     """
 
-    train_data_dir: Path = Path("train")
+    train_data_dir: Path | None = None
     data_split_method: Literal["random", "region", "sample"] | None = None
     data_split_by: list[str | float] | None = None
-    fold_method: Literal["kfold", "shuffle", "stratified", "region", "region-stratified"] = "kfold"
+    fold_method: Literal["kfold", "shuffle", "stratified", "region", "region-stratified", "none"] = "kfold"
     total_folds: int = 5
     subsample: int | None = None
     in_memory: bool = False
@@ -147,8 +148,10 @@ class LoggingConfig:
     Defines the script inputs for the training script and can be propagated by the cross-validation and tuning scripts.
 
     Attributes:
-        artifact_dir (Path, optional): Top-level path to the training output directory.
-            Will contain checkpoints and metrics. Defaults to Path("artifacts").
+        artifact_dir (Path | None, optional): Top-level path to the training output directory.
+            Will contain checkpoints and metrics.
+            If None, will use the default artifact directory based on the DARTS paths.
+            Defaults to None.
         log_every_n_steps (int, optional): Log every n steps. Defaults to 10.
         check_val_every_n_epoch (int, optional): Check validation every n epochs. Defaults to 3.
         plot_every_n_val_epochs (int, optional): Plot validation samples every n epochs. Defaults to 5.
@@ -157,7 +160,7 @@ class LoggingConfig:
 
     """
 
-    artifact_dir: Path = Path("artifacts")
+    artifact_dir: Path | None = None
     log_every_n_steps: int = 10
     check_val_every_n_epoch: int = 3
     plot_every_n_val_epochs: int = 5
@@ -184,15 +187,16 @@ class LoggingConfig:
             Path: The nested artifact directory path.
 
         """
+        artifact_dir = self.artifact_dir or paths.artifacts
         # Run only
         if cv_name is None and tune_name is None:
-            artifact_dir = self.artifact_dir / "_runs"
+            artifact_dir = artifact_dir / "_runs"
         # Cross-validation only
         elif cv_name is not None and tune_name is None:
-            artifact_dir = self.artifact_dir / "_cross_validations" / cv_name
+            artifact_dir = artifact_dir / "_cross_validations" / cv_name
         # Cross-validation and tuning
         elif cv_name is not None and tune_name is not None:
-            artifact_dir = self.artifact_dir / tune_name / cv_name
+            artifact_dir = artifact_dir / tune_name / cv_name
         # Tuning only (invalid)
         else:
             raise ValueError(
@@ -216,7 +220,8 @@ class LoggingConfig:
             Path: The nested artifact directory path for cross-validation runs.
 
         """
-        artifact_dir = self.artifact_dir / tune_name if tune_name else self.artifact_dir / "_cross_validations"
+        artifact_dir = self.artifact_dir or paths.artifacts
+        artifact_dir = artifact_dir / tune_name if tune_name else artifact_dir / "_cross_validations"
         artifact_dir.mkdir(parents=True, exist_ok=True)
         return artifact_dir
 
@@ -304,6 +309,7 @@ class DeviceConfig:
 
 def train_smp(
     *,
+    default_dirs: DefaultPaths = DefaultPaths(),
     run: TrainRunConfig = TrainRunConfig(),
     training_config: TrainingConfig = TrainingConfig(),
     data_config: DataConfig = DataConfig(),
@@ -357,6 +363,7 @@ def train_smp(
     ```
 
     Args:
+        default_dirs (DefaultPaths, optional): The default directories for DARTS. Defaults to a config filled with None.
         data_config (DataConfig): Data related parameters for training.
         run (TrainRunConfig): Run related parameters for training.
         logging_config (LoggingConfig): Logging related parameters for training.
@@ -386,15 +393,18 @@ def train_smp(
 
     tick_fstart = time.perf_counter()
 
+    paths.set_defaults(default_dirs)
+
     # Get the right nesting of the artifact directory
     artifact_dir = logging_config.artifact_dir_at_run(run.cv_name, run.tune_name)
+    train_data_dir = (data_config.train_data_dir or paths.training).resolve()
 
     # Create unique run identification (name can be specified by user, id can be interpreded as a 'version')
     run_name = run.name or generate_counted_name(artifact_dir)
     run_id = generate_id()  # Needed for wandb
 
     logger.info(
-        f"Starting training '{run_name}' ('{run_id}') with data from {data_config.train_data_dir.resolve()}."
+        f"Starting training '{run_name}' ('{run_id}') with data from {train_data_dir}."
         f" Artifacts will be saved to {(artifact_dir / f'{run_name}-{run_id}').resolve()}."
     )
     logger.debug(
@@ -409,7 +419,7 @@ def train_smp(
     torch.set_float32_matmul_precision("medium")
     seed_everything(run.random_seed, workers=True, verbose=False)
 
-    dataset_config = toml.load(data_config.train_data_dir / "config.toml")["darts"]
+    dataset_config = toml.load(train_data_dir / "config.toml")["darts"]
     # Confusing thing about bands: There is
     # (1) the available bands derived from the dataset config and
     # (2) the bands specified in the hyperparameters
@@ -436,7 +446,7 @@ def train_smp(
 
     # Data and model
     datamodule = DartsDataModule(
-        data_dir=data_config.train_data_dir,
+        data_dir=train_data_dir,
         batch_size=hparams.batch_size,
         data_split_method=data_config.data_split_method,
         data_split_by=data_config.data_split_by,
@@ -480,7 +490,7 @@ def train_smp(
     ]
     logger.debug(f"Logging CSV to {Path(trainer_loggers[0].log_dir).resolve()}")
     if logging_config.wandb_entity and logging_config.wandb_project:
-        tags = [data_config.train_data_dir.stem]
+        tags = [train_data_dir.stem]
         if run.cv_name:
             tags.append(run.cv_name)
         if run.tune_name:
@@ -591,7 +601,7 @@ def test_smp(
     batch_size: int = 8,
     data_split_method: Literal["random", "region", "sample"] | None = None,
     data_split_by: list[str] | str | float | None = None,
-    artifact_dir: Path = Path("artifacts"),
+    artifact_dir: Path | None = None,
     num_workers: int = 0,
     device_config: DeviceConfig = DeviceConfig(),
     wandb_entity: str | None = None,
@@ -639,7 +649,9 @@ def test_smp(
             Defaults to None.
         data_split_by (list[str] | str | float | None, optional): Select by which seed/regions/samples split.
             Defaults to None.
-        artifact_dir (Path, optional): Directory to save artifacts. Defaults to Path("lightning_logs").
+        artifact_dir (Path | None, optional): Directory to save artifacts.
+            If None, will use the default training data directory based on the DARTS paths.
+            Defaults to None.
         num_workers (int, optional): Number of workers for the DataLoader. Defaults to 0.
         device_config (DeviceConfig, optional): Device and distributed strategy related parameters.
         wandb_entity (str | None, optional): WandB entity. Defaults to None.
@@ -661,7 +673,7 @@ def test_smp(
     from darts_segmentation.training.data import DartsDataModule
     from darts_segmentation.training.module import LitSMP
 
-    LoggingManager.apply_logging_handlers("lightning.pytorch")
+    LoggingManager.apply_logging_handlers("lightning.pytorch", level=logging.INFO)
 
     tick_fstart = time.perf_counter()
 

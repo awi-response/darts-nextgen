@@ -58,6 +58,7 @@ dependencies = [
     "darts-superresolution",
     "darts-utils",
     "filelock>=3.18.0",
+    "cql2>=0.4.0",
 ]
 readme = "README.md"
 requires-python = ">= 3.11, < 3.13"
@@ -95,14 +96,14 @@ torchdeps = [
 ]
 cuda11deps = [
     "cucim-cu11>=24.8",
-    "cupy-cuda11x>=13.3.0",
+    "cupy-cuda11x>=14.0.0",
     "cupy-xarray",
     "cuda-python>=12.6.2.post1",
     "pynvml==11.4.1",
 ]
 cuda12deps = [
     "cucim-cu12>=24.8",
-    "cupy-cuda12x>=13.3.0",
+    "cupy-cuda12x>=14.0.0",
     "cupy-xarray",
     "cuda-python>=12.6.2.post1",
     "pynvml==11.4.1",
@@ -210,6 +211,9 @@ conflicts = [
 ]
 
 [tool.uv.sources]
+cupy-cuda11x = { url="https://github.com/cupy/cupy/releases/download/v14.0.0a1/cupy_cuda11x-14.0.0a1-cp312-cp312-manylinux2014_x86_64.whl" }
+cupy-cuda12x = { url="https://github.com/cupy/cupy/releases/download/v14.0.0a1/cupy_cuda12x-14.0.0a1-cp312-cp312-manylinux2014_x86_64.whl" }
+
 cupy-xarray = { git = "https://github.com/xarray-contrib/cupy-xarray", branch = "main" }
 torch = [
   { index = "pytorch-cpu", extra = "cpu" },
@@ -235,6 +239,11 @@ darts-preprocessing = { workspace = true }
 darts-segmentation = { workspace = true }
 darts-superresolution = { workspace = true }
 darts-utils = { workspace = true }
+
+[[tool.uv.index]]
+name = "cupy-pre"
+url = "https://pip.cupy.dev/pre"
+explicit = true
 
 # Possible versions to support in general: 11.8, 12.1, 12.4, 12.6, 12.8
 [[tool.uv.index]]

@@ -11,20 +11,40 @@ logger = logging.getLogger(__name__.replace("darts_", "darts."))
 
 @stopwatch("Calculating NDVI", printer=logger.debug)
 def calculate_ndvi(optical: xr.Dataset) -> xr.Dataset:
-    """Calculate NDVI from an xarray Dataset containing spectral bands.
+    """Calculate NDVI (Normalized Difference Vegetation Index) from spectral bands.
 
-    This function will clip the NIR and Red bands to the range [0, 1] before calculating NDVI to avoid
-    potential numerical instabilities from negative reflections.
+    NDVI is a widely-used vegetation index that indicates photosynthetic activity and
+    vegetation health. Values range from -1 to 1, with higher values indicating denser,
+    healthier vegetation.
 
     Args:
-        optical (xr.Dataset): The xarray Dataset containing the spectral bands.
+        optical (xr.Dataset): Dataset containing spectral bands:
+            - nir (float32): Near-infrared reflectance [0-1]
+            - red (float32): Red reflectance [0-1]
 
     Returns:
-        xr.DataArray: A new DataArray containing the calculated NDVI values.
+        xr.DataArray: NDVI values with attributes:
+            - long_name: "NDVI"
 
-    Notes:
-        NDVI (Normalized Difference Vegetation Index) is calculated using the formula:
-            NDVI = (NIR - Red) / (NIR + Red)
+    Note:
+        Formula: NDVI = (NIR - Red) / (NIR + Red)
+
+        Input bands are clipped to [0, 1] before calculation to avoid numerical instabilities
+        from negative reflectance values or sensor artifacts. The final result is also clipped
+        to ensure values remain in the valid [-1, 1] range.
+
+    Example:
+        Calculate NDVI from optical data:
+
+        ```python
+        from darts_preprocessing import calculate_ndvi
+
+        # optical contains 'nir' and 'red' bands
+        ndvi = calculate_ndvi(optical)
+
+        # Mask vegetation
+        vegetation_mask = ndvi > 0.3
+        ```
 
     """
     nir = optical["nir"].clip(0, 1)
@@ -37,20 +57,32 @@ def calculate_ndvi(optical: xr.Dataset) -> xr.Dataset:
 
 @stopwatch("Calculating GNDVI", printer=logger.debug)
 def calculate_gndvi(optical: xr.Dataset) -> xr.DataArray:
-    """Calculate GNDVI (Green Normalized Difference Vegetation Index) from an xarray Dataset containing spectral bands.
+    """Calculate GNDVI (Green Normalized Difference Vegetation Index) from spectral bands.
 
-    This function will clip the NIR and Green bands to the range [0, 1] before calculating GNDVI to avoid
-    potential numerical instabilities from negative reflections.
+    GNDVI is similar to NDVI but uses the green band instead of red, making it more sensitive
+    to chlorophyll content and useful for mid to late season vegetation monitoring.
 
     Args:
-        optical (xr.Dataset): The xarray Dataset containing the spectral bands.
+        optical (xr.Dataset): Dataset containing spectral bands:
+            - nir (float32): Near-infrared reflectance [0-1]
+            - green (float32): Green reflectance [0-1]
 
     Returns:
-        xr.DataArray: A new DataArray containing the calculated GNDVI values.
+        xr.DataArray: GNDVI values with attributes:
+            - long_name: "GNDVI"
+            - Values clipped to [-1, 1] range
 
-    Notes:
-        GNDVI is calculated using the formula:
-            GNDVI = (NIR - Green) / (NIR + Green)
+    Note:
+        Formula: GNDVI = (NIR - Green) / (NIR + Green)
+
+        Input bands are clipped to [0, 1] to avoid numerical instabilities.
+
+    Example:
+        ```python
+        from darts_preprocessing import calculate_gndvi
+
+        gndvi = calculate_gndvi(optical)
+        ```
 
     """
     nir = optical["nir"].clip(0, 1)
@@ -63,26 +95,37 @@ def calculate_gndvi(optical: xr.Dataset) -> xr.DataArray:
 
 @stopwatch("Calculating GRVI", printer=logger.debug)
 def calculate_grvi(optical: xr.Dataset) -> xr.DataArray:
-    """Calculate GRVI (Green Red Vegetation Index) from an xarray Dataset containing spectral bands.
+    """Calculate GRVI (Green Red Vegetation Index) from spectral bands.
 
-    This function will clip the Green and Red bands to the range [0, 1] before calculating GRVI to avoid
-    potential numerical instabilities from negative reflections.
+    GRVI uses visible bands to detect vegetation, useful for high-resolution imagery
+    where NIR may not be available or for specific vegetation discrimination tasks.
 
     Args:
-        optical (xr.Dataset): The xarray Dataset containing the spectral bands.
+        optical (xr.Dataset): Dataset containing spectral bands:
+            - green (float32): Green reflectance [0-1]
+            - red (float32): Red reflectance [0-1]
 
     Returns:
-        xr.DataArray: A new DataArray containing the calculated GRVI values.
+        xr.DataArray: GRVI values with attributes:
+            - long_name: "GRVI"
 
-    Notes:
-        GRVI is calculated using the formula:
-            GRVI = (Green - Red) / (Green + Red)
+    Note:
+        Formula: GRVI = (Green - Red) / (Green + Red)
+
+        Input bands are clipped to [0, 1] to avoid numerical instabilities.
 
     References:
         Eng, L.S., Ismail, R., Hashim, W., Baharum, A., 2019.
         The Use of VARI, GLI, and VIgreen Formulas in Detecting Vegetation In aerial Images.
         International Journal of Technology. Volume 10(7), pp. 1385-1394
         https://doi.org/10.14716/ijtech.v10i7.3275
+
+    Example:
+        ```python
+        from darts_preprocessing import calculate_grvi
+
+        grvi = calculate_grvi(optical)
+        ```
 
     """
     g = optical["green"].clip(0, 1)
@@ -100,26 +143,37 @@ def calculate_vigreen(optical: xr.Dataset) -> xr.DataArray:
 
 @stopwatch("Calculating RVI", printer=logger.debug)
 def calculate_rvi(optical: xr.Dataset) -> xr.DataArray:
-    """Calculate RVI (Ratio Vegetation Index) from an xarray Dataset containing spectral bands.
+    """Calculate RVI (Ratio Vegetation Index) from spectral bands.
 
-    This function will clip the NIR and Red bands to the range [0, 1] before calculating RVI to avoid
-    potential numerical instabilities from negative reflections.
+    RVI is a simple ratio index sensitive to vegetation amount and biomass. Values typically
+    range from 0 to over 30 for dense vegetation.
 
     Args:
-        optical (xr.Dataset): The xarray Dataset containing the spectral bands.
+        optical (xr.Dataset): Dataset containing spectral bands:
+            - nir (float32): Near-infrared reflectance [0-1]
+            - red (float32): Red reflectance [0-1]
 
     Returns:
-        xr.DataArray: A new DataArray containing the calculated RVI values.
+        xr.DataArray: RVI values with attributes:
+            - long_name: "RVI"
 
-    Notes:
-        RVI is calculated using the formula:
-            RVI = NIR / Red
+    Note:
+        Formula: RVI = Red / NIR
+
+        Input bands are clipped to [0, 1] to avoid numerical instabilities.
 
     References:
         Lemenkova, Polina.
         "Hyperspectral Vegetation Indices Calculated by Qgis Using Landsat Tm Image: a Case Study of Northern Iceland"
         Advanced Research in Life Sciences, vol. 4, no. 1, Sciendo, 2020, pp. 70-78.
         https://doi.org/10.2478/arls-2020-0021
+
+    Example:
+        ```python
+        from darts_preprocessing import calculate_rvi
+
+        rvi = calculate_rvi(optical)
+        ```
 
     """
     nir = optical["nir"].clip(0, 1)
@@ -131,20 +185,32 @@ def calculate_rvi(optical: xr.Dataset) -> xr.DataArray:
 
 @stopwatch("Calculating NRVI", printer=logger.debug)
 def calculate_nrvi(optical: xr.Dataset) -> xr.DataArray:
-    """Calculate NRVI (Normalized Ratio Vegetation Index) from an xarray Dataset containing spectral bands.
+    """Calculate NRVI (Normalized Ratio Vegetation Index) from spectral bands.
 
-    This will use the RVI if it is already present in the dataset, otherwise it will calculate it first.
+    NRVI normalizes RVI to a range similar to NDVI, making it more comparable across
+    different vegetation densities.
 
     Args:
-        optical (xr.Dataset): The xarray Dataset containing the spectral bands.
+        optical (xr.Dataset): Dataset containing:
+            - rvi (float32): RVI values (will be calculated if not present)
+            - nir, red (float32): Required if RVI not present
 
     Returns:
-        xr.DataArray: A new DataArray containing the calculated NRVI values.
+        xr.DataArray: NRVI values with attributes:
+            - long_name: "NRVI"
 
-    Notes:
-        NRVI is calculated using the formula:
-            NRVI = (RVI - 1) / (RVI + 1)
-        where RVI = NIR / Red
+    Note:
+        Formula: NRVI = (RVI - 1) / (RVI + 1)
+        where RVI = Red / NIR
+
+        If RVI is already in the dataset, it will be reused to avoid recalculation.
+
+    Example:
+        ```python
+        from darts_preprocessing import calculate_nrvi
+
+        nrvi = calculate_nrvi(optical)
+        ```
 
     """
     rvi = optical["rvi"] if "rvi" in optical else calculate_rvi(optical)
@@ -155,19 +221,24 @@ def calculate_nrvi(optical: xr.Dataset) -> xr.DataArray:
 
 @stopwatch("Calculating TVI", printer=logger.debug)
 def calculate_tvi(optical: xr.Dataset) -> xr.DataArray:
-    """Calculate TVI (Transformed Vegetation Index) from an xarray Dataset containing spectral bands.
+    """Calculate TVI (Transformed Vegetation Index) from spectral bands.
 
-    This will use the NDVI if it is already present in the dataset, otherwise it will calculate it first.
+    TVI applies a transformation to NDVI to enhance contrast and improve discrimination
+    of vegetation conditions.
 
     Args:
-        optical (xr.Dataset): The xarray Dataset containing the spectral bands.
+        optical (xr.Dataset): Dataset containing:
+            - ndvi (float32): NDVI values (will be calculated if not present)
+            - nir, red (float32): Required if NDVI not present
 
     Returns:
-        xr.DataArray: A new DataArray containing the calculated TVI values.
+        xr.DataArray: TVI values with attributes:
+            - long_name: "TVI"
 
-    Notes:
-        TVI is calculated using the formula:
-            TVI = sqrt(NDVI + 0.5)
+    Note:
+        Formula: TVI = sqrt(NDVI + 0.5)
+
+        If NDVI is already in the dataset, it will be reused to avoid recalculation.
 
     References:
         Lemenkova, Polina.
@@ -175,6 +246,12 @@ def calculate_tvi(optical: xr.Dataset) -> xr.DataArray:
         Advanced Research in Life Sciences, vol. 4, no. 1, Sciendo, 2020, pp. 70-78.
         https://doi.org/10.2478/arls-2020-0021
 
+    Example:
+        ```python
+        from darts_preprocessing import calculate_tvi
+
+        tvi = calculate_tvi(optical)
+        ```
 
     """
     ndvi = optical["ndvi"] if "ndvi" in optical else calculate_ndvi(optical)
@@ -185,19 +262,24 @@ def calculate_tvi(optical: xr.Dataset) -> xr.DataArray:
 
 @stopwatch("Calculating CTVI", printer=logger.debug)
 def calculate_ctvi(optical: xr.Dataset) -> xr.DataArray:
-    """Calculate CTVI (Corrected Transformed Vegetation Index) from an xarray Dataset containing spectral bands.
+    """Calculate CTVI (Corrected Transformed Vegetation Index) from spectral bands.
 
-    This will use the NDVI if it is already present in the dataset, otherwise it will calculate it first.
+    CTVI is a corrected version of TVI that maintains the sign of the original NDVI values
+    while applying the transformation.
 
     Args:
-        optical (xr.Dataset): The xarray Dataset containing the spectral bands.
+        optical (xr.Dataset): Dataset containing:
+            - ndvi (float32): NDVI values (will be calculated if not present)
+            - nir, red (float32): Required if NDVI not present
 
     Returns:
-        xr.DataArray: A new DataArray containing the calculated CTVI values.
+        xr.DataArray: CTVI values with attributes:
+            - long_name: "CTVI"
 
-    Notes:
-        CTVI is calculated using the formula:
-            CTVI = (NDVI + 0.5) / |NDVI + 0.5| * sqrt(|NDVI + 0.5|)
+    Note:
+        Formula: CTVI = (NDVI + 0.5) / |NDVI + 0.5| * sqrt(|NDVI + 0.5|)
+
+        If NDVI is already in the dataset, it will be reused to avoid recalculation.
 
     References:
         Lemenkova, Polina.
@@ -205,6 +287,12 @@ def calculate_ctvi(optical: xr.Dataset) -> xr.DataArray:
         Advanced Research in Life Sciences, vol. 4, no. 1, Sciendo, 2020, pp. 70-78.
         https://doi.org/10.2478/arls-2020-0021
 
+    Example:
+        ```python
+        from darts_preprocessing import calculate_ctvi
+
+        ctvi = calculate_ctvi(optical)
+        ```
 
     """
     ndvi = optical["ndvi"] if "ndvi" in optical else calculate_ndvi(optical)
@@ -215,19 +303,24 @@ def calculate_ctvi(optical: xr.Dataset) -> xr.DataArray:
 
 @stopwatch("Calculating TTVI", printer=logger.debug)
 def calculate_ttvi(optical: xr.Dataset) -> xr.DataArray:
-    """Calculate TTVI (Thiam's Transformed Vegetation Index) from an xarray Dataset containing spectral bands.
+    """Calculate TTVI (Thiam's Transformed Vegetation Index) from spectral bands.
 
-    This will use the NDVI if it is already present in the dataset, otherwise it will calculate it first.
+    TTVI applies an absolute value transformation to NDVI before the square root,
+    making it suitable for both positive and negative NDVI values.
 
     Args:
-        optical (xr.Dataset): The xarray Dataset containing the spectral bands.
+        optical (xr.Dataset): Dataset containing:
+            - ndvi (float32): NDVI values (will be calculated if not present)
+            - nir, red (float32): Required if NDVI not present
 
     Returns:
-        xr.DataArray: A new DataArray containing the calculated TTVI values.
+        xr.DataArray: TTVI values with attributes:
+            - long_name: "TTVI"
 
-    Notes:
-        TTVI is calculated using the formula:
-            TTVI = sqrt(abs(NDVI) + 0.5)
+    Note:
+        Formula: TTVI = sqrt(|NDVI| + 0.5)
+
+        If NDVI is already in the dataset, it will be reused to avoid recalculation.
 
     References:
         Lemenkova, Polina.
@@ -235,6 +328,12 @@ def calculate_ttvi(optical: xr.Dataset) -> xr.DataArray:
         Advanced Research in Life Sciences, vol. 4, no. 1, Sciendo, 2020, pp. 70-78.
         https://doi.org/10.2478/arls-2020-0021
 
+    Example:
+        ```python
+        from darts_preprocessing import calculate_ttvi
+
+        ttvi = calculate_ttvi(optical)
+        ```
 
     """
     ndvi = optical["ndvi"] if "ndvi" in optical else calculate_ndvi(optical)
@@ -245,20 +344,26 @@ def calculate_ttvi(optical: xr.Dataset) -> xr.DataArray:
 
 @stopwatch("Calculating SAVI", printer=logger.debug)
 def calculate_savi(optical: xr.Dataset, s: float = 0.5) -> xr.DataArray:
-    """Calculate SAVI (Soil Adjusted Vegetation Index) from an xarray Dataset containing spectral bands.
+    """Calculate SAVI (Soil Adjusted Vegetation Index) from spectral bands.
 
-    This will use the NDVI if it is already present in the dataset, otherwise it will calculate it first.
+    SAVI minimizes soil brightness influences using a soil-brightness correction factor.
+    Useful in areas with sparse vegetation or exposed soil.
 
     Args:
-        optical (xr.Dataset): The xarray Dataset containing the spectral bands.
-        s (float): The soil adjustment factor.
+        optical (xr.Dataset): Dataset containing:
+            - ndvi (float32): NDVI values (will be calculated if not present)
+            - nir, red (float32): Required if NDVI not present
+        s (float, optional): Soil adjustment factor. Common values:
+            - 0.5: moderate vegetation cover (default)
+            - 0.25: high vegetation cover
+            - 1.0: low vegetation cover
 
     Returns:
-        xr.DataArray: A new DataArray containing the calculated SAVI values.
+        xr.DataArray: SAVI values with attributes:
+            - long_name: "SAVI"
 
-    Notes:
-        SAVI is calculated using the formula:
-            SAVI = NDVI * (1 + s)
+    Note:
+        Formula: SAVI = NDVI * (1 + s)
 
     References:
         Lemenkova, Polina.
@@ -266,6 +371,13 @@ def calculate_savi(optical: xr.Dataset, s: float = 0.5) -> xr.DataArray:
         Advanced Research in Life Sciences, vol. 4, no. 1, Sciendo, 2020, pp. 70-78.
         https://doi.org/10.2478/arls-2020-0021
 
+    Example:
+        ```python
+        from darts_preprocessing import calculate_savi
+
+        # For sparse vegetation
+        savi = calculate_savi(optical, s=1.0)
+        ```
 
     """
     ndvi = optical["ndvi"] if "ndvi" in optical else calculate_ndvi(optical)
@@ -276,30 +388,43 @@ def calculate_savi(optical: xr.Dataset, s: float = 0.5) -> xr.DataArray:
 
 @stopwatch("Calculating EVI", printer=logger.debug)
 def calculate_evi(optical: xr.Dataset, g: float = 2.5, c1: float = 6, c2: float = 7.5, l: float = 1) -> xr.DataArray:  # noqa: E741
-    """Calculate EVI (Enhanced Vegetation Index) from an xarray Dataset containing spectral bands.
+    """Calculate EVI (Enhanced Vegetation Index) from spectral bands.
 
-    This function will clip the optical bands to the range [0, 1] before calculating VARI to avoid
-    potential numerical instabilities from negative reflections.
+    EVI is optimized to enhance vegetation signal with improved sensitivity in high biomass
+    regions and improved vegetation monitoring through decoupling of canopy background signal
+    and reducing atmospheric influences.
 
     Args:
-        optical (xr.Dataset): The xarray Dataset containing the spectral bands.
-        g (float): Gain factor (default: 2.5).
-        c1 (float): Aerosol resistance coefficient for the red band (default: 6).
-        c2 (float): Aerosol resistance coefficient for the blue band (default: 7.5).
-        l (float): Canopy background adjustment (default: 1).
+        optical (xr.Dataset): Dataset containing spectral bands:
+            - nir (float32): Near-infrared reflectance [0-1]
+            - red (float32): Red reflectance [0-1]
+            - blue (float32): Blue reflectance [0-1]
+        g (float, optional): Gain factor. Defaults to 2.5.
+        c1 (float, optional): Aerosol resistance coefficient for red band. Defaults to 6.
+        c2 (float, optional): Aerosol resistance coefficient for blue band. Defaults to 7.5.
+        l (float, optional): Canopy background adjustment. Defaults to 1.
 
     Returns:
-        xr.DataArray: A new DataArray containing the calculated EVI values.
+        xr.DataArray: EVI values with attributes:
+            - long_name: "EVI"
 
-    Notes:
-        EVI is calculated using the formula:
-            EVI = G * (NIR - Red) / (NIR + C1 * Red - C2 * Blue + L)
+    Note:
+        Formula: EVI = G * (NIR - Red) / (NIR + C1 * Red - C2 * Blue + L)
+
+        Input bands are clipped to [0, 1] to avoid numerical instabilities.
 
     References:
         A Huete, K Didan, T Miura, E.P Rodriguez, X Gao, L.G Ferreira,
         Overview of the radiometric and biophysical performance of the MODIS vegetation indices,
         Remote Sensing of Environment, Volume 83, Issues 1-2, 2002, Pages 195-213, ISSN 0034-4257,
         https://doi.org/10.1016/S0034-4257(02)00096-2.
+
+    Example:
+        ```python
+        from darts_preprocessing import calculate_evi
+
+        evi = calculate_evi(optical)
+        ```
 
     """
     nir = optical["nir"].clip(0, 1)
@@ -312,26 +437,38 @@ def calculate_evi(optical: xr.Dataset, g: float = 2.5, c1: float = 6, c2: float 
 
 @stopwatch("Calculating VARI", printer=logger.debug)
 def calculate_vari(optical: xr.Dataset) -> xr.DataArray:
-    """Calculate VARI (Visible Atmospherically Resistant Index) from an xarray Dataset containing spectral bands.
+    """Calculate VARI (Visible Atmospherically Resistant Index) from spectral bands.
 
-    This function will clip the optical bands to the range [0, 1] before calculating VARI to avoid
-    potential numerical instabilities from negative reflections.
+    VARI uses only visible bands, designed to minimize atmospheric effects. Useful for
+    RGB imagery without NIR band or for atmospheric correction validation.
 
     Args:
-        optical (xr.Dataset): The xarray Dataset containing the spectral bands.
+        optical (xr.Dataset): Dataset containing spectral bands:
+            - green (float32): Green reflectance [0-1]
+            - red (float32): Red reflectance [0-1]
+            - blue (float32): Blue reflectance [0-1]
 
     Returns:
-        xr.DataArray: A new DataArray containing the calculated VARI values.
+        xr.DataArray: VARI values with attributes:
+            - long_name: "VARI"
 
-    Notes:
-        VARI is calculated using the formula:
-            VARI = (Green - Red) / (Green + Red - Blue)
+    Note:
+        Formula: VARI = (Green - Red) / (Green + Red - Blue)
+
+        Input bands are clipped to [0, 1] to avoid numerical instabilities.
 
     References:
         Eng, L.S., Ismail, R., Hashim, W., Baharum, A., 2019.
         The Use of VARI, GLI, and VIgreen Formulas in Detecting Vegetation In aerial Images.
         International Journal of Technology. Volume 10(7), pp. 1385-1394
         https://doi.org/10.14716/ijtech.v10i7.3275
+
+    Example:
+        ```python
+        from darts_preprocessing import calculate_vari
+
+        vari = calculate_vari(optical)
+        ```
 
     """
     g = optical["green"].clip(0, 1)
@@ -344,23 +481,36 @@ def calculate_vari(optical: xr.Dataset) -> xr.DataArray:
 
 @stopwatch("Calculating GLI", printer=logger.debug)
 def calculate_gli(optical: xr.Dataset) -> xr.DataArray:
-    """Calculate GLI (Green Leaf Index) from an xarray Dataset containing spectral bands.
+    """Calculate GLI (Green Leaf Index) from spectral bands.
+
+    GLI emphasizes green reflectance for vegetation detection using only visible bands.
+    Suitable for RGB sensors and aerial imagery.
 
     Args:
-        optical (xr.Dataset): The xarray Dataset containing the spectral bands.
+        optical (xr.Dataset): Dataset containing spectral bands:
+            - green (float32): Green reflectance
+            - red (float32): Red reflectance
+            - blue (float32): Blue reflectance
 
     Returns:
-        xr.DataArray: A new DataArray containing the calculated GLI values.
+        xr.DataArray: GLI values with attributes:
+            - long_name: "GLI"
 
-    Notes:
-        GLI is calculated using the formula:
-            GLI = (2 x Green - Red - Blue) / (2 x Green + Red + Blue)
+    Note:
+        Formula: GLI = (2 * Green - Red - Blue) / (2 * Green + Red + Blue)
 
     References:
         Eng, L.S., Ismail, R., Hashim, W., Baharum, A., 2019.
         The Use of VARI, GLI, and VIgreen Formulas in Detecting Vegetation In aerial Images.
         International Journal of Technology. Volume 10(7), pp. 1385-1394
         https://doi.org/10.14716/ijtech.v10i7.3275
+
+    Example:
+        ```python
+        from darts_preprocessing import calculate_gli
+
+        gli = calculate_gli(optical)
+        ```
 
     """
     g = optical["green"]
@@ -379,20 +529,25 @@ def calculate_vdvi(optical: xr.Dataset) -> xr.DataArray:
 
 @stopwatch("Calculating TGI", printer=logger.debug)
 def calculate_tgi(optical: xr.Dataset) -> xr.DataArray:
-    """Calculate TGI (Triangular Greenness Index) from an xarray Dataset containing spectral bands.
+    """Calculate TGI (Triangular Greenness Index) from spectral bands.
 
-    This function will clip the optical bands to the range [0, 1] before calculating TGI to avoid
-    potential numerical instabilities from negative reflections.
+    TGI is sensitive to chlorophyll content and can estimate leaf area index without
+    calibration. Particularly useful for crop monitoring.
 
     Args:
-        optical (xr.Dataset): The xarray Dataset containing the spectral bands.
+        optical (xr.Dataset): Dataset containing spectral bands:
+            - red (float32): Red reflectance [0-1]
+            - green (float32): Green reflectance [0-1]
+            - blue (float32): Blue reflectance [0-1]
 
     Returns:
-        xr.DataArray: A new DataArray containing the calculated TGI values.
+        xr.DataArray: TGI values with attributes:
+            - long_name: "TGI"
 
-    Notes:
-        TGI is calculated using the formula:
-            TGI = -0.5 x [190 x (Red - Green) - 120 x (Red - Blue)]
+    Note:
+        Formula: TGI = -0.5 * [190 * (Red - Green) - 120 * (Red - Blue)]
+
+        Input bands are clipped to [0, 1] to avoid numerical instabilities.
 
     References:
         E. Raymond Hunt, Paul C. Doraiswamy, James E. McMurtrey, Craig S.T. Daughtry, Eileen M. Perry, Bakhyt Akhmedov,
@@ -400,6 +555,13 @@ def calculate_tgi(optical: xr.Dataset) -> xr.DataArray:
         International Journal of Applied Earth Observation and Geoinformation,
         Volume 21, 2013, Pages 103-112, ISSN 1569-8432,
         https://doi.org/10.1016/j.jag.2012.07.020.
+
+    Example:
+        ```python
+        from darts_preprocessing import calculate_tgi
+
+        tgi = calculate_tgi(optical)
+        ```
 
     """
     r = optical["red"].clip(0, 1)
@@ -412,26 +574,41 @@ def calculate_tgi(optical: xr.Dataset) -> xr.DataArray:
 
 @stopwatch("Calculating EXG", printer=logger.debug)
 def calculate_exg(optical: xr.Dataset) -> xr.DataArray:
-    """Calculate EXG (Excess Green Index) from an xarray Dataset containing spectral bands.
+    """Calculate EXG (Excess Green Index) from spectral bands.
 
-    This function will clip the optical bands to the range [0, 1] before calculating EXG to avoid
-    potential numerical instabilities from negative reflections.
+    EXG highlights green vegetation by emphasizing the green band relative to red and blue.
+    Widely used for crop/weed discrimination and precision agriculture.
 
     Args:
-        optical (xr.Dataset): The xarray Dataset containing the spectral bands.
+        optical (xr.Dataset): Dataset containing spectral bands:
+            - green (float32): Green reflectance [0-1]
+            - red (float32): Red reflectance [0-1]
+            - blue (float32): Blue reflectance [0-1]
 
     Returns:
-        xr.DataArray: A new DataArray containing the calculated EXG values.
+        xr.DataArray: EXG values with attributes:
+            - long_name: "EXG"
 
-    Notes:
-        EXG is calculated using the formula:
-            EXG = 2 x Green - Red - Blue
+    Note:
+        Formula: EXG = 2 * Green - Red - Blue
+
+        Input bands are clipped to [0, 1] to avoid numerical instabilities.
 
     References:
         Upendar, K., Agrawal, K.N., Chandel, N.S. et al.
         Greenness identification using visible spectral colour indices for site specific weed management.
         Plant Physiol. Rep. 26, 179-187 (2021).
         https://doi.org/10.1007/s40502-020-00562-0
+
+    Example:
+        ```python
+        from darts_preprocessing import calculate_exg
+
+        exg = calculate_exg(optical)
+
+        # Threshold for vegetation detection
+        vegetation = exg > 0
+        ```
 
     """
     g = optical["green"].clip(0, 1)

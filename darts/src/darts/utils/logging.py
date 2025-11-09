@@ -4,20 +4,47 @@ import importlib
 import logging
 import sys
 import time
+from enum import IntEnum
 from pathlib import Path
 
 import cyclopts
 import rich
 from rich.logging import RichHandler
 
-# A global level to easy change the log level for interal darts modules
-# -> is different from the log level of other libraries (always INFO)
-DARTS_LEVEL = logging.INFO
-
 logger = logging.getLogger(__name__)
 
 # Console singleton to access the console from anywhere
 # console = Console()
+
+
+class VerbosityLevel(IntEnum):
+    """Enum for verbosity levels."""
+
+    NORMAL = 0
+    VERBOSE = 1
+    VERY_VERBOSE = 2
+    DEBUG = 3
+
+    @classmethod
+    def from_cli(cls, verbose: bool, very_verbose: bool, debug: bool) -> "VerbosityLevel":
+        """Get the verbosity level from CLI flags.
+
+        Args:
+            verbose (bool): Whether the verbose flag is set.
+            very_verbose (bool): Whether the very verbose flag is set.
+            debug (bool): Whether the debug flag is set.
+
+        Returns:
+            VerbosityLevel: The corresponding verbosity level.
+
+        """
+        if debug:
+            return cls.DEBUG
+        if very_verbose:
+            return cls.VERY_VERBOSE
+        if verbose:
+            return cls.VERBOSE
+        return cls.NORMAL
 
 
 class LoggingManagerSingleton:
@@ -37,31 +64,24 @@ class LoggingManagerSingleton:
         self._console_handler = None
         self._file_handler = None
         self._managed_loggers = []
-        self._log_level = DARTS_LEVEL
+        self._verbosity: VerbosityLevel = VerbosityLevel.NORMAL
 
     @property
     def logger(self):
         """Get the logger for the application."""
         return logging.getLogger("darts")
 
-    def setup_logging(self, verbose: bool = False):
-        """Set up logging for the application.
-
-        Args:
-            verbose (bool): Whether to set the log level to DEBUG.
-
-        """
+    def setup_logging(self):
+        """Set up logging for the application."""
         # Set up logging for our own modules
-        self._log_level = logging.DEBUG if verbose else DARTS_LEVEL
-        logging.getLogger("darts").setLevel(DARTS_LEVEL)
+        logging.getLogger("darts").setLevel(logging.INFO)
         logging.captureWarnings(True)
 
     def add_logging_handlers(
         self,
         command: str,
         log_dir: Path,
-        verbose: bool = False,
-        tracebacks_show_locals: bool = False,
+        verbosity: VerbosityLevel,
         log_plain: bool = False,
     ):
         """Add logging handlers (rich-console and file) to the application.
@@ -69,12 +89,13 @@ class LoggingManagerSingleton:
         Args:
             command (str): The command that is run.
             log_dir (Path): The directory to save the logs to.
-            verbose (bool): Whether to set the log level to DEBUG.
-            tracebacks_show_locals (bool): Whether to show local variables in tracebacks.
+            verbosity (VerbosityLevel): The verbosity level.
             log_plain (bool, optional): uses the RichHandler as output by default,
                 enable this to use a common print handler
 
         """
+        self._verbosity = verbosity
+
         if self._console_handler is not None or self._file_handler is not None:
             logger.warning("Logging handlers already added.")
             return
@@ -83,40 +104,45 @@ class LoggingManagerSingleton:
         current_time = time.strftime("%Y-%m-%d_%H-%M-%S")
 
         # Configure the rich console handler
-        supress_module_names = [
-            "torch",
-            "torch.utils.data",
-            "xarray",
-            "distributed",
-            "pandas",
-            # "lightning",
-        ]
-        traceback_suppress = [cyclopts]
-        for module_name in supress_module_names:
-            try:
-                module = importlib.import_module(module_name)
-                traceback_suppress.append(module)
-            except ImportError:
-                logger.warning(f"Module {module_name} not found, skipping traceback suppression for it.")
-                continue
+        if verbosity <= VerbosityLevel.VERY_VERBOSE:
+            supress_module_names = [
+                "torch",
+                "torch.utils.data",
+                "xarray",
+                "distributed",
+                "pandas",
+                # "lightning",
+                "stopuhr",
+                "contextlib",
+            ]
+            traceback_suppress = [cyclopts]
+            for module_name in supress_module_names:
+                try:
+                    module = importlib.import_module(module_name)
+                    traceback_suppress.append(module)
+                except ImportError:
+                    logger.warning(f"Module {module_name} not found, skipping traceback suppression for it.")
+                    continue
+        else:
+            traceback_suppress = []
 
         if not log_plain:
             console_fmt = (
                 "%(message)s"
-                if not verbose
+                if not verbosity >= VerbosityLevel.DEBUG
                 else "%(processName)s(%(process)d)-%(threadName)s(%(thread)d)@%(name)s - %(message)s"
             )
             console_handler = RichHandler(
                 console=rich.get_console(),
                 rich_tracebacks=True,
                 tracebacks_suppress=traceback_suppress,
-                tracebacks_show_locals=tracebacks_show_locals,
+                tracebacks_show_locals=verbosity >= VerbosityLevel.VERY_VERBOSE,
             )
         else:
             console_fmt = "** %(levelname)s %(asctime)s **\n   [%(pathname)s:%(lineno)d]\n"
             console_fmt += (
                 "%(message)s"
-                if not verbose
+                if not verbosity >= VerbosityLevel.DEBUG
                 else "   [%(name)s@%(processName)s(%(process)d)-%(threadName)s(%(thread)d)]\n%(message)s\n"
             )
             console_handler = logging.StreamHandler(sys.stdout)
@@ -136,29 +162,41 @@ class LoggingManagerSingleton:
         )
         self._file_handler = file_handler
 
-        self._log_level = logging.DEBUG if verbose else DARTS_LEVEL
-
         darts_logger = logging.getLogger("darts")
         darts_logger.addHandler(console_handler)
         darts_logger.addHandler(file_handler)
-        darts_logger.setLevel(self._log_level)
+        darts_logger.setLevel(logging.DEBUG if verbosity >= VerbosityLevel.VERBOSE else logging.INFO)
 
-    def apply_logging_handlers(self, *names: str, level: int | None = None):
+        if verbosity >= VerbosityLevel.VERY_VERBOSE:
+            very_verbose_modules = [
+                "smart_geocubes",
+                "dask",
+                "lightning",
+                "pytorch_lightning",
+                "torch",
+                "torch.utils.data",
+                "xarray",
+                "distributed",
+                "pandas",
+            ]
+            module_level = logging.DEBUG if verbosity >= VerbosityLevel.DEBUG else logging.INFO
+            self.apply_logging_handlers(*very_verbose_modules, level=module_level)
+
+    def apply_logging_handlers(self, *names: str, level: int = logging.INFO):
         """Apply the logging handlers to a (third-party) logger.
 
         Args:
             names (str): The names of the loggers to apply the handlers to.
-            level (int | None, optional): The log level to set for the loggers. If None, use the manager level.
-                Defaults to None.
+            level (int, optional): The log level to set for the loggers.
+                Defaults to logging.INFO.
 
         """
-        if level is None:
-            level = self._log_level
-
         for name in names:
-            if name in self._managed_loggers:
-                continue
             third_party_logger = logging.getLogger(name)
+            if name in self._managed_loggers:
+                # Set level for existing managed logger (will overwrite pot. verbosity settings)
+                third_party_logger.setLevel(level)
+                continue
             # Check if logger has a StreamHandler already and remove it if so
             for handler in third_party_logger.handlers:
                 if isinstance(handler, logging.StreamHandler):

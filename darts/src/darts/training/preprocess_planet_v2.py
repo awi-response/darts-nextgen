@@ -1,10 +1,12 @@
-"""PLANET preprocessing functions for training with the v2 data preprocessing."""
+"""Planet preprocessing functions for training with the v2 data preprocessing."""
 
 import logging
 import time
 from math import ceil, sqrt
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal
+
+from darts_utils.paths import DefaultPaths, paths
 
 logger = logging.getLogger(__name__)
 
@@ -50,14 +52,15 @@ def _get_region_name(footprint: "gpd.GeoSeries", admin2: "gpd.GeoDataFrame") -> 
     return region_name
 
 
-def preprocess_planet_train_data(
+def preprocess_planet_train_data(  # noqa: C901
     *,
     data_dir: Path,
     labels_dir: Path,
-    train_data_dir: Path,
-    arcticdem_dir: Path,
-    tcvis_dir: Path,
-    admin_dir: Path,
+    default_dirs: DefaultPaths = DefaultPaths(),
+    train_data_dir: Path | None = None,
+    arcticdem_dir: Path | None = None,
+    tcvis_dir: Path | None = None,
+    admin_dir: Path | None = None,
     preprocess_cache: Path | None = None,
     force_preprocess: bool = False,
     append: bool = True,
@@ -108,18 +111,30 @@ def preprocess_planet_train_data(
     │   ├── x/          # Input patches [n_patches, n_bands, patch_size, patch_size]
     │   └── y/          # Label patches [n_patches, patch_size, patch_size]
     ├── metadata.parquet
-    └── {timestamp}.cli.json
+    └── {timestamp}.cli.toml
     ```
 
     Args:
         data_dir (Path): The directory containing the Planet scenes and orthotiles.
         labels_dir (Path): The directory containing the labels and footprints / extents.
-        train_data_dir (Path): The "output" directory where the tensors are written to.
-        arcticdem_dir (Path): The directory containing the ArcticDEM data (the datacube and the extent files).
+        default_dirs (DefaultPaths, optional): The default directories for DARTS. Defaults to a config filled with None.
+        train_data_dir (Path | None, optional): The "output" directory where the tensors are written to.
+            If None, will use the default training data directory based on the DARTS paths.
+            Defaults to None.
+        arcticdem_dir (Path | None, optional): The directory containing the ArcticDEM data
+            (the datacube and the extent files).
             Will be created and downloaded if it does not exist.
-        tcvis_dir (Path): The directory containing the TCVis data.
-        admin_dir (Path): The directory containing the admin files.
-        preprocess_cache (Path, optional): The directory to store the preprocessed data. Defaults to None.
+            If None, will use the default auxiliary directory based on the DARTS paths.
+            Defaults to None.
+        tcvis_dir (Path | None, optional): The directory containing the TCVis data.
+            If None, will use the default TCVis directory based on the DARTS paths.
+            Defaults to None.
+        admin_dir (Path | None, optional): The directory containing the admin files.
+            If None, will use the default auxiliary directory based on the DARTS paths.
+            Defaults to None.
+        preprocess_cache (Path | None, optional): The directory to store the preprocessed data.
+            If None, will neither use nor store preprocessed data.
+            Defaults to None.
         force_preprocess (bool, optional): Whether to force the preprocessing of the data. Defaults to False.
         append (bool, optional): Whether to append the data to the existing data. Defaults to True.
         device (Literal["cuda", "cpu"] | int, optional): The device to run the model on.
@@ -144,12 +159,18 @@ def preprocess_planet_train_data(
     current_time = time.strftime("%Y-%m-%d_%H-%M-%S")
     logger.info(f"Starting preprocessing at {current_time}.")
 
+    paths.set_defaults(default_dirs)
+    train_data_dir = train_data_dir or paths.train_data_dir("planet_v2_rts", patch_size)
+    arcticdem_dir = arcticdem_dir or paths.arcticdem(2)
+    tcvis_dir = tcvis_dir or paths.tcvis()
+    admin_dir = admin_dir or paths.admin_boundaries()
+
     # Storing the configuration as JSON file
     train_data_dir.mkdir(parents=True, exist_ok=True)
     from darts_utils.functools import write_function_args_to_config_file
 
     write_function_args_to_config_file(
-        fpath=train_data_dir / f"{current_time}.cli.json",
+        fpath=train_data_dir / f"{current_time}.cli.toml",
         function=preprocess_planet_train_data,
         locals_=locals(),
     )

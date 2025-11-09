@@ -130,7 +130,7 @@ The conda environment will contain the necessary system packages, like `cuda-nvc
 To ensure that the python packages all refereing (linking) to these packages, all the installation done with `uv` will be done inside the `pixi` environment.
 The following graphic should illustrate this:
 
-![Environment Setup](../assets/environment-setup.svg){ loading=lazy }
+![Environment Setup](../assets/environments.drawio.png){ loading=lazy }
 
 We provide different conda environments over pixi: `cuda121`, `cuda124`, `cuda126`, `cuda128`, and `default` (no cuda).
 To run the installation in one of these environments use the `pixi run` command:

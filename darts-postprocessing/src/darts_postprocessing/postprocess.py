@@ -31,16 +31,55 @@ except ImportError:
 def erode_mask(
     mask: xr.DataArray, size: int, device: Literal["cuda", "cpu"] | int, edge_size: int | None = None
 ) -> xr.DataArray:
-    """Erode the mask, also set the edges to invalid.
+    """Erode a binary mask and invalidate edge regions.
+
+    This function applies morphological erosion to shrink valid regions in a mask and
+    additionally sets a border region around the entire mask to invalid. This is useful
+    for removing unreliable predictions near tile edges and data boundaries.
 
     Args:
-        mask (xr.DataArray): The mask to erode.
-        size (int): The size of the disk to use for erosion and the edge-cropping.
-        device (Literal["cuda", "cpu"] | int): The device to use for erosion.
-        edge_size (int, optional): Define a different edge erosion width, will use size parameter if None.
+        mask (xr.DataArray): Binary mask to erode (1=valid, 0=invalid). Will be converted to uint8.
+        size (int): Radius of the disk structuring element for erosion in pixels.
+            Also used as the width of the edge region to invalidate (unless edge_size is specified).
+        device (Literal["cuda", "cpu"] | int): Device for processing. Use "cuda" for GPU acceleration,
+            "cpu" for CPU processing, or an integer to specify a GPU device number.
+        edge_size (int | None, optional): Width of the edge region to set to invalid in pixels.
+            If None, uses the `size` parameter. Defaults to None.
 
     Returns:
-        xr.DataArray: The dilated and inverted mask.
+        xr.DataArray: Eroded mask (uint8, 1=valid, 0=invalid) with edges invalidated.
+
+    Note:
+        GPU acceleration (requires cucim):
+        - Significantly faster for large masks
+        - Automatically falls back to CPU if cucim is not available
+        - Handles both in-memory and dask arrays
+
+        The erosion operation shrinks valid regions by removing pixels within `size` distance
+        from invalid regions. Edge invalidation then sets the outermost `edge_size` pixels
+        on all sides to 0.
+
+    Example:
+        Erode mask to remove edge effects:
+
+        ```python
+        from darts_postprocessing import erode_mask
+
+        # Erode by 10 pixels and invalidate 10-pixel edges
+        eroded = erode_mask(
+            mask=quality_mask,
+            size=10,
+            device="cuda"
+        )
+
+        # Erode by 5 pixels but invalidate 20-pixel edges
+        eroded_custom = erode_mask(
+            mask=quality_mask,
+            size=5,
+            edge_size=20,
+            device="cpu"
+        )
+        ```
 
     """
     # Clone mask to avoid in-place operations
@@ -93,23 +132,61 @@ def binarize(
     mask: xr.DataArray,
     device: Literal["cuda", "cpu"] | int,
 ) -> xr.DataArray:
-    """Binarize the probabilities based on a threshold and a mask.
+    """Binarize segmentation probabilities with quality-based filtering.
 
-    Steps for binarization:
-        1. Dilate the mask. This will dilate the edges of holes in the mask as well as the edges of the tile.
-        2. Binarize the probabilities based on the threshold.
-        3. Remove objects at which overlap with either the edge of the tile or the noData mask.
-        4. Remove small objects.
+    This function converts continuous probability predictions to binary segmentation masks
+    by applying thresholding, removing edge artifacts, and filtering small objects.
+
+    Processing steps:
+        1. Threshold probabilities (prob > threshold → 1, else → 0)
+        2. Identify and remove objects touching invalid regions or tile edges
+        3. Remove objects smaller than min_object_size
 
     Args:
-        probs (xr.DataArray): Probabilities to binarize.
-        threshold (float): Threshold to binarize the probabilities.
-        min_object_size (int): Minimum object size to keep.
-        mask (xr.DataArray): Mask to apply to the binarized probabilities. Expects 0=negative, 1=postitive.
-        device (Literal["cuda", "cpu"] | int): The device to use for removing small objects.
+        probs (xr.DataArray): Segmentation probabilities (float32, range [0-1]).
+            NaN values are treated as 0 (no detection).
+        threshold (float): Probability threshold for binarization. Typical values: 0.3-0.7.
+        min_object_size (int): Minimum object size in pixels. Objects with fewer pixels are removed.
+        mask (xr.DataArray): Quality mask (uint8, 1=valid, 0=invalid). Objects overlapping
+            invalid regions are removed to avoid artifacts at data boundaries.
+        device (Literal["cuda", "cpu"] | int): Device for processing. GPU acceleration
+            recommended for large tiles.
 
     Returns:
-        xr.DataArray: Binarized probabilities.
+        xr.DataArray: Binary segmentation mask (bool, True=object, False=background).
+
+    Note:
+        Edge and boundary handling:
+        - Objects touching tile edges or invalid data regions (mask==0) are completely removed
+        - This prevents partial objects at boundaries from being misclassified
+        - Uses connected component analysis (8-connectivity) to identify touching objects
+
+        GPU acceleration:
+        - Object removal operations are significantly faster on GPU
+        - Automatically handles dask arrays by persisting before GPU operations
+
+    Example:
+        Binarize with standard parameters:
+
+        ```python
+        from darts_postprocessing import binarize, erode_mask
+
+        # Erode quality mask first
+        eroded_mask = erode_mask(
+            tile["quality_data_mask"] == 2,  # High quality only
+            size=10,
+            device="cuda"
+        )
+
+        # Binarize predictions
+        binary_mask = binarize(
+            probs=tile["probabilities"],
+            threshold=0.5,
+            min_object_size=32,  # Remove objects < 32 pixels
+            mask=eroded_mask,
+            device="cuda"
+        )
+        ```
 
     """
     use_gpu = device == "cuda" or isinstance(device, int)
@@ -179,25 +256,83 @@ def prepare_export(
     device: Literal["cuda", "cpu"] | int = DEFAULT_DEVICE,
     edge_erosion_size: int | None = None,
 ) -> xr.Dataset:
-    """Prepare the export, e.g. binarizes the data and convert the float probabilities to uint8.
+    """Prepare segmentation results for export by applying quality filtering and binarization.
+
+    This is a wrapper function that orchestrates the complete postprocessing pipeline:
+    mask erosion, probability masking, and binarization. It processes both ensemble-averaged
+    predictions and individual model outputs if present.
 
     Args:
-        tile (xr.Dataset): Input tile from inference and / or an ensemble.
-        bin_threshold (float, optional): The threshold to binarize the probabilities. Defaults to 0.5.
-        mask_erosion_size (int, optional): The size of the disk to use for mask erosion and the edge-cropping.
-            Defaults to 10.
-        min_object_size (int, optional): The minimum object size to keep in pixel. Defaults to 32.
-        quality_level (int | str, optional): The quality level to use for the mask. If a string maps to int.
-            high_quality -> 2, low_quality=1, none=0 (apply no masking). Defaults to 0.
-        ensemble_subsets (list[str], optional): The ensemble subsets to use for the binarization.
-            Defaults to [].
-        device (Literal["cuda", "cpu"] | int, optional): The device to use for dilation.
-            Defaults to "cuda" if cuda for cucim is available, else "cpu".
-        edge_erosion_size (int, optional): If the edge-cropping should have a different witdth, than the (inner) mask
-            erosion, set it here. Defaults to `mask_erosion_size`.
+        tile (xr.Dataset): Input tile from inference containing:
+            - probabilities (float32): Segmentation probabilities [0-1]
+            - quality_data_mask (uint8): Quality mask (0=invalid, 1=low quality, 2=high quality)
+            - probabilities-{subset} (float32): Optional individual model predictions
+        bin_threshold (float, optional): Probability threshold for binarization. Defaults to 0.5.
+        mask_erosion_size (int, optional): Erosion radius for quality mask in pixels. Also used
+            for edge invalidation unless edge_erosion_size is specified. Defaults to 10.
+        min_object_size (int, optional): Minimum object size in pixels. Smaller objects are removed.
+            Defaults to 32.
+        quality_level (int | Literal["high_quality", "low_quality", "none"], optional):
+            Quality threshold for masking. Maps to quality_data_mask values:
+            - "high_quality" or 2: Only use high quality pixels
+            - "low_quality" or 1: Use low and high quality pixels
+            - "none" or 0: No quality masking
+            Defaults to 0 (no masking).
+        ensemble_subsets (list[str], optional): Names of individual models in the ensemble to
+            process (e.g., ["with_tcvis", "without_tcvis"]). Defaults to [].
+        device (Literal["cuda", "cpu"] | int, optional): Device for processing. Defaults to GPU if available.
+        edge_erosion_size (int | None, optional): Separate erosion width for tile edges in pixels.
+            If None, uses mask_erosion_size. Defaults to None.
 
     Returns:
-        xr.Dataset: Output tile.
+        xr.Dataset: Input tile augmented with:
+
+        Added data variables:
+            - extent (uint8): Valid extent mask after erosion (1=valid, 0=invalid).
+              Attributes: long_name="Extent of the segmentation"
+            - binarized_segmentation (bool): Binary segmentation mask (True=object).
+              Attributes: long_name="Binarized Segmentation"
+            - binarized_segmentation-{subset} (bool): Binary masks for each ensemble subset
+              (only if ensemble_subsets provided)
+
+        Modified data variables:
+            - probabilities (float32): Now masked to valid extent (NaN outside)
+            - probabilities-{subset} (float32): Masked individual model predictions
+
+    Note:
+        Processing pipeline:
+        1. Filter quality mask to specified quality_level
+        2. Erode quality mask to remove boundary artifacts
+        3. Create extent mask from eroded quality mask
+        4. Mask probabilities to valid extent (NaN invalid regions)
+        5. Binarize masked probabilities with threshold and min object size filter
+        6. Repeat steps 4-5 for each ensemble subset if provided
+
+        The extent variable defines the reliable prediction region and should be used to
+        clip exported results.
+
+    Example:
+        Complete postprocessing workflow:
+
+        ```python
+        from darts_postprocessing import prepare_export
+
+        # After ensemble inference
+        processed_tile = prepare_export(
+            tile=ensemble_result,
+            bin_threshold=0.5,
+            mask_erosion_size=10,
+            min_object_size=32,
+            quality_level="high_quality",  # Only high quality pixels
+            ensemble_subsets=["with_tcvis", "without_tcvis"],
+            device="cuda"
+        )
+
+        # Now ready for export with:
+        # - processed_tile["binarized_segmentation"]: Main binary result
+        # - processed_tile["extent"]: Valid data extent
+        # - processed_tile["probabilities"]: Masked probabilities
+        ```
 
     """
     quality_level = (

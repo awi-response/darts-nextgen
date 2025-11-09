@@ -14,20 +14,74 @@ DEFAULT_DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
 class EnsembleV1:
-    """DARTS v1 ensemble based on a list of models."""
+    """Model ensemble that averages predictions from multiple segmentation models.
+
+    This class manages multiple trained segmentation models and combines their predictions
+    by averaging, providing more robust and stable predictions than any single model.
+    It's particularly useful for combining models trained with different data sources
+    (e.g., with and without TCVIS data).
+
+    Attributes:
+        models (dict[str, SMPSegmenter]): Dictionary mapping model names to loaded segmenters.
+
+    Note:
+        The ensemble automatically:
+        - Manages multiple model instances with separate configurations
+        - Handles band requirements across all models
+        - Averages probability predictions (simple arithmetic mean)
+        - Optionally preserves individual model outputs for analysis
+
+    Example:
+        Create and use an ensemble:
+
+        ```python
+        from darts_ensemble import EnsembleV1
+        import torch
+
+        # Initialize ensemble with multiple models
+        ensemble = EnsembleV1(
+            model_dict={
+                "with_tcvis": "path/to/model_with_tcvis.ckpt",
+                "without_tcvis": "path/to/model_without_tcvis.ckpt",
+            },
+            device=torch.device("cuda")
+        )
+
+        # Check combined band requirements
+        print(ensemble.required_bands)
+        # {'blue', 'green', 'red', 'nir', 'ndvi', 'tc_brightness', ...}
+
+        # Run ensemble inference
+        result = ensemble.segment_tile(
+            tile=preprocessed_tile,
+            keep_inputs=True  # Keep individual model predictions
+        )
+
+        # Access predictions
+        ensemble_probs = result["probabilities"]  # Averaged
+        model1_probs = result["probabilities-with_tcvis"]  # Individual
+        model2_probs = result["probabilities-without_tcvis"]  # Individual
+        ```
+
+    """
 
     def __init__(
         self,
         model_dict,
         device: torch.device = DEFAULT_DEVICE,
     ):
-        """Initialize the ensemble.
+        """Initialize the ensemble with multiple model checkpoints.
 
         Args:
-            model_dict (dict): The paths to model checkpoints to ensemble, the key is should be a model identifier
-                to be written to outputs.
-            device (torch.device): The device to run the model on.
-                Defaults to torch.device("cuda") if cuda is available, else torch.device("cpu").
+            model_dict (dict[str, str | Path]): Mapping of model identifiers to checkpoint paths.
+                Keys are used to name individual model outputs (e.g., "with_tcvis", "without_tcvis").
+                Values are paths to model checkpoint files.
+            device (torch.device, optional): Device to load all models on.
+                Defaults to CUDA if available, else CPU.
+
+        Note:
+            All models are loaded on the same device. For multi-GPU ensembles, instantiate
+            separate EnsembleV1 objects per device.
 
         """
         model_paths = {k: Path(v) for k, v in model_dict.items()}
@@ -35,6 +89,19 @@ class EnsembleV1:
             "Loading models:\n" + "\n".join([f" - {k.upper()} model: {v.resolve()}" for k, v in model_paths.items()])
         )
         self.models = {k: SMPSegmenter(v, device=device) for k, v in model_paths.items()}
+
+    @property
+    def model_names(self) -> list[str]:
+        """The names of the models in this ensemble."""
+        return list(self.models.keys())
+
+    @property
+    def required_bands(self) -> set[str]:
+        """The combined bands required by all models in this ensemble."""
+        bands = set()
+        for model in self.models.values():
+            bands.update(model.required_bands)
+        return bands
 
     @stopwatch.f(
         "Ensemble inference",
@@ -50,19 +117,56 @@ class EnsembleV1:
         reflection: int = 0,
         keep_inputs: bool = False,
     ) -> xr.Dataset:
-        """Run inference on a tile.
+        """Run ensemble inference on a single tile by averaging multiple model predictions.
+
+        Each model in the ensemble processes the tile independently, then predictions are
+        combined by simple arithmetic averaging to produce the final ensemble prediction.
 
         Args:
-            tile: The input tile, containing preprocessed, harmonized data.
-            patch_size (int): The size of the patches. Defaults to 1024.
-            overlap (int): The size of the overlap. Defaults to 16.
-            batch_size (int): The batch size for the prediction, NOT the batch_size of input tiles.
-                Tensor will be sliced into patches and these again will be infered in batches. Defaults to 8.
-            reflection (int): Reflection-Padding which will be applied to the edges of the tensor. Defaults to 0.
-            keep_inputs (bool, optional): Whether to keep the input probabilities in the output. Defaults to False.
+            tile (xr.Dataset): Input tile containing preprocessed data. Must include all bands
+                required by any model in the ensemble (union of all `required_bands`).
+            patch_size (int, optional): Size of square patches for inference in pixels.
+                Defaults to 1024.
+            overlap (int, optional): Overlap between adjacent patches in pixels. Defaults to 16.
+            batch_size (int, optional): Number of patches to process simultaneously per model.
+                Defaults to 8.
+            reflection (int, optional): Reflection padding applied to tile edges in pixels.
+                Defaults to 0.
+            keep_inputs (bool, optional): If True, preserves individual model predictions as
+                separate variables (e.g., "probabilities-with_tcvis"). Defaults to False.
 
         Returns:
-            Input tile augmented by a predicted `probabilities` layer with type float32 and range [0, 1].
+            xr.Dataset: Input tile augmented with:
+                - probabilities (float32): Ensemble-averaged predictions in range [0, 1].
+                  Attributes: long_name="Probabilities"
+                - probabilities-{model_name} (float32): Individual model predictions
+                  (only if keep_inputs=True)
+
+        Note:
+            Averaging method: Simple arithmetic mean across all models. For N models:
+            ensemble_prob = (prob_1 + prob_2 + ... + prob_N) / N
+
+            This approach assumes equal confidence in all models. Consider weighted averaging
+            if models have different validation performances.
+
+        Example:
+            Run ensemble with analysis of individual models:
+
+            ```python
+            result = ensemble.segment_tile(
+                tile=preprocessed_tile,
+                patch_size=1024,
+                overlap=16,
+                keep_inputs=True  # Keep individual predictions
+            )
+
+            # Compare ensemble vs individual models
+            import matplotlib.pyplot as plt
+            fig, axes = plt.subplots(1, 3)
+            result["probabilities"].plot(ax=axes[0], title="Ensemble")
+            result["probabilities-with_tcvis"].plot(ax=axes[1], title="Model 1")
+            result["probabilities-without_tcvis"].plot(ax=axes[2], title="Model 2")
+            ```
 
         """
         probabilities = {}

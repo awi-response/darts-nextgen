@@ -28,7 +28,7 @@ It is recommended to read the [overview](https://awi-response.github.io/darts-ne
     uv sync --extra cuda126 --extra training
     ```
 
-    > For other installation options, e.g. using conda, see the [installation guide](https://awi-response.github.io/darts-nextgen/latest/guides/installation/).
+    > For other installation options, e.g. using pixi (conda), see the [installation guide](https://awi-response.github.io/darts-nextgen/latest/guides/installation/).
 
 3. Run the Sentinel 2 based pipeline on an area of interest:
 

@@ -58,19 +58,73 @@ class SMPSegmenterConfig(TypedDict):
 
 
 class SMPSegmenter:
-    """An actor that keeps a model as its state and segments tiles."""
+    """Semantic segmentation model wrapper for RTS detection using Segmentation Models PyTorch.
+
+    This class provides a stateful inference interface for semantic segmentation models trained
+    with the DARTS pipeline. It handles model loading, normalization, patch-based inference,
+    and memory management.
+
+    Attributes:
+        config (SMPSegmenterConfig): Model configuration including architecture and required bands.
+        model (nn.Module): The loaded PyTorch segmentation model.
+        device (torch.device): Device where the model is loaded (CPU or GPU).
+
+    Note:
+        The segmenter automatically:
+        - Loads model weights from PyTorch Lightning or legacy checkpoints
+        - Normalizes input data using band-specific statistics from darts_utils.bands
+        - Handles memory cleanup after inference to prevent GPU memory leaks
+
+    Example:
+        Basic segmentation workflow:
+
+        ```python
+        from darts_segmentation import SMPSegmenter
+        import torch
+
+        # Initialize segmenter
+        segmenter = SMPSegmenter(
+            model_checkpoint="path/to/model.ckpt",
+            device=torch.device("cuda")
+        )
+
+        # Check required bands
+        print(segmenter.required_bands)
+        # {'blue', 'green', 'red', 'nir', 'ndvi', 'slope', 'hillshade', ...}
+
+        # Run inference on preprocessed tile
+        result = segmenter.segment_tile(
+            tile=preprocessed_tile,
+            patch_size=1024,
+            overlap=16,
+            batch_size=8
+        )
+
+        # Access predictions
+        probabilities = result["probabilities"]  # float32, range [0, 1]
+        ```
+
+    """
 
     config: SMPSegmenterConfig
     model: nn.Module
     device: torch.device
 
     def __init__(self, model_checkpoint: Path | str, device: torch.device = DEFAULT_DEVICE):
-        """Initialize the segmenter.
+        """Initialize the segmenter with a trained model checkpoint.
 
         Args:
-            model_checkpoint (Path): The path to the model checkpoint.
-            device (torch.device): The device to run the model on.
-                Defaults to torch.device("cuda") if cuda is available, else torch.device("cpu").
+            model_checkpoint (Path | str): Path to the model checkpoint file (.ckpt).
+                Supports both PyTorch Lightning checkpoints and legacy formats.
+            device (torch.device, optional): Device to load the model on.
+                Defaults to CUDA if available, else CPU.
+
+        Note:
+            The checkpoint must contain:
+            - Model architecture configuration (config or hyper_parameters)
+            - Trained weights (state_dict or statedict)
+            - Required input bands list
+            Using lightning checkpoints from our training pipeline is recommended.
 
         """
         if isinstance(model_checkpoint, str):
@@ -95,6 +149,11 @@ class SMPSegmenter:
 
         logger.debug(f"Successfully loaded model from {model_checkpoint.resolve()} with inputs: {self.config['bands']}")
 
+    @property
+    def required_bands(self) -> set[str]:
+        """The bands required by this model."""
+        return set(self.config["bands"])
+
     @stopwatch.f(
         "Segmenting tile",
         printer=logger.debug,
@@ -103,18 +162,57 @@ class SMPSegmenter:
     def segment_tile(
         self, tile: xr.Dataset, patch_size: int = 1024, overlap: int = 16, batch_size: int = 8, reflection: int = 0
     ) -> xr.Dataset:
-        """Run inference on a tile.
+        """Run semantic segmentation inference on a single tile.
+
+        This method performs patch-based inference with optional overlap and reflection padding
+        to handle edge artifacts. The tile is automatically normalized using band-specific
+        statistics before inference.
 
         Args:
-            tile: The input tile, containing preprocessed, harmonized data.
-            patch_size (int): The size of the patches. Defaults to 1024.
-            overlap (int): The size of the overlap. Defaults to 16.
-            batch_size (int): The batch size for the prediction, NOT the batch_size of input tiles.
-                Tensor will be sliced into patches and these again will be infered in batches. Defaults to 8.
-            reflection (int): Reflection-Padding which will be applied to the edges of the tensor. Defaults to 0.
+            tile (xr.Dataset): Input tile containing preprocessed data. Must include all bands
+                specified in `self.required_bands`. Variables should be float32 reflectance
+                or normalized feature values.
+            patch_size (int, optional): Size of square patches for inference in pixels.
+                Larger patches use more memory but may be faster. Defaults to 1024.
+            overlap (int, optional): Overlap between adjacent patches in pixels. Helps reduce
+                edge artifacts. Defaults to 16.
+            batch_size (int, optional): Number of patches to process simultaneously. Higher
+                values use more GPU memory but may be faster. Defaults to 8.
+            reflection (int, optional): Reflection padding applied to tile edges in pixels.
+                Reduces edge effects. Defaults to 0.
 
         Returns:
-            Input tile augmented by a predicted `probabilities` layer with type float32 and range [0, 1].
+            xr.Dataset: Input tile augmented with a new data variable:
+                - probabilities (float32): Segmentation probabilities in range [0, 1].
+                  Attributes: long_name="Probabilities"
+
+        Note:
+            Processing pipeline:
+            1. Extract and reorder bands according to model requirements
+            2. Normalize using darts_utils.bands.manager
+            3. Convert to torch tensor
+            4. Run patch-based inference with overlap blending
+            5. Convert predictions back to xarray
+
+            Memory management:
+            - Automatically frees GPU memory after inference
+            - Predictions are moved to CPU before returning
+
+        Example:
+            Run inference with custom parameters:
+
+            ```python
+            result = segmenter.segment_tile(
+                tile=preprocessed_tile,
+                patch_size=512,  # Smaller patches for limited GPU memory
+                overlap=32,      # More overlap for smoother predictions
+                batch_size=4,    # Smaller batches for memory constraints
+                reflection=16    # Add padding to reduce edge artifacts
+            )
+
+            # Extract probabilities
+            probs = result["probabilities"]
+            ```
 
         """
         # Convert the tile to a tensor
@@ -131,10 +229,8 @@ class SMPSegmenter:
         ).squeeze(0)
 
         # Highly sophisticated DL-based predictor
-        # TODO: is there a better way to pass metadata?
-        tile["probabilities"] = tile["red"].copy(data=probabilities.cpu().numpy())
+        tile["probabilities"] = (("y", "x"), probabilities.cpu().numpy())
         tile["probabilities"].attrs = {"long_name": "Probabilities"}
-        tile["probabilities"] = tile["probabilities"].fillna(float("nan")).rio.write_nodata(float("nan"))
 
         # Cleanup cuda memory
         del tensor_tile, probabilities

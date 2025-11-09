@@ -1,7 +1,9 @@
 """Hardcoded band information for encoding/decoding and normalization."""
 
+from collections.abc import Generator
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 import xarray as xr
@@ -321,7 +323,7 @@ class BandManager:
         """
         return band in self.codecs
 
-    def __iter__(self):
+    def __iter__(self) -> Generator[str, Any, None]:
         """Iterate over the bands in the manager.
 
         Yields:

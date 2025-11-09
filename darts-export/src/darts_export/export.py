@@ -97,18 +97,106 @@ def export_tile(  # noqa: C901
     metadata: dict = {},
     debug: bool = False,
 ):
-    """Export a tile into a inference dataset, consisting of multiple files.
+    """Export segmentation results to multiple file formats for analysis and distribution.
+
+    This function exports a processed tile to an output directory, creating multiple file
+    formats including GeoTIFFs, GeoPackages, Parquet files, and visualizations. It handles
+    both ensemble-averaged results and individual model outputs.
 
     Args:
-        tile (xr.Dataset): The tile to export.
-        out_dir (Path): The path where to export to.
-        bands (list[str], optional): The bands to export. Defaults to ["probabilities"].
-        ensemble_subsets (list[str], optional): The ensemble subsets to export. Defaults to [].
-        metadata (dict, optional): Metadata to include in the export.
-        debug (bool, optional): Debug mode: will write a .netcdf with all of the tiles contents. Defaults to False.
+        tile (xr.Dataset): Processed tile from prepare_export() containing segmentation results.
+            Must include spatial reference information (CRS, coordinates).
+        out_dir (Path): Output directory path. Created if it doesn't exist.
+        bands (list[str], optional): List of data products to export. Options:
+            - "probabilities": Probability maps as GeoTIFF (uint8, 0-100 scale, 255=nodata)
+            - "binarized": Binary segmentation masks as GeoTIFF (uint8, 0/1)
+            - "polygonized": Vectorized segmentations as GeoPackage and Parquet
+            - "extent": Valid data extent as vector (GeoPackage and Parquet)
+            - "thumbnail": RGB visualization as JPEG
+            - "optical": Optical bands (red, green, blue, nir) as multi-band GeoTIFF
+            - "dem": Terrain features (slope, relative_elevation) as multi-band GeoTIFF
+            - "tcvis": TCVIS features (tc_brightness, tc_greenness, tc_wetness) as GeoTIFF
+            - "metadata": Metadata JSON file
+            - Any other variable name: Exported as single-band GeoTIFF
+            Defaults to ["probabilities", "binarized", "polygonized", "extent", "thumbnail"].
+        ensemble_subsets (list[str], optional): Names of individual ensemble models to export
+            separately (e.g., ["with_tcvis", "without_tcvis"]). Creates suffixed files for
+            each subset. Defaults to [].
+        metadata (dict, optional): Metadata dictionary to embed in raster tags and export as JSON.
+            Automatically adds DARTS_exportdate timestamp. Defaults to {}.
+        debug (bool, optional): If True, exports complete tile as NetCDF file
+            (darts_inference_debug.nc) for debugging. Defaults to False.
 
     Raises:
-        ValueError: If the band is not found in the tile.
+        ValueError: If a specified band is not found in the tile's data variables.
+
+    Note:
+        Output files created (depending on `bands` parameter):
+
+        Raster outputs (GeoTIFF with LZW compression):
+        - probabilities.tif: Uint8 [0-100], 255=nodata
+        - binarized.tif: Uint8 binary mask
+        - optical.tif: Multi-band optical imagery
+        - dem.tif: Multi-band terrain features
+        - tcvis.tif: Multi-band TCVIS features
+        - {custom_band}.tif: Single-band custom exports
+
+        Vector outputs (GeoPackage + Parquet):
+        - prediction_segments.gpkg/.parquet: Polygonized segmentation
+        - prediction_extent.gpkg/.parquet: Valid data extent
+
+        Visualization:
+        - thumbnail.jpg: RGB composite with overlay
+
+        Metadata:
+        - darts_inference.json: Metadata dictionary
+
+        Ensemble subsets:
+        All raster and vector outputs get suffixed versions for each subset:
+        - probabilities-{subset}.tif
+        - binarized-{subset}.tif
+        - prediction_segments-{subset}.gpkg/.parquet
+
+    Example:
+        Standard export workflow:
+
+        ```python
+        from pathlib import Path
+        from darts_export import export_tile
+
+        # After prepare_export()
+        export_tile(
+            tile=processed_tile,
+            out_dir=Path("/output/scene_12345"),
+            bands=["probabilities", "binarized", "polygonized", "extent", "thumbnail"],
+            ensemble_subsets=["with_tcvis", "without_tcvis"],
+            metadata={
+                "scene_id": "S2A_MSIL2A_20230615...",
+                "model_version": "v2.1",
+                "processing_date": "2023-06-20"
+            },
+            debug=False
+        )
+
+        # Creates:
+        # /output/scene_12345/
+        #   ├── probabilities.tif
+        #   ├── probabilities-with_tcvis.tif
+        #   ├── probabilities-without_tcvis.tif
+        #   ├── binarized.tif
+        #   ├── binarized-with_tcvis.tif
+        #   ├── binarized-without_tcvis.tif
+        #   ├── prediction_segments.gpkg
+        #   ├── prediction_segments.parquet
+        #   ├── prediction_segments-with_tcvis.gpkg
+        #   ├── prediction_segments-with_tcvis.parquet
+        #   ├── prediction_segments-without_tcvis.gpkg
+        #   ├── prediction_segments-without_tcvis.parquet
+        #   ├── prediction_extent.gpkg
+        #   ├── prediction_extent.parquet
+        #   ├── thumbnail.jpg
+        #   └── darts_inference.json
+        ```
 
     """
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -117,6 +205,9 @@ def export_tile(  # noqa: C901
         metadata["DARTS_exportdate"] = str(datetime.now(UTC))
 
     raster_tags = metadata
+
+    if debug:
+        manager.to_netcdf(tile, out_dir / "darts_inference_debug.nc", crop=False)
 
     for band in bands:
         match band:
@@ -147,6 +238,3 @@ def export_tile(  # noqa: C901
                     )
                 # Export the band as a raster
                 _export_raster(tile, band, out_dir, tags=raster_tags)
-
-    if debug:
-        manager.to_netcdf(tile, out_dir / "darts_inference_debug.nc", crop=False)

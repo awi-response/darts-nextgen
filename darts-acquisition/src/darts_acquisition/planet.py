@@ -6,6 +6,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Literal
 
+import odc.geo
+import rasterio
 import rioxarray
 import xarray as xr
 from stopuhr import stopwatch
@@ -73,16 +75,63 @@ def parse_planet_type(fpath: Path) -> Literal["orthotile", "scene"]:
 
 @stopwatch.f("Loading Planet scene", printer=logger.debug)
 def load_planet_scene(fpath: str | Path) -> xr.Dataset:
-    """Load a PlanetScope satellite GeoTIFF file and return it as an xarray datset.
+    """Load a PlanetScope satellite scene from GeoTIFF files.
+
+    This function loads PlanetScope surface reflectance data (PSScene or PSOrthoTile) from
+    a directory containing TIFF files and metadata. The scene type is automatically detected
+    from the directory name format.
 
     Args:
-        fpath (str | Path): The path to the directory containing the TIFF files or a specific path to the TIFF file.
+        fpath (str | Path): Path to the directory containing the PlanetScope scene data.
+            The directory must follow PlanetScope naming conventions:
+            - Scene: YYYYMMDD_HHMMSS_NN_XXXX or YYYYMMDD_HHMMSS_XXXX
+            - Orthotile: NNNNNNN_NNNNNNN_YYYY-MM-DD_XXXX
+            Must contain *_SR.tif (or *_SR_clip.tif) and *_metadata.json files.
 
     Returns:
-        xr.Dataset: The loaded dataset
+        xr.Dataset: The loaded PlanetScope dataset with the following data variables:
+            - blue (float32): Blue band surface reflectance [0-1]
+            - green (float32): Green band surface reflectance [0-1]
+            - red (float32): Red band surface reflectance [0-1]
+            - nir (float32): Near-infrared band surface reflectance [0-1]
+
+            Each variable has attributes:
+            - long_name: "PLANET {Band}"
+            - units: "Reflectance"
+            - data_source: "planet"
+            - planet_type: "scene" or "orthotile"
+
+            Dataset-level attributes:
+            - azimuth (float): Solar azimuth angle in degrees
+            - elevation (float): Solar elevation angle in degrees
+            - tile_id (str): Unique identifier for the scene
+            - planet_scene_id (str): Scene identifier (for scenes) or scene portion (for orthotiles)
+            - planet_orthotile_id (str): Orthotile identifier (only for orthotiles)
 
     Raises:
-        FileNotFoundError: If no matching TIFF file is found in the specified path.
+        FileNotFoundError: If required TIFF or metadata files are not found in the directory.
+
+    Note:
+        - Input DN values are divided by 10000 to convert to reflectance [0-1].
+        - The scene type (PSScene vs PSOrthoTile) is automatically detected from the directory name.
+        - Solar geometry is extracted from the metadata JSON file.
+
+    Example:
+        Load a PlanetScope scene:
+
+        ```python
+        from darts_acquisition import load_planet_scene
+
+        # Load scene data
+        planet_ds = load_planet_scene("/data/planet/20230615_123045_1234")
+
+        # Access bands
+        ndvi = (planet_ds.nir - planet_ds.red) / (planet_ds.nir + planet_ds.red)
+
+        # Check solar geometry
+        print(f"Solar azimuth: {planet_ds.azimuth}")
+        print(f"Solar elevation: {planet_ds.elevation}")
+        ```
 
     """
     # Convert to Path object if a string is provided
@@ -140,18 +189,61 @@ def load_planet_scene(fpath: str | Path) -> xr.Dataset:
 
 @stopwatch.f("Loading Planet masks", printer=logger.debug)
 def load_planet_masks(fpath: str | Path) -> xr.Dataset:
-    """Load the valid and quality data masks from a Planet scene.
+    """Load quality and validity masks from a PlanetScope scene's UDM-2 data.
+
+    This function extracts data quality information from the PlanetScope Usable Data Mask
+    (UDM-2) to create simplified quality masks for filtering and analysis.
 
     Args:
-        fpath (str | Path): The file path to the Planet scene from which to derive the masks.
-
-    Raises:
-        FileNotFoundError: If no matching UDM-2 TIFF file is found in the specified path.
+        fpath (str | Path): Path to the directory containing the PlanetScope scene data.
+            Must contain *_udm2.tif (or *_udm2_clip.tif) file.
 
     Returns:
-        xr.Dataset: A merged xarray Dataset containing two data masks:
-            - 'valid_data_mask': A mask indicating valid (1) and no data (0).
-            - 'quality_data_mask': A mask indicating high quality (1) and low quality (0).
+        xr.Dataset: Dataset containing quality mask information with the following data variables:
+            - quality_data_mask (uint8): Combined quality indicator
+                * 0 = Invalid (no data)
+                * 1 = Low quality (clouds, shadows, haze, snow, or other artifacts)
+                * 2 = High quality (clear, usable data)
+              Attributes: data_source="planet", long_name="Quality data mask",
+              description="0 = Invalid, 1 = Low Quality, 2 = High Quality"
+            - planet_udm (uint8): Raw UDM-2 bands (8 bands)
+              Attributes: data_source="planet", long_name="Planet UDM",
+              description="Usable Data Mask"
+
+    Raises:
+        FileNotFoundError: If the UDM-2 TIFF file is not found in the directory.
+
+    Note:
+        Quality mask derivation logic:
+        - Invalid: UDM band 8 (no data) is set
+        - Low quality: Any of UDM bands 2-6 (clouds, shadows, haze, snow, or artifacts) is set
+        - High quality: Neither invalid nor low quality
+
+        UDM-2 band definitions:
+        1. Clear - 2. Snow - 3. Shadow - 4. Light Haze - 5. Heavy Haze
+        6. Cloud - 7. Confidence - 8. No Data
+
+    Example:
+        Load and apply quality masks:
+
+        ```python
+        from darts_acquisition import load_planet_scene, load_planet_masks
+
+        # Load scene and masks
+        scene = load_planet_scene("/data/planet/20230615_123045_1234")
+        masks = load_planet_masks("/data/planet/20230615_123045_1234")
+
+        # Filter to high quality pixels only
+        scene_filtered = scene.where(masks.quality_data_mask == 2)
+
+        # Count quality distribution
+        import numpy as np
+        unique, counts = np.unique(
+            masks.quality_data_mask.values,
+            return_counts=True
+        )
+        print(dict(zip(unique, counts)))
+        ```
 
     """
     # Convert to Path object if a string is provided
@@ -193,3 +285,29 @@ def load_planet_masks(fpath: str | Path) -> xr.Dataset:
     }
 
     return qa_ds
+
+
+def get_planet_geometry(fpath: str | Path) -> odc.geo.Geometry:
+    """Get the geometry of a Planet scene.
+
+    Args:
+        fpath (str | Path): The file path to the Planet scene from which to derive the geometry.
+
+    Returns:
+        odc.geo.Geometry: The geometry of the Planet scene.
+
+    Raises:
+        FileNotFoundError: If no matching TIFF file is found in the specified path.
+
+    """
+    # Convert to Path object if a string is provided
+    fpath = fpath if isinstance(fpath, Path) else Path(fpath)
+    # Get imagepath
+    ps_image = next(fpath.glob("*_SR.tif"), None)
+    if not ps_image:
+        ps_image = next(fpath.glob("*_SR_clip.tif"), None)
+    if not ps_image:
+        raise FileNotFoundError(f"No matching TIFF files found in {fpath.resolve()} (.glob('*_SR.tif'))")
+
+    planet_raster = rasterio.open(ps_image)
+    return odc.geo.Geometry(planet_raster.bounds, crs=planet_raster.crs)

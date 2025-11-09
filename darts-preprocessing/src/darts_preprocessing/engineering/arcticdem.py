@@ -72,13 +72,55 @@ class Distance:
 def calculate_topographic_position_index(arcticdem_ds: xr.Dataset, outer_radius: int, inner_radius: int) -> xr.Dataset:
     """Calculate the Topographic Position Index (TPI) from an ArcticDEM Dataset.
 
+    TPI measures the relative topographic position of a point by comparing its elevation to
+    the mean elevation of the surrounding neighborhood. Positive values indicate higher
+    positions (ridges), negative values indicate lower positions (valleys).
+
     Args:
-        arcticdem_ds (xr.Dataset): The ArcticDEM Dataset containing the 'dem' variable.
-        outer_radius (int, optional): The outer radius of the annulus kernel in m.
-        inner_radius (int, optional): The inner radius of the annulus kernel in m.
+        arcticdem_ds (xr.Dataset): The ArcticDEM Dataset containing the 'dem' variable (float32).
+        outer_radius (int): The outer radius of the neighborhood in meters.
+            Can also be specified as string with units (e.g., "100m" or "10px").
+        inner_radius (int): The inner radius of the annulus kernel in meters.
+            If > 0, creates an annulus (ring) instead of a circle. Set to 0 for a circular kernel.
+            Can also be specified as string with units (e.g., "50m" or "5px").
 
     Returns:
-        xr.Dataset: The input Dataset with the calculated TPI added as a new variable 'tpi'.
+        xr.Dataset: The input Dataset with a new data variable added:
+
+        - tpi (float32): Topographic Position Index values.
+
+            - long_name: "Topographic Position Index (TPI)"
+            - description: Details about the kernel used
+
+    Note:
+        Kernel shape combinations:
+
+        - inner_radius=0: Circular kernel comparing each cell to all neighbors within outer_radius
+        - inner_radius>0: Annulus kernel comparing each cell to neighbors in a ring between
+          inner_radius and outer_radius. Useful for multi-scale terrain analysis.
+
+        The actual radii used are rounded to the nearest pixel based on the DEM resolution.
+
+    Example:
+        Calculate TPI with circular and annulus kernels:
+
+        ```python
+        from darts_preprocessing import calculate_topographic_position_index
+
+        # Circular kernel (100m radius)
+        arcticdem_with_tpi = calculate_topographic_position_index(
+            arcticdem_ds=arcticdem,
+            outer_radius=100,
+            inner_radius=0
+        )
+
+        # Annulus kernel (50-100m ring)
+        arcticdem_multi_scale = calculate_topographic_position_index(
+            arcticdem_ds=arcticdem,
+            outer_radius=100,
+            inner_radius=50
+        )
+        ```
 
     """
     cellsize_x, cellsize_y = convolution.calc_cellsize(arcticdem_ds.dem)  # Should be equal to the resolution of the DEM
@@ -120,13 +162,36 @@ def calculate_topographic_position_index(arcticdem_ds: xr.Dataset, outer_radius:
 
 @stopwatch("Calculating slope", printer=logger.debug)
 def calculate_slope(arcticdem_ds: xr.Dataset) -> xr.Dataset:
-    """Calculate the slope of the terrain surface from an ArcticDEM Dataset.
+    """Calculate slope of the terrain surface from an ArcticDEM Dataset.
+
+    Slope represents the rate of change of elevation, indicating terrain steepness.
 
     Args:
-        arcticdem_ds (xr.Dataset): The ArcticDEM Dataset containing the 'dem' variable.
+        arcticdem_ds (xr.Dataset): Dataset containing:
+            - dem (float32): Digital Elevation Model
 
     Returns:
-        xr.Dataset: The input Dataset with the calculated slope added as a new variable 'slope'.
+        xr.Dataset: Input Dataset with new data variable added:
+
+        - slope (float32): Slope in degrees [0-90].
+
+            - long_name: "Slope"
+            - units: "degrees"
+            - source: "ArcticDEM"
+
+    Note:
+        Slope is calculated using finite difference methods on the DEM.
+        Values approaching 90° indicate near-vertical terrain.
+
+    Example:
+        ```python
+        from darts_preprocessing import calculate_slope
+
+        arcticdem_with_slope = calculate_slope(arcticdem_ds)
+
+        # Mask steep terrain
+        steep_areas = arcticdem_with_slope.slope > 30
+        ```
 
     """
     slope_deg = slope(arcticdem_ds.dem)
@@ -142,15 +207,50 @@ def calculate_slope(arcticdem_ds: xr.Dataset) -> xr.Dataset:
 
 @stopwatch.f("Calculating hillshade", printer=logger.debug, print_kwargs=["azimuth", "angle_altitude"])
 def calculate_hillshade(arcticdem_ds: xr.Dataset, azimuth: int = 225, angle_altitude: int = 25) -> xr.Dataset:
-    """Calculate the hillshade of the terrain surface from an ArcticDEM Dataset.
+    """Calculate hillshade of the terrain surface from an ArcticDEM Dataset.
+
+    Hillshade simulates illumination of terrain from a specified sun position, useful
+    for visualization and terrain analysis.
 
     Args:
-        arcticdem_ds (xr.Dataset): The ArcticDEM Dataset containing the 'dem' variable.
-        azimuth (int, optional): The azimuth angle of the light source in degrees. Defaults to 225.
-        angle_altitude (int, optional): The altitude angle of the light source in degrees. Defaults to 25.
+        arcticdem_ds (xr.Dataset): Dataset containing:
+            - dem (float32): Digital Elevation Model
+        azimuth (int, optional): Light source azimuth in degrees clockwise from north [0-360].
+            Defaults to 225 (southwest).
+        angle_altitude (int, optional): Light source altitude angle in degrees above horizon [0-90].
+            Defaults to 25.
 
     Returns:
-        xr.Dataset: The input Dataset with the calculated hillshade added as a new variable 'hillshade'.
+        xr.Dataset: Input Dataset with new data variable added:
+
+        - hillshade (float32): Illumination values [0-255], where 0 is shadow and 255 is fully lit.
+
+            - long_name: "Hillshade"
+            - description: Documents azimuth and angle_altitude used
+            - source: "ArcticDEM"
+
+    Note:
+        Common azimuth/altitude combinations:
+
+        - 315°/45°: Classic northwest illumination (default for many GIS applications)
+        - 225°/25°: Southwest with low sun (better for visualizing subtle features)
+
+        The hillshade calculation accounts for both slope and aspect of the terrain.
+
+    Example:
+        ```python
+        from darts_preprocessing import calculate_hillshade
+
+        # Default southwest illumination
+        arcticdem_with_hs = calculate_hillshade(arcticdem_ds)
+
+        # Custom sun position
+        arcticdem_custom = calculate_hillshade(
+            arcticdem_ds,
+            azimuth=315,
+            angle_altitude=45
+        )
+        ```
 
     """
     hillshade_da = hillshade(arcticdem_ds.dem, azimuth=azimuth, angle_altitude=angle_altitude)
@@ -166,13 +266,42 @@ def calculate_hillshade(arcticdem_ds: xr.Dataset, azimuth: int = 225, angle_alti
 
 @stopwatch("Calculating aspect", printer=logger.debug)
 def calculate_aspect(arcticdem_ds: xr.Dataset) -> xr.Dataset:
-    """Calculate the aspect of the terrain surface from an ArcticDEM Dataset.
+    """Calculate aspect (compass direction) of the terrain surface from an ArcticDEM Dataset.
+
+    Aspect indicates the downslope direction of the maximum rate of change in elevation.
 
     Args:
-        arcticdem_ds (xr.Dataset): The ArcticDEM Dataset containing the 'dem' variable.
+        arcticdem_ds (xr.Dataset): Dataset containing:
+            - dem (float32): Digital Elevation Model
 
     Returns:
-        xr.Dataset: The input Dataset with the calculated aspect added as a new variable 'aspect'.
+        xr.Dataset: Input Dataset with new data variable added:
+
+        - aspect (float32): Aspect in degrees clockwise from north [0-360], or -1 for flat areas.
+
+            - long_name: "Aspect"
+            - units: "degrees"
+            - description: Compass direction of slope
+            - source: "ArcticDEM"
+
+    Note:
+        Aspect values:
+
+        - 0° or 360°: North-facing
+        - 90°: East-facing
+        - 180°: South-facing
+        - 270°: West-facing
+        - -1: Flat (no dominant direction)
+
+    Example:
+        ```python
+        from darts_preprocessing import calculate_aspect
+
+        arcticdem_with_aspect = calculate_aspect(arcticdem_ds)
+
+        # Identify south-facing slopes (135-225 degrees)
+        south_facing = (arcticdem_with_aspect.aspect > 135) & (arcticdem_with_aspect.aspect < 225)
+        ```
 
     """
     aspect_deg = aspect(arcticdem_ds.dem)
@@ -188,13 +317,39 @@ def calculate_aspect(arcticdem_ds: xr.Dataset) -> xr.Dataset:
 
 @stopwatch("Calculating curvature", printer=logger.debug)
 def calculate_curvature(arcticdem_ds: xr.Dataset) -> xr.Dataset:
-    """Calculate the curvature of the terrain surface from an ArcticDEM Dataset.
+    """Calculate curvature of the terrain surface from an ArcticDEM Dataset.
+
+    Curvature measures the rate of change of slope, indicating terrain convexity or concavity.
 
     Args:
-        arcticdem_ds (xr.Dataset): The ArcticDEM Dataset containing the 'dem' variable.
+        arcticdem_ds (xr.Dataset): Dataset containing:
+            - dem (float32): Digital Elevation Model
 
     Returns:
-        xr.Dataset: The input Dataset with the calculated curvature added as a new variable 'curvature'.
+        xr.Dataset: Input Dataset with new data variable added:
+
+        - curvature (float32): Curvature values.
+
+            - long_name: "Curvature"
+            - description: Rate of change of slope
+            - source: "ArcticDEM"
+
+    Note:
+        Curvature interpretation:
+
+        - Positive values: Convex terrain (hills, ridges)
+        - Negative values: Concave terrain (valleys, depressions)
+        - Near zero: Planar terrain
+
+    Example:
+        ```python
+        from darts_preprocessing import calculate_curvature
+
+        arcticdem_with_curv = calculate_curvature(arcticdem_ds)
+
+        # Identify ridges (convex areas)
+        ridges = arcticdem_with_curv.curvature > 0.1
+        ```
 
     """
     curvature_da = curvature(arcticdem_ds.dem)
@@ -212,21 +367,53 @@ def calculate_curvature(arcticdem_ds: xr.Dataset) -> xr.Dataset:
 def calculate_terrain_ruggedness_index(arcticdem_ds: xr.Dataset, neighborhood_size: int) -> xr.Dataset:
     """Calculate the Terrain Ruggedness Index (TRI) from an ArcticDEM Dataset.
 
-    Definition from ESRI:
-    TRI expresses the amount of elevation difference between adjacent cells of a DEM.
-    Using methodology developed by Riley et al (1999) and published in the paper
-    “A Terrain ruggedness Index That Quantifies Topographic heterogeneity”,
-    the tool measures the difference in elevation values from a center cell and eight cells directly surrounding it.
-    Then, the eight elevation differences are squared and averaged.
-    The square root of this average results is a TRI measurement for the center cell.
-    This calculation is then conducted on every cell of the DEM.
+    TRI quantifies topographic heterogeneity by measuring elevation differences between
+    a cell and its surrounding cells. Higher values indicate more rugged terrain.
 
     Args:
-        arcticdem_ds (xr.Dataset): The ArcticDEM Dataset containing the 'dem' variable.
-        neighborhood_size (int): The neighborhood_size in meters for the TRI calculation.
+        arcticdem_ds (xr.Dataset): Dataset containing:
+            - dem (float32): Digital Elevation Model
+        neighborhood_size (int): Neighborhood window size for TRI calculation.
+            Can be specified as string with units (e.g., "100m" or "10px").
 
     Returns:
-        xr.Dataset: The input Dataset with the calculated TRI added as a new variable 'tri'.
+        xr.Dataset: Input Dataset with new data variable added:
+
+        - tri (float32): Terrain Ruggedness Index in meters.
+
+            - long_name: "Terrain Ruggedness Index"
+            - units: "m"
+            - description: Documents kernel size used
+            - source: "ArcticDEM"
+
+    Note:
+        TRI methodology from Riley et al (1999):
+
+        1. Measures elevation difference from center cell to 8 surrounding cells
+        2. Squares and averages these differences
+        3. Takes square root for final TRI value
+
+        The neighborhood_size parameter controls the kernel size. A square kernel is used,
+        with the actual size rounded to the nearest pixel based on DEM resolution.
+
+    References:
+        Riley, S.J., DeGloria, S.D., Elliot, R., 1999.
+        A Terrain Ruggedness Index That Quantifies Topographic Heterogeneity.
+        Intermountain Journal of Sciences, vol. 5, No. 1-4, pp. 23-27.
+
+    Example:
+        ```python
+        from darts_preprocessing import calculate_terrain_ruggedness_index
+
+        # Calculate TRI with 100m neighborhood
+        arcticdem_with_tri = calculate_terrain_ruggedness_index(
+            arcticdem_ds=arcticdem,
+            neighborhood_size=100
+        )
+
+        # Identify highly rugged terrain
+        rugged = arcticdem_with_tri.tri > 10
+        ```
 
     """
     cellsize_x, _cellsize_y = convolution.calc_cellsize(arcticdem_ds.dem)
@@ -269,17 +456,58 @@ def calculate_terrain_ruggedness_index(arcticdem_ds: xr.Dataset, neighborhood_si
 def calculate_vector_ruggedness_measure(arcticdem_ds: xr.Dataset, neighborhood_size: int) -> xr.Dataset:
     """Calculate the Vector Ruggedness Measure (VRM) from an ArcticDEM Dataset.
 
-    Implementation of the vector ruggedness measure described in Sappington, J.M.,
-    K.M. Longshore, and D.B. Thomson. 2007. Quantifying Landscape Ruggedness for
-    Animal Habitat Analysis: A case Study Using Bighorn Sheep in the Mojave Desert.
-    Journal of Wildlife Management. 71(5): 1419-1426.
+    VRM quantifies terrain ruggedness using vector analysis of slope and aspect, providing
+    a measure independent of absolute elevation. Values range from 0 (smooth) to 1 (rugged).
 
     Args:
-        arcticdem_ds (xr.Dataset): The ArcticDEM Dataset containing the 'dem' variable.
-        neighborhood_size (int): The size of the neighborhood window (in meters) for the calculation.
+        arcticdem_ds (xr.Dataset): Dataset containing:
+            - dem (float32): Digital Elevation Model
+            - slope (float32): Slope in degrees (will be calculated if not present)
+            - aspect (float32): Aspect in degrees (will be calculated if not present)
+        neighborhood_size (int): Neighborhood window size for VRM calculation.
+            Can be specified as string with units (e.g., "100m" or "10px").
 
     Returns:
-        xr.Dataset: The input Dataset with the calculated VRM added as a new variable 'vrm'.
+        xr.Dataset: Input Dataset with new data variable added:
+
+        - vrm (float32): Vector Ruggedness Measure [0-1].
+
+            - long_name: "Vector Ruggedness Measure"
+            - description: Documents neighborhood size used
+            - source: "ArcticDEM"
+
+    Note:
+        VRM calculation:
+
+        1. Converts slope and aspect to 3D unit vectors (x, y, z components)
+        2. Sums vectors in the neighborhood window
+        3. Calculates magnitude of resultant vector
+        4. VRM = 1 - resultant magnitude
+
+        Flat areas (aspect = -1) are handled by setting aspect to 0.
+
+        Requires slope and aspect to be already calculated on the dataset.
+
+    References:
+        Sappington, J.M., K.M. Longshore, and D.B. Thomson. 2007.
+        Quantifying Landscape Ruggedness for Animal Habitat Analysis: A case Study Using Bighorn Sheep
+        in the Mojave Desert. Journal of Wildlife Management. 71(5): 1419-1426.
+
+    Example:
+        ```python
+        from darts_preprocessing import (
+            calculate_slope, calculate_aspect,
+            calculate_vector_ruggedness_measure
+        )
+
+        # VRM requires slope and aspect
+        arcticdem = calculate_slope(arcticdem)
+        arcticdem = calculate_aspect(arcticdem)
+        arcticdem_with_vrm = calculate_vector_ruggedness_measure(
+            arcticdem_ds=arcticdem,
+            neighborhood_size=100
+        )
+        ```
 
     """
     # Calculate slope and aspect
@@ -313,7 +541,6 @@ def calculate_vector_ruggedness_measure(arcticdem_ds: xr.Dataset, neighborhood_s
 
     logger.debug(f"Calculating Vector Ruggedness Measure with square kernel of size {neighborhood_size} cells.")
 
-    # TODO: Write a custom kernel for this for speedup and smaller memory footprint
     # Calculate sums of x, y, and z components in the neighborhood
     x_sum = convolution.convolution_2d(x, kernel)
     y_sum = convolution.convolution_2d(y, kernel)
@@ -340,12 +567,44 @@ def calculate_vector_ruggedness_measure(arcticdem_ds: xr.Dataset, neighborhood_s
 def calculate_dissection_index(arcticdem_ds: xr.Dataset, neighborhood_size: int) -> xr.Dataset:
     """Calculate the Dissection Index (DI) from an ArcticDEM Dataset.
 
+    DI measures the degree to which a landscape has been cut by valleys and ravines.
+    Values range from 0 (smooth, undissected) to 1 (highly dissected).
+
     Args:
-        arcticdem_ds (xr.Dataset): The ArcticDEM Dataset containing the 'dem' variable.
-        neighborhood_size (int): The size of the neighborhood window (in meters) for the calculation.
+        arcticdem_ds (xr.Dataset): Dataset containing:
+            - dem (float32): Digital Elevation Model
+        neighborhood_size (int): Neighborhood window size for DI calculation.
+            Can be specified as string with units (e.g., "100m" or "10px").
 
     Returns:
-        xr.Dataset: The input Dataset with the calculated DI added as a new variable 'di'.
+        xr.Dataset: Input Dataset with new data variable added:
+
+        - di (float32): Dissection Index [0-1].
+
+            - long_name: "Dissection Index"
+            - description: Documents neighborhood size used
+            - source: "ArcticDEM"
+
+    Note:
+        The dissection index quantifies landscape dissection by comparing elevation
+        ranges within the neighborhood window. Higher values indicate more deeply
+        incised terrain with greater vertical relief.
+
+        The neighborhood_size parameter is converted to pixels based on DEM resolution.
+
+    Example:
+        ```python
+        from darts_preprocessing import calculate_dissection_index
+
+        # Calculate DI with 100m neighborhood
+        arcticdem_with_di = calculate_dissection_index(
+            arcticdem_ds=arcticdem,
+            neighborhood_size=100
+        )
+
+        # Identify highly dissected terrain
+        dissected = arcticdem_with_di.di > 0.5
+        ```
 
     """
     # Get neighborhood_size in pixels

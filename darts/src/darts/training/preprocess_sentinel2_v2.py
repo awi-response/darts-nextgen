@@ -1,11 +1,14 @@
-"""PLANET preprocessing functions for training with the v2 data preprocessing."""
+"""Sentinel-2 preprocessing functions for training with the v2 data preprocessing."""
 
 import json
 import logging
 import time
+from contextlib import suppress
 from math import ceil, sqrt
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal
+
+from darts_utils.paths import DefaultPaths, paths
 
 logger = logging.getLogger(__name__)
 
@@ -14,25 +17,33 @@ if TYPE_CHECKING:
     import xarray as xr
 
 
+def __validate_dir(imgdir):
+    if not imgdir.is_dir():
+        return None
+
+    with suppress(StopIteration):
+        return next(imgdir.glob("*_SR.tif")).parent
+    with suppress(StopIteration):
+        return next(imgdir.glob("*_SR_clip.tif")).parent
+
+    return None
+
+
 def _planet_legacy_path_gen(data_dir: Path):
     for iterdir in data_dir.iterdir():
         if iterdir.stem == "iteration001":
             for sitedir in (iterdir).iterdir():
                 for imgdir in (sitedir).iterdir():
-                    if not imgdir.is_dir():
+                    imgdir_valid = __validate_dir(imgdir)
+                    if imgdir_valid is None:
                         continue
-                    try:
-                        yield next(imgdir.glob("*_SR.tif")).parent
-                    except StopIteration:
-                        yield next(imgdir.glob("*_SR_clip.tif")).parent
+                    yield imgdir_valid
         else:
             for imgdir in (iterdir).iterdir():
-                if not imgdir.is_dir():
+                imgdir_valid = __validate_dir(imgdir)
+                if imgdir_valid is None:
                     continue
-                try:
-                    yield next(imgdir.glob("*_SR.tif")).parent
-                except StopIteration:
-                    yield next(imgdir.glob("*_SR_clip.tif")).parent
+                yield imgdir_valid
 
 
 def _get_region_name(footprint: "gpd.GeoSeries", admin2: "gpd.GeoDataFrame") -> str:
@@ -106,14 +117,17 @@ def _align_offsets(
 def preprocess_s2_train_data(  # noqa: C901
     *,
     labels_dir: Path,
-    train_data_dir: Path,
-    arcticdem_dir: Path,
-    tcvis_dir: Path,
-    admin_dir: Path,
+    default_dirs: DefaultPaths = DefaultPaths(),
+    train_data_dir: Path | None = None,
+    arcticdem_dir: Path | None = None,
+    tcvis_dir: Path | None = None,
+    admin_dir: Path | None = None,
     planet_data_dir: Path | None = None,
-    s2_download_cache: Path | None = None,
+    raw_data_store: Path | None = None,
+    no_raw_data_store: bool = False,
     preprocess_cache: Path | None = None,
     matching_cache: Path | None = None,
+    no_matching_cache: bool = False,
     force_preprocess: bool = False,
     append: bool = True,
     device: Literal["cuda", "cpu", "auto"] | int | None = None,
@@ -170,25 +184,48 @@ def preprocess_s2_train_data(  # noqa: C901
     │   ├── x/          # Input patches [n_patches, n_bands, patch_size, patch_size]
     │   └── y/          # Label patches [n_patches, patch_size, patch_size]
     ├── metadata.parquet
+    ├── matching-cache.json      # Optional matching cache
     ├── matching-scores.parquet  # Optional matching scores
-    └── {timestamp}.cli.json
+    └── {timestamp}.cli.toml
     ```
 
     Args:
         labels_dir (Path): The directory containing the labels and footprints / extents.
-        train_data_dir (Path): The "output" directory where the tensors are written to.
-        arcticdem_dir (Path): The directory containing the ArcticDEM data (the datacube and the extent files).
+        default_dirs (DefaultPaths, optional): The default directories for DARTS. Defaults to a config filled with None.
+        train_data_dir (Path | None, optional): The "output" directory where the tensors are written to.
+            If None, will use the default training data directory based on the DARTS paths.
+            Defaults to None.
+        arcticdem_dir (Path | None, optional): The directory containing the ArcticDEM data
+            (the datacube and the extent files).
             Will be created and downloaded if it does not exist.
-        tcvis_dir (Path): The directory containing the TCVis data.
-        admin_dir (Path): The directory containing the admin files.
+            If None, will use the default auxiliary directory based on the DARTS paths.
+            Defaults to None.
+        tcvis_dir (Path | None, optional): The directory containing the TCVis data.
+            If None, will use the default TCVis directory based on the DARTS paths.
+            Defaults to None.
+        admin_dir (Path | None, optional): The directory containing the admin files.
+            If None, will use the default auxiliary directory based on the DARTS paths.
+            Defaults to None.
         planet_data_dir (Path, optional): The directory containing the Planet scenes and orthotiles.
             The planet data is used to align the Sentinel-2 data to the Planet data, spatially.
             Can be set to None if no alignment is wished.
             Defaults to None.
-        s2_download_cache (Path): The directory to use for caching the raw downloaded sentinel 2 data. Defaults to None.
-        preprocess_cache (Path, optional): The directory to store the preprocessed data. Defaults to None.
-        matching_cache (Path, optional): The path to a file where the matchings are stored.
+        raw_data_store (Path | None): The directory to use for storing the raw Sentinel 2 data locally.
+            If None, will use the default raw data directory based on the DARTS paths.
+            Defaults to None.
+        no_raw_data_store (bool, optional): If True, will not store any raw data locally.
+            This overrides the `raw_data_store` parameter.
+            Defaults to False.
+        preprocess_cache (Path | None, optional): The directory to store the preprocessed data.
+            If None, will neither use nor store preprocessed data.
+            Defaults to None.
+        matching_cache (Path | None, optional): The path to a file where the matchings are stored.
             Note: this is different from the matching scores.
+            If None, will query the sentinel 2 STAC and calculate the best match based on the criteria.
+            Defaults to None.
+        no_matching_cache (bool, optional): If True, will not use or store any matching cache.
+            This overrides the `matching_cache` parameter.
+            Defaults to False.
         force_preprocess (bool, optional): Whether to force the preprocessing of the data. Defaults to False.
         append (bool, optional): Whether to append the data to the existing data. Defaults to True.
         device (Literal["cuda", "cpu"] | int, optional): The device to run the model on.
@@ -221,12 +258,24 @@ def preprocess_s2_train_data(  # noqa: C901
     current_time = time.strftime("%Y-%m-%d_%H-%M-%S")
     logger.info(f"Starting preprocessing at {current_time}.")
 
+    paths.set_defaults(default_dirs)
+    train_data_dir = train_data_dir or paths.train_data_dir("sentinel2_v2_rts", patch_size)
+    arcticdem_dir = arcticdem_dir or paths.arcticdem(10)
+    tcvis_dir = tcvis_dir or paths.tcvis()
+    admin_dir = admin_dir or paths.admin_boundaries()
+    raw_data_store = raw_data_store or paths.sentinel2_raw_data("cdse")
+    if no_raw_data_store:
+        raw_data_store = None
+    matching_cache = matching_cache or train_data_dir / "matching-cache.json"
+    if no_matching_cache:
+        matching_cache = None
+
     # Storing the configuration as JSON file
     train_data_dir.mkdir(parents=True, exist_ok=True)
     from darts_utils.functools import write_function_args_to_config_file
 
     write_function_args_to_config_file(
-        fpath=train_data_dir / f"{current_time}.cli.json",
+        fpath=train_data_dir / f"{current_time}.cli.toml",
         function=preprocess_s2_train_data,
         locals_=locals(),
     )
@@ -243,12 +292,14 @@ def preprocess_s2_train_data(  # noqa: C901
     import geopandas as gpd
     import pandas as pd
     import rich
+    import smart_geocubes
     import xarray as xr
+    from botocore.exceptions import ProfileNotFound
     from darts_acquisition import (
         load_arcticdem,
-        load_s2_from_stac,
+        load_cdse_s2_sr_scene,
         load_tcvis,
-        match_s2ids_from_geodataframe_stac,
+        match_cdse_s2_sr_scene_ids_from_geodataframe,
     )
     from darts_acquisition.admin import download_admin_files
     from darts_preprocessing import preprocess_v2
@@ -260,10 +311,20 @@ def preprocess_s2_train_data(  # noqa: C901
 
     from darts.utils.cuda import decide_device
     from darts.utils.earthengine import init_ee
+    from darts.utils.logging import LoggingManager
 
     device = decide_device(device)
     init_ee(ee_project, ee_use_highvolume)
     logger.info("Configured Rasterio")
+
+    # Create the datacubes if they do not exist
+    LoggingManager.apply_logging_handlers("smart_geocubes")
+    accessor = smart_geocubes.ArcticDEM10m(arcticdem_dir)
+    if not accessor.created:
+        accessor.create(overwrite=False)
+    accessor = smart_geocubes.TCTrend(tcvis_dir)
+    if not accessor.created:
+        accessor.create(overwrite=False)
 
     labels = (gpd.read_file(labels_file) for labels_file in labels_dir.glob("*/TrainingLabel*.gpkg"))
     labels = gpd.GeoDataFrame(pd.concat(labels, ignore_index=True))
@@ -276,9 +337,12 @@ def preprocess_s2_train_data(  # noqa: C901
         fpaths = {fpath.stem: fpath for fpath in _planet_legacy_path_gen(planet_data_dir)}
         footprints["fpath"] = footprints.image_id.map(fpaths)
 
+    logger.info(f"label directory contained {len(footprints)} footprints")
+
     # Find S2 scenes that intersect with the Planet footprints
     if matching_cache is None or not matching_cache.exists():
-        matches = match_s2ids_from_geodataframe_stac(
+        logger.info("evaluating online CDSE catalogue for matching Sentinel-2 scenes")
+        matches = match_cdse_s2_sr_scene_ids_from_geodataframe(
             aoi=footprints,
             day_range=matching_day_range,
             max_cloud_cover=matching_max_cloud_cover,
@@ -359,14 +423,16 @@ def preprocess_s2_train_data(  # noqa: C901
         try:
             logger.info(f"Processing sample {info_id}")
 
-            if planet_data_dir is not None and (not footprint.fpath or (not footprint.fpath.exists())):
+            if planet_data_dir is not None and (
+                not footprint.fpath or pd.isna(footprint.fpath) or (not footprint.fpath.exists())
+            ):
                 logger.warning(
                     f"Footprint image {planet_id} at {footprint.fpath} does not exist. Skipping sample {info_id}..."
                 )
                 continue
 
             def _get_tile():
-                s2ds = load_s2_from_stac(s2_item, cache=s2_download_cache)
+                s2ds = load_cdse_s2_sr_scene(s2_item, store=raw_data_store)
 
                 # Crop to footprint geometry
                 geom = Geometry(footprint.geometry, crs=footprints.crs)
@@ -432,7 +498,9 @@ def preprocess_s2_train_data(  # noqa: C901
         except (KeyboardInterrupt, SystemExit, SystemError):
             logger.info("Interrupted by user.")
             break
-
+        except ProfileNotFound:
+            logger.error("tried to download from CDSE@AWS but no CDSE credentials found. ")
+            return
         except Exception as e:
             logger.warning(f"Could not process sample {info_id}. Skipping...")
             logger.exception(e)

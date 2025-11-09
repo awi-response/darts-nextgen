@@ -3,19 +3,36 @@
 import importlib.metadata
 
 from darts_acquisition.admin import download_admin_files as download_admin_files
+from darts_acquisition.arcticdem import download_arcticdem as download_arcticdem
 from darts_acquisition.arcticdem import load_arcticdem as load_arcticdem
+from darts_acquisition.planet import get_planet_geometry as get_planet_geometry
 from darts_acquisition.planet import load_planet_masks as load_planet_masks
 from darts_acquisition.planet import load_planet_scene as load_planet_scene
 from darts_acquisition.planet import parse_planet_type as parse_planet_type
-from darts_acquisition.s2.s2_legacy import load_s2_masks as load_s2_masks
-from darts_acquisition.s2.s2_legacy import load_s2_scene as load_s2_scene
-from darts_acquisition.s2.s2_legacy import parse_s2_tile_id as parse_s2_tile_id
-from darts_acquisition.s2.s2cdse import get_s2ids_from_geodataframe_stac as get_s2ids_from_geodataframe_stac
-from darts_acquisition.s2.s2cdse import load_s2_from_stac as load_s2_from_stac
-from darts_acquisition.s2.s2cdse import match_s2ids_from_geodataframe_stac as match_s2ids_from_geodataframe_stac
-from darts_acquisition.s2.s2cdse import search_s2_stac as search_s2_stac
-from darts_acquisition.s2.s2gee import get_s2ids_from_geodataframe_ee as get_s2ids_from_geodataframe_ee
-from darts_acquisition.s2.s2gee import load_s2_from_gee as load_s2_from_gee
+from darts_acquisition.s2.cdse_scene import download_cdse_s2_sr_scene as download_cdse_s2_sr_scene
+from darts_acquisition.s2.cdse_scene import get_aoi_from_cdse_scene_ids as get_aoi_from_cdse_scene_ids
+from darts_acquisition.s2.cdse_scene import (
+    get_cdse_s2_sr_scene_ids_from_geodataframe as get_cdse_s2_sr_scene_ids_from_geodataframe,
+)
+from darts_acquisition.s2.cdse_scene import (
+    get_cdse_s2_sr_scene_ids_from_tile_ids as get_cdse_s2_sr_scene_ids_from_tile_ids,
+)
+from darts_acquisition.s2.cdse_scene import load_cdse_s2_sr_scene as load_cdse_s2_sr_scene
+from darts_acquisition.s2.cdse_scene import (
+    match_cdse_s2_sr_scene_ids_from_geodataframe as match_cdse_s2_sr_scene_ids_from_geodataframe,
+)
+from darts_acquisition.s2.cdse_scene import search_cdse_s2_sr as search_cdse_s2_sr
+from darts_acquisition.s2.gee_scene import download_gee_s2_sr_scene as download_gee_s2_sr_scene
+from darts_acquisition.s2.gee_scene import get_aoi_from_gee_scene_ids as get_aoi_from_gee_scene_ids
+from darts_acquisition.s2.gee_scene import (
+    get_gee_s2_sr_scene_ids_from_geodataframe as get_gee_s2_sr_scene_ids_from_geodataframe,
+)
+from darts_acquisition.s2.gee_scene import (
+    get_gee_s2_sr_scene_ids_from_tile_ids as get_gee_s2_sr_scene_ids_from_tile_ids,
+)
+from darts_acquisition.s2.gee_scene import load_gee_s2_sr_scene as load_gee_s2_sr_scene
+from darts_acquisition.s2.grid import download_sentinel_2_grid as download_sentinel_2_grid
+from darts_acquisition.tcvis import download_tcvis as download_tcvis
 from darts_acquisition.tcvis import load_tcvis as load_tcvis
 
 try:

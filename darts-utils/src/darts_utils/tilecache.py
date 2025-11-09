@@ -134,7 +134,7 @@ class XarrayCacheManager:
 
         """
         cached_dataset = None if force else self.load_from_cache(identifier, use_band_manager)
-        if not force:
+        if not force and self.cache_dir:
             logger.debug(f"Cache hit for '{identifier}': {cached_dataset is not None}")
 
         if cached_dataset is not None:

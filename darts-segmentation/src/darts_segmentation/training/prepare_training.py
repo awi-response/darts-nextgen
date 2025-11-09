@@ -13,8 +13,6 @@ import xarray as xr
 import zarr
 from darts_utils.bands import manager
 from darts_utils.cuda import free_torch
-
-# TODO: move erode_mask to darts_utils, since uasge is not limited to prepare_export
 from geocube.api.core import make_geocube
 from zarr.codecs import BloscCodec
 from zarr.storage import LocalStore
@@ -60,18 +58,30 @@ def create_labels(
     tile: xr.Dataset,
     labels: gpd.GeoDataFrame,
     extent: gpd.GeoDataFrame | None = None,
-):
-    """Create labels from the tile and labels.
+) -> xr.DataArray:
+    """Create rasterized labels from vector labels and quality mask.
+
+    This function rasterizes the provided labels and applies quality filtering based on
+    the tile's quality_data_mask. Areas outside the extent or with low quality are marked
+    as invalid (class 2).
+
+    Label encoding:
+        - 0: Negative (no RTS)
+        - 1: Positive (RTS present)
+        - 2: Invalid/masked (outside extent, low quality, or no data)
 
     Args:
         tile (xr.Dataset): The input tile, containing preprocessed, harmonized data.
+            Must contain a 'quality_data_mask' variable where value 2 indicates best quality.
         labels (gpd.GeoDataFrame): The labels to be used for training.
-        extent (gpd.GeoDataFrame | None): The extent of the labels.
-            The tile will be cropped to this extent.
-            If None, the tile will not be cropped.
+            Geometries will be rasterized as positive samples (class 1).
+        extent (gpd.GeoDataFrame | None): The extent of the valid training area.
+            Pixels outside this extent will be marked as invalid (class 2).
+            If None, no extent masking is applied.
 
     Returns:
-        xr.DataArray: The rasterized labels.
+        xr.DataArray: The rasterized labels with shape (y, x) and values 0, 1, or 2.
+            Pixels with quality_data_mask != 2 are automatically marked as invalid (class 2).
 
     """
     # Rasterize the labels
@@ -110,24 +120,41 @@ def create_training_patches(
     exclude_nan: bool,
     device: Literal["cuda", "cpu"] | int,
 ) -> tuple[torch.tensor, torch.tensor, list[PatchCoords]]:
-    """Create training patches from a tile and labels.
+    """Create training patches from a tile and labels with quality filtering.
+
+    This function creates overlapping patches from the input tile and rasterized labels,
+    applying several filtering criteria to ensure high-quality training data. Pixels with
+    quality_data_mask == 0 are set to NaN in the input data.
+
+    Patch filtering:
+        - Excludes patches with < 10% visible pixels (> 90% invalid/masked)
+        - Excludes patches where all bands are NaN
+        - Optionally excludes patches without positive labels (if exclude_nopositive=True)
+        - Optionally excludes patches with any NaN values (if exclude_nan=True)
 
     Args:
         tile (xr.Dataset): The input tile, containing preprocessed, harmonized data.
+            Must contain a 'quality_data_mask' variable where 0=invalid and 2=best quality.
         labels (gpd.GeoDataFrame): The labels to be used for training.
-        extent (gpd.GeoDataFrame | None): The extent of the labels.
-            The tile will be cropped to this extent.
-            If None, the tile will not be cropped.
-        bands (list[str]): The bands to be used for training.
-        patch_size (int): The size of the patches.
-        overlap (int): The size of the overlap.
-        exclude_nopositive (bool): Whether to exclude patches where the labels do not contain positives.
-        exclude_nan (bool): Whether to exclude patches where the input data has nan values.
-        device (Literal["cuda", "cpu"] | int): The device to use
+            Geometries will be rasterized as positive samples.
+        extent (gpd.GeoDataFrame | None): The extent of the valid training area.
+            Pixels outside this extent will be marked as invalid in labels.
+            If None, no extent masking is applied.
+        bands (list[str]): The bands to extract and use for training.
+            Will be normalized using the band manager.
+        patch_size (int): The size of each patch in pixels (height and width).
+        overlap (int): The overlap between adjacent patches in pixels.
+        exclude_nopositive (bool): Whether to exclude patches where the labels do not contain
+            any positive samples (class 1).
+        exclude_nan (bool): Whether to exclude patches where the input data has any NaN values.
+        device (Literal["cuda", "cpu"] | int): The device to use for tensor operations.
+            Can be "cuda", "cpu", or an integer GPU index.
 
     Returns:
-        tuple[torch.tensor, torch.tensor, list[PatchCoords]]: A tuple containing the input, the labels and the coords.
-            The input has the format (C, H, W), the labels (H, W).
+        tuple[torch.tensor, torch.tensor, list[PatchCoords]]: A tuple containing:
+            - Input patches with shape (N, C, H, W), NaN values replaced with 0
+            - Label patches with shape (N, H, W), values 0/1/2
+            - List of PatchCoords objects with coordinate information
 
     """
     if len(labels) == 0 and exclude_nopositive:
@@ -187,7 +214,28 @@ def create_training_patches(
 
 @dataclass
 class TrainDatasetBuilder:
-    """Helper class to create all necessary files for a DARTS training dataset."""
+    """Helper class to create all necessary files for a DARTS training dataset.
+
+    This class manages the creation of a training dataset stored in Zarr format with
+    associated metadata. It handles patch creation, quality filtering, and metadata tracking.
+
+    The dataset structure:
+        - data.zarr/x: Input patches (N, C, H, W) as float32
+        - data.zarr/y: Label patches (N, H, W) as uint8 with values 0/1/2
+        - metadata.parquet: Patch metadata including coordinates and geometry
+        - config.toml: Dataset configuration and parameters
+
+    Attributes:
+        train_data_dir (Path): Directory where the dataset will be saved.
+        patch_size (int): Size of each patch in pixels.
+        overlap (int): Overlap between adjacent patches in pixels.
+        bands (list[str]): List of band names to include in the dataset.
+        exclude_nopositive (bool): Exclude patches without positive labels.
+        exclude_nan (bool): Exclude patches with any NaN values.
+        device (Literal["cuda", "cpu"] | int): Device for patch creation operations.
+        append (bool): If True, append to existing dataset. Defaults to False.
+
+    """
 
     train_data_dir: Path
     patch_size: int
@@ -253,18 +301,27 @@ class TrainDatasetBuilder:
         extent: gpd.GeoDataFrame | None = None,
         metadata: dict[str, str] | None = None,
     ):
-        """Add a tile to the dataset.
+        """Add a tile to the dataset by creating and appending patches.
+
+        This method processes a single tile by creating training patches and appending them
+        to the Zarr arrays. Patch metadata including coordinates, geometry, and custom fields
+        are tracked for later use.
 
         Args:
             tile (xr.Dataset): The input tile, containing preprocessed, harmonized data.
+                Must contain the specified bands and a 'quality_data_mask' variable.
             labels (gpd.GeoDataFrame): The labels to be used for training.
-            region (str): The region of the tile.
-            sample_id (str): The sample id of the tile.
-            extent (gpd.GeoDataFrame | None, optional): The extent of the labels.
-                The tile will be cropped to this extent.
-                If None, the tile will not be cropped.
-            metadata (dict[str, str], optional): Any metadata to be added to the metadata file.
-                Will not be used for the training, but can be used for better debugging or reproducibility.
+                Geometries will be rasterized as positive samples (class 1).
+            region (str): The region identifier for this tile (e.g., "Alaska", "Canada").
+                Stored in metadata for tracking and filtering.
+            sample_id (str): A unique identifier for this tile/sample.
+                Stored in metadata for tracking and filtering.
+            extent (gpd.GeoDataFrame | None, optional): The extent of the valid training area.
+                Pixels outside this extent will be marked as invalid (class 2) in labels.
+                If None, no extent masking is applied.
+            metadata (dict[str, str], optional): Additional metadata to be added to the metadata file.
+                Will not be used for training, but can be used for debugging or reproducibility.
+                Path values will be automatically converted to strings.
 
         """
         metadata = metadata or {}

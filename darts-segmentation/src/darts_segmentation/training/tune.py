@@ -1,12 +1,5 @@
 """More advanced hyper-parameter tuning."""
 
-# TODO: Concurrent training:
-# Can't parallelize cv only because for tunes without cv this would result in only one concurrent training job.
-# Parallelizing tune only is also bad, because then cv is not parallelized at all.
-# Concept:
-# Implement concurrency for both tune and cv, but don't parallelize cv in a tuning situation.
-# Reminder: Set the device for final training and test
-
 import logging
 import time
 from dataclasses import asdict, dataclass
@@ -15,6 +8,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Annotated, Literal
 
 import cyclopts
+from darts_utils.paths import DefaultPaths, paths
 
 from darts_segmentation.training.cv import CrossValidationConfig
 from darts_segmentation.training.hparams import Hyperparameters
@@ -105,6 +99,7 @@ def tune_smp(
     name: str | None = None,
     n_trials: int | Literal["grid"] = 100,
     retrain_and_test: bool = False,
+    default_dirs: DefaultPaths = DefaultPaths(),
     cv_config: CrossValidationConfig = CrossValidationConfig(),
     training_config: TrainingConfig = TrainingConfig(),
     data_config: DataConfig = DataConfig(),
@@ -183,6 +178,7 @@ def tune_smp(
             Defaults to 100.
         retrain_and_test (bool, optional): Whether to retrain the model with the best hyperparameters and test it.
             Defaults to False.
+        default_dirs (DefaultPaths, optional): The default directories for DARTS. Defaults to a config filled with None.
         cv_config (CrossValidationConfig, optional): Configuration for cross-validation.
             Defaults to CrossValidationConfig().
         training_config (TrainingConfig, optional): Configuration for training.
@@ -215,6 +211,8 @@ def tune_smp(
     from darts_segmentation.training.train import test_smp, train_smp
 
     tick_fstart = time.perf_counter()
+
+    paths.set_defaults(default_dirs)
 
     tune_name = name or generate_counted_name(logging_config.artifact_dir)
     artifact_dir = logging_config.artifact_dir / tune_name
