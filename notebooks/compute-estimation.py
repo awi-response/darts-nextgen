@@ -141,6 +141,11 @@ def cli(threads: int = 5, workers: int = 4, download: bool = False):  # noqa: C9
         workers (int, optional): Number of workers to use for the computation of simplified statistics. Defaults to 4.
         download (bool, optional): Whether to download missing STAC items. Defaults to False.
 
+    Raises:
+        KeyboardInterrupt: If user interrupts execution.
+        SystemExit: If the process is terminated.
+        SystemError: If a system error occurs.
+
     """
     grid_ids = load_grid_ids()
     # Download missing STAC items
@@ -153,7 +158,8 @@ def cli(threads: int = 5, workers: int = 4, download: bool = False):  # noqa: C9
             for future in track(as_completed(futures), total=len(futures)):
                 try:
                     future.result()
-                except KeyboardInterrupt as e:
+                except (KeyboardInterrupt, SystemError, SystemExit) as e:
+                    logger.warning(f"{type(e).__name__} detected.\nExiting...")
                     executor.shutdown(wait=True, cancel_futures=True)
                     raise e
                 except Exception:

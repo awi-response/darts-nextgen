@@ -330,6 +330,11 @@ class _BasePipeline(ABC):
             optical: If True, downloads optical imagery. Defaults to False.
             aux: If True, downloads auxiliary data (ArcticDEM, TCVis) as needed. Defaults to False.
 
+        Raises:
+            KeyboardInterrupt: If user interrupts execution.
+            SystemExit: If the process is terminated.
+            SystemError: If a system error occurs.
+
         """
         assert optical or aux, "Nothing to prepare. Please set optical and/or aux to True."
 
