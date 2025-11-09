@@ -110,32 +110,32 @@ cuda12deps = [
 ]
 cpu = [
     "torch>=2.2.0",
-    "torchvision>=0.17.0",
+    "torchvision>=0.17.0,<0.24.0",
     "darts-nextgen[torchdeps]"
 ]
 cuda118 = [
     "torch>=2.2.0",
-    "torchvision>=0.17.0",
+    "torchvision>=0.17.0,<0.24.0",
     "darts-nextgen[torchdeps, cuda11deps]"
 ]
 cuda121 = [
     "torch>=2.2.0",
-    "torchvision>=0.17.0",
+    "torchvision>=0.17.0,<0.24.0",
     "darts-nextgen[torchdeps, cuda12deps]"
 ]
 cuda124 = [
     "torch>=2.2.0",
-    "torchvision>=0.17.0",
+    "torchvision>=0.17.0,<0.24.0",
     "darts-nextgen[torchdeps, cuda12deps]"
 ]
 cuda126 = [
     "torch>=2.2.0",
-    "torchvision>=0.17.0",
+    "torchvision>=0.17.0,<0.24.0",
     "darts-nextgen[torchdeps, cuda12deps]"
 ]
 cuda128 = [
     "torch>=2.2.0",
-    "torchvision>=0.17.0",
+    "torchvision>=0.17.0,<0.24.0",
     "darts-nextgen[torchdeps, cuda12deps]"
 ]
 training = [
