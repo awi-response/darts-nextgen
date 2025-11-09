@@ -262,7 +262,7 @@ def preprocess_s2_train_data(  # noqa: C901
     train_data_dir = train_data_dir or paths.train_data_dir("sentinel2_v2_rts", patch_size)
     arcticdem_dir = arcticdem_dir or paths.arcticdem(10)
     tcvis_dir = tcvis_dir or paths.tcvis()
-    admin_dir = admin_dir or paths.admin()
+    admin_dir = admin_dir or paths.admin_boundaries()
     raw_data_store = raw_data_store or paths.sentinel2_raw_data("cdse")
     if no_raw_data_store:
         raw_data_store = None

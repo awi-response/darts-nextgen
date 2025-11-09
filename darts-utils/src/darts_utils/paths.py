@@ -196,9 +196,9 @@ class PathManagerSingleton:
     def archive(self) -> Path:  # noqa: D102
         return self.large_dir / "archive"
 
-    def admin(self) -> Path:  # noqa: D102
-        d = (self.aux / "admin").resolve()
-        logger.debug(f"Admin path: {d}")
+    def admin_boundaries(self) -> Path:  # noqa: D102
+        d = (self.aux / "admin_boundaries").resolve()
+        logger.debug(f"Administrative boundaries path: {d}")
         return d
 
     def arcticdem(self, res: Literal[2, 10, 32]) -> Path:  # noqa: D102
