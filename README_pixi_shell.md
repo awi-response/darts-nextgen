@@ -7,6 +7,9 @@ First, run this command
 
 `pixi shell -e cuda128`
 
+`conda install -c nvidia cuda-toolkit=12 -y
+`
+
 then 
 
 `uv sync --extra cuda128 --extra torchdeps --extra cuda12deps`
