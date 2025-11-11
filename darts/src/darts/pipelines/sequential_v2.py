@@ -847,8 +847,12 @@ class PlanetPipelineDownload(_BasePipeline):
         tileinfos = self._tileinfos()
         aoi = []
         for fpath, _ in tileinfos:
-            geom = get_planet_geometry(fpath)
-            aoi.append({"tilekey": fpath, "geometry": geom.to_crs("EPSG:4326").geom})
+            try:
+                geom = get_planet_geometry(fpath)
+                aoi.append({"tilekey": fpath, "geometry": geom.to_crs("EPSG:4326").geom})
+            except Exception as e:
+                logger.error(f"Could not get geometry for {fpath}. Skipping...")
+                continue
         aoi = gpd.GeoDataFrame(aoi, geometry="geometry", crs="EPSG:4326")
         return aoi
 
@@ -900,7 +904,6 @@ class PlanetPipelineDownload(_BasePipeline):
             # Get the ensemble to check which auxiliary data is necessary
             # ensemble = self._load_ensemble()
             needs_arcticdem, needs_tcvis = (True, True) # self._check_aux_needs(ensemble)
-
 
             if not needs_arcticdem and not needs_tcvis:
                 logger.warning("No auxiliary data required by the models. Skipping download of auxiliary data...")
