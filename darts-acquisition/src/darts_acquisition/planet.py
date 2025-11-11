@@ -12,6 +12,8 @@ import rioxarray
 import xarray as xr
 from stopuhr import stopwatch
 
+from shapely.geometry import box
+
 logger = logging.getLogger(__name__.replace("darts_", "darts."))
 
 
@@ -310,4 +312,6 @@ def get_planet_geometry(fpath: str | Path) -> odc.geo.Geometry:
         raise FileNotFoundError(f"No matching TIFF files found in {fpath.resolve()} (.glob('*_SR.tif'))")
 
     planet_raster = rasterio.open(ps_image)
-    return odc.geo.Geometry(planet_raster.bounds, crs=planet_raster.crs)
+
+    bbox = planet_raster.bounds
+    return odc.geo.Geometry(box(*bbox), crs=planet_raster.crs)

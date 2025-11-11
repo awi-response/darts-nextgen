@@ -734,6 +734,232 @@ class PlanetPipeline(_BasePipeline):
 
 
 @dataclass
+class PlanetPipelineDownload(_BasePipeline):
+    """Pipeline for processing PlanetScope data.
+
+    Processes PlanetScope imagery (both orthotiles and scenes) for RTS segmentation.
+    Supports both offline and online processing modes.
+
+    Data Structure:
+        Expects PlanetScope data organized as:
+        - Orthotiles: `orthotiles_dir/tile_id/scene_id/`
+        - Scenes: `scenes_dir/scene_id/`
+
+    Args:
+        orthotiles_dir (Path | None): Directory containing PlanetScope orthotiles.
+            If None, uses default path from DARTS paths. Defaults to None.
+        scenes_dir (Path | None): Directory containing PlanetScope scenes.
+            If None, uses default path from DARTS paths. Defaults to None.
+        image_ids (list | None): List of image/scene IDs to process.
+            If None, processes all images found in orthotiles_dir and scenes_dir. Defaults to None.
+        model_files (Path | list[Path] | None): Path(s) to model file(s) for segmentation.
+            Single Path implies `write_model_outputs=False`.
+            If None, searches default model directory for all .pt files. Defaults to None.
+        output_data_dir (Path | None): Output directory for results.
+            If None, uses `{default_out}/planet`. Defaults to None.
+        arcticdem_dir (Path | None): Directory for ArcticDEM datacube.
+            Will be created/downloaded if needed. If None, uses default path. Defaults to None.
+        tcvis_dir (Path | None): Directory for TCVis data.
+            If None, uses default path. Defaults to None.
+        device (Literal["cuda", "cpu", "auto"] | int | None): Computation device.
+            "cuda" uses GPU 0, int specifies GPU index, "auto" selects free GPU. Defaults to None.
+        ee_project (str | None): Earth Engine project ID.
+            May be omitted if defined in persistent credentials. Defaults to None.
+        ee_use_highvolume (bool): Whether to use EE high-volume server. Defaults to True.
+        tpi_outer_radius (int): Outer radius (m) for TPI calculation. Defaults to 100.
+        tpi_inner_radius (int): Inner radius (m) for TPI calculation. Defaults to 0.
+        patch_size (int): Patch size for inference. Defaults to 1024.
+        overlap (int): Overlap between patches. Defaults to 256.
+        batch_size (int): Batch size for inference. Defaults to 8.
+        reflection (int): Reflection padding for inference. Defaults to 0.
+        binarization_threshold (float): Threshold for binarizing probabilities. Defaults to 0.5.
+        mask_erosion_size (int): Disk size for mask erosion and inner edge cropping. Defaults to 10.
+        edge_erosion_size (int | None): Size for outer edge cropping.
+            If None, uses `mask_erosion_size`. Defaults to None.
+        min_object_size (int): Minimum object size (pixels) to keep. Defaults to 32.
+        quality_level (int | Literal["high_quality", "low_quality", "none"]): Quality filtering level.
+            0="none", 1="low_quality", 2="high_quality". Defaults to 1.
+        export_bands (list[str]): Bands to export.
+            Can include "probabilities", "binarized", "polygonized", "extent", "thumbnail",
+            "optical", "dem", "tcvis", "metadata", or specific band names.
+            Defaults to ["probabilities", "binarized", "polygonized", "extent", "thumbnail"].
+        write_model_outputs (bool): Save individual model outputs (not just ensemble).
+            Defaults to False.
+        overwrite (bool): Overwrite existing output files. Defaults to False.
+        offline (bool): Skip downloading missing data. Defaults to False.
+        debug_data (bool): Write intermediate debugging data. Defaults to False.
+
+    """
+
+    orthotiles_dir: Path | None = None
+    scenes_dir: Path | None = None
+    image_ids: list = None
+
+    def __post_init__(self):  # noqa: D105
+        # super().__post_init__()
+        self.output_data_dir = self.output_data_dir or (paths.out / "planet")
+        self.orthotiles_dir = self.orthotiles_dir or paths.planet_orthotiles()
+        self.scenes_dir = self.scenes_dir or paths.planet_scenes()
+
+    def _arcticdem_resolution(self) -> Literal[2]:
+        return 2
+
+    def _get_tile_id(self, tilekey: Path) -> str:
+        from darts_acquisition import parse_planet_type
+
+        try:
+            fpath = tilekey
+            planet_type = parse_planet_type(fpath)
+            tile_id = fpath.parent.stem if planet_type == "orthotile" else fpath.stem
+            return tile_id
+        except Exception as e:
+            logger.error("Could not parse Planet tile-id. Please check the input data.")
+            logger.exception(e)
+            raise e
+
+    def _tileinfos(self) -> list[tuple[Path, Path]]:
+        out = []
+        # Find all PlanetScope orthotiles
+        for fpath in self.orthotiles_dir.glob("*/*/"):
+            tile_id = fpath.parent.name
+            scene_id = fpath.name
+            if self.image_ids is not None:
+                if scene_id not in self.image_ids:
+                    continue
+            outpath = self.output_data_dir / tile_id / scene_id
+            out.append((fpath.resolve(), outpath))
+
+        # Find all PlanetScope scenes
+        for fpath in self.scenes_dir.glob("*/"):
+            scene_id = fpath.name
+            if self.image_ids is not None:
+                if scene_id not in self.image_ids:
+                    continue
+            outpath = self.output_data_dir / scene_id
+            out.append((fpath.resolve(), outpath))
+        out.sort()
+        return out
+
+    def _tile_aoi(self) -> "gpd.GeoDataFrame":
+        import geopandas as gpd
+        from darts_acquisition import get_planet_geometry
+
+        tileinfos = self._tileinfos()
+        aoi = []
+        for fpath, _ in tileinfos:
+            geom = get_planet_geometry(fpath)
+            aoi.append({"tilekey": fpath, "geometry": geom.to_crs("EPSG:4326").geom})
+        aoi = gpd.GeoDataFrame(aoi, geometry="geometry", crs="EPSG:4326")
+        return aoi
+
+    def _load_tile(self, fpath: Path) -> "xr.Dataset":
+        import xarray as xr
+        from darts_acquisition import load_planet_masks, load_planet_scene
+
+        optical = load_planet_scene(fpath)
+        data_masks = load_planet_masks(fpath)
+        tile = xr.merge([optical, data_masks])
+        return tile
+
+
+    def prepare_data(self, optical: bool = False, aux: bool = False):
+        """Download and prepare data for offline processing.
+
+        Validates configuration, determines data requirements from models,
+        and downloads requested data (optical imagery and/or auxiliary data).
+
+        Args:
+            optical: If True, downloads optical imagery. Defaults to False.
+            aux: If True, downloads auxiliary data (ArcticDEM, TCVis) as needed. Defaults to False.
+
+        Raises:
+            KeyboardInterrupt: If user interrupts execution.
+            SystemExit: If the process is terminated.
+            SystemError: If a system error occurs.
+
+        """
+        assert optical or aux, "Nothing to prepare. Please set optical and/or aux to True."
+
+        # self._validate()
+        self._dump_config()
+
+        # from darts.utils.cuda import debug_info
+
+        # debug_info()
+
+        from darts_acquisition import download_arcticdem, download_tcvis
+        from stopuhr import Chronometer
+
+        # from darts.utils.cuda import decide_device
+        from darts.utils.earthengine import init_ee
+
+        timer = Chronometer(printer=logger.debug)
+        self.device = "cpu"# decide_device(self.device)
+
+        if aux:
+            # Get the ensemble to check which auxiliary data is necessary
+            # ensemble = self._load_ensemble()
+            needs_arcticdem, needs_tcvis = (True, True) # self._check_aux_needs(ensemble)
+
+
+            if not needs_arcticdem and not needs_tcvis:
+                logger.warning("No auxiliary data required by the models. Skipping download of auxiliary data...")
+            else:
+                logger.info(f"Models {needs_tcvis=} {needs_arcticdem=}.")
+                self._create_auxiliary_datacubes(arcticdem=needs_arcticdem, tcvis=needs_tcvis)
+
+                # Predownload auxiliary
+                aoi = self._tile_aoi()
+                if needs_arcticdem:
+                    logger.info("start download ArcticDEM")
+                    with timer("Downloading ArcticDEM"):
+                        download_arcticdem(aoi, self.arcticdem_dir, resolution=self._arcticdem_resolution())
+                if needs_tcvis:
+                    logger.info("start download TCVIS")
+                    init_ee(self.ee_project, self.ee_use_highvolume)
+                    with timer("Downloading TCVis"):
+                        download_tcvis(aoi, self.tcvis_dir)
+
+        # Predownload tiles if optical flag is set
+        if not optical:
+            return
+
+        # Iterate over all the data
+        with timer("Loading Optical"):
+            tileinfo = self._tileinfos()
+            n_tiles = 0
+            logger.info(f"Found {len(tileinfo)} tiles to download.")
+            for i, (tilekey, _) in enumerate(tileinfo):
+                tile_id = self._get_tile_id(tilekey)
+                try:
+                    self._download_tile(tilekey)
+                    n_tiles += 1
+                    logger.info(f"Downloaded sample {i + 1} of {len(tileinfo)} '{tilekey}' ({tile_id=}).")
+                except (KeyboardInterrupt, SystemError, SystemExit) as e:
+                    logger.warning(f"{type(e).__name__} detected.\nExiting...")
+                    raise e
+                except Exception as e:
+                    logger.warning(f"Could not process '{tilekey}' ({tile_id=}).\nSkipping...")
+                    logger.exception(e)
+            else:
+                logger.info(f"Downloaded {n_tiles} tiles.")
+
+
+    @staticmethod
+    def cli_prepare_data(*, pipeline: "PlanetPipelineDownload", aux: bool = False):
+        """Download all necessary data for offline processing.
+
+        Args:
+            pipeline: Configured PlanetPipeline instance.
+            aux: If True, downloads auxiliary data (ArcticDEM, TCVis). Defaults to False.
+
+        """
+        assert not pipeline.offline, "Pipeline must be online to prepare data for offline usage."
+        pipeline.__post_init__()
+        pipeline.prepare_data(optical=False, aux=aux)
+
+
+@dataclass
 class Sentinel2Pipeline(_BasePipeline):
     """Pipeline for processing Sentinel-2 data.
 
