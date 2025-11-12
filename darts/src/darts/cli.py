@@ -16,13 +16,14 @@ from darts_segmentation.training import (
     validate_dataset,
 )
 from darts_utils.paths import DefaultPaths, paths
+from rich import traceback
 
 from darts import __version__
-from darts.pipelines import (
-    PlanetPipeline,
-    PlanetRayPipeline,
-    Sentinel2Pipeline,
-    Sentinel2RayPipeline,
+from darts.pipelines.sequential_v2 import (
+    planet_cli,
+    planet_cli_prepare_data,
+    sentinel2_cli,
+    sentinel2_cli_prepare_data,
 )
 from darts.training import (
     preprocess_planet_train_data,
@@ -33,17 +34,22 @@ from darts.utils.bench import benchviz
 from darts.utils.config import ConfigParser
 from darts.utils.logging import LoggingManager, VerbosityLevel
 
+traceback.install(show_locals=True)
+
 root_file = Path(__file__).resolve()
 logger = logging.getLogger(__name__)
 
 config_parser = ConfigParser()
 app = cyclopts.App(
+    name="darts",
     version=__version__,
     console=rich.get_console(),
     config=config_parser,
     help_format="plaintext",
     version_format="plaintext",
 )
+
+app.meta.group_parameters = cyclopts.Group("Global Options", sort_key=0)
 
 subcommands_group = cyclopts.Group.create_ordered("Pipelines & Scripts")
 
@@ -105,18 +111,18 @@ def debug_paths(default_paths: DefaultPaths = DefaultPaths()):
 inference_app = cyclopts.App(name="inference", group=subcommands_group, help="Predefined inference pipelines")
 app.command(inference_app)
 sequential_group = cyclopts.Group.create_ordered("Sequential Pipelines")
-inference_app.command(name="sentinel2-sequential", group=sequential_group)(Sentinel2Pipeline.cli)
-inference_app.command(name="planet-sequential", group=sequential_group)(PlanetPipeline.cli)
+inference_app.command(name="sentinel2-sequential", group=sequential_group)(sentinel2_cli)
+inference_app.command(name="planet-sequential", group=sequential_group)(planet_cli)
 ray_group = cyclopts.Group.create_ordered("Ray Pipelines")
-inference_app.command(name="sentinel2-ray", group=ray_group)(Sentinel2RayPipeline.cli)
-inference_app.command(name="planet-ray", group=ray_group)(PlanetRayPipeline.cli)
+# inference_app.command(name="sentinel2-ray", group=ray_group)(Sentinel2RayPipeline.cli)
+# inference_app.command(name="planet-ray", group=ray_group)(PlanetRayPipeline.cli)
 utilities_group = cyclopts.Group.create_ordered("Utilities")
 inference_app.command(group=utilities_group)(benchviz)
 
 inference_data_app = cyclopts.App(name="prep-data", group=utilities_group, help="Data preparation for offline use")
 inference_app.command(inference_data_app)
-inference_data_app.command(name="sentinel2")(Sentinel2Pipeline.cli_prepare_data)
-inference_data_app.command(name="planet")(PlanetPipeline.cli_prepare_data)
+inference_data_app.command(name="sentinel2")(sentinel2_cli_prepare_data)
+inference_data_app.command(name="planet")(planet_cli_prepare_data)
 
 training_app = cyclopts.App(name="training", group=subcommands_group, help="Predefined training pipelines")
 app.command(training_app)
@@ -135,16 +141,26 @@ training_data_app.command(name="sentinel2")(preprocess_s2_train_data)
 
 # Intercept the logging behavior to add a file handler
 @app.meta.default
-def launcher(  # noqa: D103
+def launcher(
     *tokens: Annotated[str, cyclopts.Parameter(show=False, allow_leading_hyphen=True)],
     log_dir: Path = Path("logs"),
     config_file: Path = Path("config.toml"),
-    verbose: Annotated[bool, cyclopts.Parameter(alias="-v")] = False,
-    very_verbose: Annotated[bool, cyclopts.Parameter(alias="-vv")] = False,
-    debug: Annotated[bool, cyclopts.Parameter(alias="-vvv")] = False,
+    verbose: Annotated[int, cyclopts.Parameter(alias="-v", count=True)] = 0,
     log_plain: bool = False,
 ):
-    verbosity = VerbosityLevel.from_cli(verbose, very_verbose, debug)
+    """Meta app for the CLI, handles global options.
+
+    Args:
+        log_dir (Path, optional): _description_. Defaults to Path("logs").
+        config_file (Path, optional): _description_. Defaults to Path("config.toml").
+        verbose (Annotated[int, cyclopts.Parameter, optional): _description_. Defaults to "-v", count=True)]=0.
+        log_plain (bool, optional): _description_. Defaults to False.
+
+    """
+    if verbose > 3:
+        verbose = 3
+    verbosity = VerbosityLevel(verbose)
+    print(verbosity)
     command, bound, ignored = app.parse_args(tokens, verbose=verbosity == VerbosityLevel.VERBOSE)
     # Set verbosity to 1 for debug stuff like env_info
     if command.__name__ == "env_info" and verbosity == VerbosityLevel.NORMAL:
@@ -158,7 +174,7 @@ def launcher(  # noqa: D103
         additional_args["log_dir"] = log_dir
     if "verbosity" in ignored:
         additional_args["verbosity"] = verbosity
-    return command(*bound.args, **bound.kwargs, **additional_args)
+    command(*bound.args, **bound.kwargs, **additional_args)
 
 
 def start_app():

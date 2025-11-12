@@ -35,6 +35,7 @@ nav:
       - Datacubes: dev/auxiliary.md
       - Docs: dev/docs.md
       - Problems with CUDA: dev/cuda_fixes.md
+  - CLI Reference: cli.md
 
 theme:
   name: material
@@ -147,6 +148,7 @@ plugins:
           # 'darts-superresolution/src/darts_superresolution',
           'darts-utils/src/darts_utils',
         ]
+  - cyclopts
   - autorefs:
       resolve_closest: true
   - privacy:

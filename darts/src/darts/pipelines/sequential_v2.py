@@ -1070,3 +1070,56 @@ class Sentinel2Pipeline(_BasePipeline):
         """
         pipeline.__post_init__()
         pipeline.run()
+
+
+# Cyclopts 4 compatibility -> This complete file would need an architectural rewrite
+
+# planet_cli,
+# planet_cli_prepare_data,
+# sentinel2_cli,
+# sentinel2_cli_prepare_data,
+
+
+def planet_cli(*, pipeline: PlanetPipeline = PlanetPipeline()):
+    """Run the sequential pipeline for PlanetScope data.
+
+    Args:
+        pipeline: Configured PlanetPipeline instance.
+
+    """
+    PlanetPipeline.cli(pipeline=pipeline)
+
+
+def planet_cli_prepare_data(*, pipeline: PlanetPipeline = PlanetPipeline(), aux: bool = False):
+    """Download all necessary data for offline processing.
+
+    Args:
+        pipeline: Configured PlanetPipeline instance.
+        aux: If True, downloads auxiliary data (ArcticDEM, TCVis). Defaults to False.
+
+    """
+    PlanetPipeline.cli_prepare_data(pipeline=pipeline, aux=aux)
+
+
+def sentinel2_cli(*, pipeline: Sentinel2Pipeline = Sentinel2Pipeline()):
+    """Run the sequential pipeline for Sentinel-2 data.
+
+    Args:
+        pipeline: Configured Sentinel2Pipeline instance.
+
+    """
+    Sentinel2Pipeline.cli(pipeline=pipeline)
+
+
+def sentinel2_cli_prepare_data(
+    *, pipeline: Sentinel2Pipeline = Sentinel2Pipeline(), optical: bool = False, aux: bool = False
+):
+    """Download all necessary data for offline processing.
+
+    Args:
+        pipeline: Configured Sentinel2Pipeline instance.
+        optical: If True, downloads optical (Sentinel-2) imagery. Defaults to False.
+        aux: If True, downloads auxiliary data (ArcticDEM, TCVis). Defaults to False.
+
+    """
+    Sentinel2Pipeline.cli_prepare_data(pipeline=pipeline, optical=optical, aux=aux)

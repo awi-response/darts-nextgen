@@ -5,16 +5,13 @@ import time
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, Literal
+from typing import Literal
 
 import cyclopts
 import toml
 from darts_utils.paths import DefaultPaths, paths
 
 from darts_segmentation.training.hparams import Hyperparameters
-
-if TYPE_CHECKING:
-    import pytorch_lightning as pl
 
 logger = logging.getLogger(__name__.replace("darts_", "darts."))
 
@@ -36,13 +33,13 @@ class DataConfig:
     Attributes:
         train_data_dir (Path |None, optional): The path (top-level) to the data to be used for training.
             Expects a directory containing:
-            1. a zarr group called "data.zarr" containing a "x" and "y" array
-            2. a geoparquet file called "metadata.parquet" containing the metadata for the data.
-                This metadata should contain at least the following columns:
-                - "sample_id": The id of the sample
-                - "region": The region the sample belongs to
-                - "empty": Whether the image is empty
-                The index should refer to the index of the sample in the zarr data.
+                1. a zarr group called "data.zarr" containing a "x" and "y" array
+                2. a geoparquet file called "metadata.parquet" containing the metadata for the data.
+                    This metadata should contain at least the following columns:
+                    - "sample_id": The id of the sample
+                    - "region": The region the sample belongs to
+                    - "empty": Whether the image is empty
+                    The index should refer to the index of the sample in the zarr data.
             This directory should be created by a preprocessing script.
             If None, will use the default training data directory based on the DARTS paths.
             Defaults to None.
@@ -606,7 +603,7 @@ def test_smp(
     device_config: DeviceConfig = DeviceConfig(),
     wandb_entity: str | None = None,
     wandb_project: str | None = None,
-) -> "pl.Trainer":
+):
     """Run the testing of the SMP model.
 
     The data structure of the training data expects the "preprocessing" step to be done beforehand,
