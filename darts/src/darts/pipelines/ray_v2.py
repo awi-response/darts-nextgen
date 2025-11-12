@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING, Any, Literal, TypedDict
 import toml
 from cyclopts import Parameter
 from darts_utils.paths import DefaultPaths, paths
+from ray.data import ActorPoolStrategy
 
 if TYPE_CHECKING:
     from darts.pipelines._ray_wrapper import RayDataDict
@@ -316,7 +317,8 @@ class _BaseRayPipeline(ABC):
                 "write_model_outputs": self.write_model_outputs,
             },
             num_cpus=1,
-            num_gpus=0.8,
+            num_gpus=1,
+            compute=ActorPoolStrategy(size=1),
             concurrency=1,
         )
         ds = ds.map(
@@ -573,3 +575,4 @@ class Sentinel2RayPipeline(_BaseRayPipeline):
     def cli(*, pipeline: "Sentinel2RayPipeline"):
         """Run the sequential pipeline for AOI Sentinel 2 data."""
         pipeline.run()
+

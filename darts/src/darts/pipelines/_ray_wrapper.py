@@ -71,6 +71,7 @@ class _RayEnsembleV1:
             keep_inputs=write_model_outputs,
         )
         row["tile"] = RayDataset(tile)
+        logger.info("Ensemble done", extra={"tile_id": row["tile_id"]})
         return row
 
 
@@ -96,6 +97,7 @@ def _load_aux(
     tcvis = load_tcvis(tile.odc.geobox, tcvis_dir, offline=offline)
     row["adem"] = RayDataset(arcticdem)
     row["tcvis"] = RayDataset(tcvis)
+    logger.info("Aux data loaded", extra={"tile_id": row["tile_id"]})
     return row
 
 
@@ -120,6 +122,7 @@ def _preprocess_ray(
     row["tile"] = RayDataset(tile)
     row["adem"] = None
     row["tcvis"] = None
+    logger.info("Preprocess done", extra={"tile_id": row["tile_id"]})
     return row
 
 
@@ -147,6 +150,7 @@ def _prepare_export_ray(
         device=device,
     )
     row["tile"] = RayDataset(tile)
+    logger.info("Export done", extra={"tile_id": row["tile_id"]})
     return row
 
 
@@ -177,3 +181,4 @@ def _export_tile_ray(
         "tile_id": tile_id,
         "outpath": str(outpath),
     }
+
