@@ -1,6 +1,7 @@
 """Calculation of spectral indices from optical data with the spyndex library."""
 
 import logging
+from typing import Any
 
 import spyndex
 import xarray as xr
@@ -10,26 +11,63 @@ logger = logging.getLogger(__name__.replace("darts_", "darts."))
 
 
 @stopwatch.f("Computing spectral index with spyndex", printer=logger.debug, print_kwargs=["index"])
-def compute_spyndex(ds_optical: xr.Dataset, index: str, **kwargs) -> xr.DataArray:
+def calculate_spyndex(ds_optical: xr.Dataset, index: str, **kwargs: dict[str, Any]) -> xr.DataArray:
     """Compute a spectral index using the spyndex library.
 
-    Run `spyndex.indices` to see all available indices.
-
-    Will look for required bands in the provided dataset `ds_optical` and in the keyword arguments `kwargs`.
-    Bands provided in `kwargs` will override bands from `ds_optical`.
-    Constants not found in `kwargs` will be set to their default value.
+    This wrapper provides access to 200+ spectral indices from the spyndex library with
+    automatic band mapping and parameter handling.
 
     Args:
-        ds_optical (xr.Dataset): The optical dataset containing the required bands.
-        index (str): The name of the spectral index to compute.
-        **kwargs: Additional parameters required by the spectral index (e.g., L for SAVI).
-
-    Raises:
-        ValueError: If a required band is missing.
-        ValueError: If all bands are provided as scalars.
+        ds_optical (xr.Dataset): Dataset containing spectral bands. Band names should match
+            spyndex common names (e.g., 'red', 'nir', 'blue', 'green').
+        index (str): Name of the spectral index to compute. Run `spyndex.indices` to see
+            all available indices (e.g., 'NDVI', 'EVI', 'SAVI').
+        **kwargs: Additional parameters or band overrides:
+            - Band values: Override bands from ds_optical with scalar or array values (e.g., red=0.2)
+            - Constants: Override default values for index-specific constants (e.g., L=0.5 for SAVI)
 
     Returns:
-        xr.DataArray: The computed spectral index.
+        xr.DataArray: Computed spectral index with attributes:
+            - source: "spyndex"
+            - long_name: Full name of the index
+            - reference: Citation for the index
+            - formula: Mathematical formula
+            - author: Index contributor
+
+    Raises:
+        ValueError: If a required band is missing from both ds_optical and kwargs.
+        ValueError: If all bands are provided as scalar values.
+
+    Note:
+        Band resolution priority:
+
+        1. Bands in ds_optical (with common_name matching spyndex.bands)
+        2. Values in kwargs (override ds_optical bands)
+        3. Default values for constants (from spyndex.constants)
+
+        All optical bands are automatically clipped to [0, 1] before calculation.
+
+        At least one band must come from ds_optical as a DataArray (not all scalars).
+
+    Example:
+        Compute various indices with spyndex:
+
+        ```python
+        from darts_preprocessing import calculate_spyndex
+        import spyndex
+
+        # List all available indices
+        print(list(spyndex.indices.keys()))
+
+        # Basic NDVI
+        ndvi = calculate_spyndex(ds_optical, "NDVI")
+
+        # SAVI with custom soil adjustment factor
+        savi = calculate_spyndex(ds_optical, "SAVI", L=0.5)
+
+        # EVI with custom parameters
+        evi = calculate_spyndex(ds_optical, "EVI", g=2.5, C1=6, C2=7.5, L=1)
+        ```
 
     """
     index: spyndex.axioms.SpectralIndex = spyndex.indices[index]

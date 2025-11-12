@@ -52,47 +52,65 @@ def load_arcticdem(
 ) -> xr.Dataset:
     """Load the ArcticDEM for the given geobox, fetch new data from the STAC server if necessary.
 
+    This function loads ArcticDEM elevation data from a local icechunk store. If `offline=False`,
+    missing data will be automatically downloaded from the AWS-hosted STAC server and stored
+    locally for future use. The loaded data is returned in the ArcticDEM's native CRS (EPSG:3413).
+
     Args:
-        geobox (GeoBox): The geobox for which the tile should be loaded.
-        data_dir (Path | str): The directory to store the downloaded data for faster access for consecutive calls.
-        resolution (Literal[2, 10, 32]): The resolution of the ArcticDEM data in m.
-        buffer (int, optional): The buffer around the projected (epsg:3413) geobox in pixels. Defaults to 0.
-        offline (bool, optional): If True, will not attempt to download any missing data. Defaults to False.
+        geobox (GeoBox): The geobox for which the tile should be loaded. Must be in a meter-based CRS.
+        data_dir (Path | str): Path to the icechunk data directory (must have .icechunk suffix).
+            This directory stores downloaded ArcticDEM data for faster consecutive access.
+        resolution (Literal[2, 10, 32]): The resolution of the ArcticDEM data in meters.
+            Must match the resolution indicated in the data_dir name (e.g., "arcticdem_2m.icechunk").
+        buffer (int, optional): Buffer around the geobox in pixels. The buffer is applied in the
+            ArcticDEM's native CRS (EPSG:3413) after reprojecting the input geobox. Useful for
+            edge effect removal in terrain analysis. Defaults to 0.
+        offline (bool, optional): If True, only loads data already present in the local store
+            without attempting any downloads. If False, missing data is downloaded from AWS.
+            Defaults to False.
 
     Returns:
-        xr.Dataset: The ArcticDEM tile, with a buffer applied.
-            Note: The buffer is applied in the arcticdem dataset's CRS, hence the orientation might be different.
-            Final dataset is NOT matched to the reference CRS and resolution.
+        xr.Dataset: The ArcticDEM dataset with the following data variables:
+            - dem (float32): Elevation values in meters, clipped to [-100, 3000] range
+            - arcticdem_data_mask (uint8): Data validity mask (1=valid, 0=invalid)
+
+            The dataset is in the ArcticDEM's native CRS (EPSG:3413) with the buffer applied.
+            It is NOT automatically reprojected to match the input geobox's CRS and resolution.
+
+    Note:
+        The `offline` parameter controls data fetching behavior:
+
+        - When `offline=False`: Uses `smart_geocubes` accessor's `load()` method which automatically
+          downloads missing tiles from AWS and persists them to the icechunk store.
+        - When `offline=True`: Uses the accessor's `open_xarray()` method to open the existing store
+          and crops it to the requested region. Raises an error if data is missing.
 
     Warning:
-        Geobox must be in a meter based CRS.
+        - The input geobox must be in a meter-based CRS.
+        - The data_dir must have an `.icechunk` suffix and contain the resolution in the name.
+        - The returned dataset is in EPSG:3413, not the input geobox's CRS.
 
-    Usage:
-        Since the API of the `load_arcticdem` is based on GeoBox, one can load a specific ROI based on an existing Xarray DataArray:
+    Example:
+        Load ArcticDEM with a buffer for terrain analysis:
 
         ```python
-        import xarray as xr
-        import odc.geo.xr
+        from math import ceil, sqrt
+        from darts_acquisition import load_arcticdem
 
-        from darts_aquisition import load_arcticdem
-
-        # Assume "optical" is an already loaded s2 based dataarray
-
+        # Assume "optical" is a loaded Sentinel-2 dataset
         arcticdem = load_arcticdem(
-            optical.odc.geobox,
-            "/path/to/arcticdem-parent-directory",
+            geobox=optical.odc.geobox,
+            data_dir="/data/arcticdem_2m.icechunk",
             resolution=2,
-            buffer=ceil(self.tpi_outer_radius / 2 * sqrt(2))
+            buffer=ceil(128 / 2 * sqrt(2)),  # Buffer for TPI with 128m radius
+            offline=False
         )
 
-        # Now we can for example match the resolution and extent of the optical data:
+        # Reproject to match optical data's CRS and resolution
         arcticdem = arcticdem.odc.reproject(optical.odc.geobox, resampling="cubic")
         ```
 
-        The `buffer` parameter is used to extend the region of interest by a certain amount of pixels.
-        This comes handy when calculating e.g. the Topographic Position Index (TPI), which requires a buffer around the region of interest to remove edge effects.
-
-    """  # noqa: E501
+    """
     if not offline:
         odc.stac.configure_rio(cloud_defaults=True, aws={"aws_unsigned": True})
 
@@ -124,13 +142,44 @@ def download_arcticdem(
     data_dir: Path | str,
     resolution: RESOLUTIONS,
 ) -> None:
-    """Download the ArcticDEM for the given area of interest.
+    """Download ArcticDEM data for the specified area of interest.
+
+    This function downloads ArcticDEM elevation tiles from AWS S3 for the given area
+    of interest and stores them in a local icechunk data store for efficient access.
 
     Args:
-        aoi (gpd.GeoDataFrame): The area of interest to download the ArcticDEM for.
-        data_dir (Path | str): The directory to store the downloaded data for faster access for consecutive calls.
-        resolution (Literal[2, 10, 32]): The resolution of the ArcticDEM data in m.
+        aoi (gpd.GeoDataFrame): Area of interest for which to download ArcticDEM data.
+            Can be in any CRS; will be reprojected to EPSG:3413 (ArcticDEM's native CRS).
+        data_dir (Path | str): Path to the icechunk data directory (must have .icechunk suffix).
+            Must contain the resolution in the name (e.g., "arcticdem_2m.icechunk").
+        resolution (Literal[2, 10, 32]): The resolution of the ArcticDEM data in meters.
+            Must match the resolution indicated in the data_dir name.
 
+    Note:
+        This function automatically configures AWS access with unsigned requests to the
+        public ArcticDEM S3 bucket. No AWS credentials are required.
+
+    Example:
+        Download ArcticDEM for a study area:
+
+        ```python
+        import geopandas as gpd
+        from shapely.geometry import box
+        from darts_acquisition import download_arcticdem
+
+        # Define area of interest
+        aoi = gpd.GeoDataFrame(
+            geometry=[box(-50, 70, -49, 71)],
+            crs="EPSG:4326"
+        )
+
+        # Download 2m resolution ArcticDEM
+        download_arcticdem(
+            aoi=aoi,
+            data_dir="/data/arcticdem_2m.icechunk",
+            resolution=2
+        )
+        ```
 
     """
     odc.stac.configure_rio(cloud_defaults=True, aws={"aws_unsigned": True})

@@ -71,7 +71,7 @@ The `numbers` key is ignored by the CLI, hence `n` will be add to the command as
 
 !!! warning
 
-    The only parameters not passed from the config file are the `--config-file`, `--verbose`, `--tracebacks-show-locals` and `--log-dir` parameters.
+    The only parameters not passed from the config file are the `--config-file`, `--log-dir`, `--log-plain` and the verbosity parameters.
     These parameters are evaluated before the config file is parsed, hence it is not possible to specify the logging directory via the config file.
 
 ## Real world example with Sentinel 2 processing
@@ -94,5 +94,5 @@ model-file = "./models/s2-tcvis-final-large_2025-02-12.ckpt"
 Running the command:
 
 ```sh
-uv run darts run-sequential-aoi-sentinel2-pipeline --aoi-shapefile path/to/your/aoi.geojson --start-date 2024-07 --end-date 2024-09
+uv run darts inference sentinel2-sequential --aoi-shapefile path/to/your/aoi.geojson --start-date 2024-07 --end-date 2024-09
 ```

@@ -155,20 +155,49 @@ def download_cdse_s2_sr_scene(
     bands_mapping: dict | Literal["all"] = {"B02_10m": "blue", "B03_10m": "green", "B04_10m": "red", "B08_10m": "nir"},
     aws_profile_name: str = "default",
 ):
-    """Download a Sentinel-2 scene from CDSE via STAC API and stores it in the specified raw data store.
+    """Download a Sentinel-2 scene from CDSE via STAC API and store it in the local data store.
 
-    Note:
-        Must use the `darts.utils.copernicus.init_copernicus` function to setup authentification
-        with the Copernicus AWS S3 bucket before using this function.
+    This function downloads Sentinel-2 Level-2A surface reflectance data from the Copernicus
+    Data Space Ecosystem (CDSE) and stores it locally in a compressed zarr store for efficient
+    repeated access.
 
     Args:
-        s2item (str | Item): The Sentinel-2 image ID or the corresponing STAC Item.
-        store (Path): The path to the raw data store.
-        bands_mapping (dict[str, str], optional): A mapping from bands to obtain.
-            Will be renamed to the corresponding band names.
+        s2item (str | Item): Sentinel-2 scene identifier (e.g., "S2A_MSIL2A_20230615T...") or
+            a PySTAC Item object from a STAC search.
+        store (Path): Path to the local zarr store directory where the scene will be saved.
+        bands_mapping (dict | Literal["all"], optional): Mapping of Sentinel-2 band names to
+            custom band names. Keys should be CDSE band names (e.g., "B02_10m", "B03_10m"),
+            values are the desired output names. Use "all" to load all optical bands and SCL.
             Defaults to {"B02_10m": "blue", "B03_10m": "green", "B04_10m": "red", "B08_10m": "nir"}.
-        aws_profile_name (str, optional): The name of the AWS profile to use for authentication.
-            Defaults to "default".
+        aws_profile_name (str, optional): AWS profile name for authentication with the
+            Copernicus S3 bucket. Defaults to "default".
+
+    Note:
+        - Requires Copernicus Data Space authentication. Use `darts_utils.copernicus.init_copernicus()`
+          to set up credentials before calling this function.
+        - All bands are resampled to 10m resolution during download.
+        - Data is stored with zstd compression for efficient storage.
+        - The SCL (Scene Classification Layer) band is automatically included if not specified.
+
+    Example:
+        Download Sentinel-2 scenes for a project:
+
+        ```python
+        from pathlib import Path
+        from darts_acquisition import download_cdse_s2_sr_scene
+        from darts_utils.copernicus import init_copernicus
+
+        # Setup authentication
+        init_copernicus(profile_name="default")
+
+        # Download scene with all bands
+        download_cdse_s2_sr_scene(
+            s2item="S2A_MSIL2A_20230615T123456_N0509_R012_T33UUP_20230615T145678",
+            store=Path("/data/s2_store"),
+            bands_mapping="all",
+            aws_profile_name="default"
+        )
+        ```
 
     """
     bands_mapping = _get_band_mapping(bands_mapping)
@@ -191,25 +220,117 @@ def load_cdse_s2_sr_scene(
     output_dir_for_debug_geotiff: Path | None = None,
     device: Literal["cuda", "cpu"] | int = DEFAULT_DEVICE,
 ) -> xr.Dataset:
-    """Load a Sentinel-2 scene from CDSE via STAC API and return it as an xarray dataset.
+    """Load a Sentinel-2 scene from CDSE, downloading from STAC API if necessary.
+
+    This function loads Sentinel-2 Level-2A surface reflectance data from the Copernicus
+    Data Space Ecosystem (CDSE). If a local store is provided, the data is cached for
+    efficient repeated access. The function handles quality masking, reflectance scaling,
+    and optional GPU acceleration.
+
+    The download logic is basically as follows:
+
+    ```
+    IF flag:raw-data-store THEN
+        IF exist_local THEN
+            open -> memory
+        ELIF online THEN
+            download -> memory
+            save
+        ELIF offline THEN
+            RAISE ERROR
+        ENDIF
+    ELIF online THEN
+        download -> memory
+    ELIF offline THEN
+        RAISE ERROR
+    ENDIF
+    ```
 
     Args:
-        s2item (str | Item): The Sentinel-2 image ID or the corresponing STAC Item.
-        bands_mapping (dict[str, str], optional): A mapping from bands to obtain.
-            Will be renamed to the corresponding band names.
+        s2item (str | Item): Sentinel-2 scene identifier or PySTAC Item object.
+        bands_mapping (dict | Literal["all"], optional): Mapping of Sentinel-2 band names to
+            custom band names. Keys should be CDSE band names (e.g., "B02_10m"), values are
+            output names. Use "all" to load all optical bands and SCL.
             Defaults to {"B02_10m": "blue", "B03_10m": "green", "B04_10m": "red", "B08_10m": "nir"}.
-        store (Path | None, optional): The path to the raw data store. If None, data will not be stored locally.
-            Defaults to None.
-        aws_profile_name (str, optional): The name of the AWS profile to use for authentication.
+        store (Path | None, optional): Path to local zarr store for caching. If None, data is
+            loaded directly without caching. Defaults to None.
+        aws_profile_name (str, optional): AWS profile name for Copernicus S3 authentication.
             Defaults to "default".
-        offline (bool, optional): If True, will not attempt to download any missing data. Defaults to False.
-        output_dir_for_debug_geotiff (Path | None): Pipeline output directory.
-            If provided, will write the raw data as GeoTIFF file for debugging purposes.
-            Defaults to None.
-        device (Literal["cuda", "cpu"] | int, optional): The device to load the data onto.
+        offline (bool, optional): If True, only loads from local store without downloading.
+            Requires `store` to be provided. If False, missing data is downloaded.
+            Defaults to False.
+        output_dir_for_debug_geotiff (Path | None, optional): If provided, writes raw data as
+            GeoTIFF files for debugging. Defaults to None.
+        device (Literal["cuda", "cpu"] | int, optional): Device for processing (GPU or CPU).
+            Defaults to DEFAULT_DEVICE.
 
     Returns:
-        xr.Dataset: The loaded dataset
+        xr.Dataset: Sentinel-2 dataset with the following data variables based on bands_mapping:
+            - Optical bands (float32): Surface reflectance values [~-0.1 to ~1.0]
+              Default bands: blue, green, red, nir
+              Additional bands available: coastal, rededge071, rededge075, rededge078,
+              nir08, nir09, swir16, swir22
+              Each has attributes:
+              - long_name: "Sentinel-2 {Band}"
+              - units: "Reflectance"
+              - data_source: "Sentinel-2 L2A via Copernicus STAC API (sentinel-2-l2a)"
+            - s2_scl (uint8): Scene Classification Layer
+              Attributes: long_name, description of class values (0=NO_DATA, 1=SATURATED, etc.)
+            - quality_data_mask (uint8): Derived quality mask
+              - 0 = Invalid (no data, saturated, or defective)
+              - 1 = Low quality (shadows, clouds, cirrus, snow/ice, water)
+              - 2 = High quality (clear vegetation or non-vegetated land)
+            - valid_data_mask (uint8): Binary validity mask (1=valid, 0=invalid)
+
+            Dataset attributes:
+            - azimuth (float): Solar azimuth angle from view:azimuth
+            - elevation (float): Solar elevation angle from view:sun_elevation
+            - s2_tile_id (str): Scene identifier
+            - tile_id (str): Scene identifier (same as s2_tile_id)
+            - Plus additional STAC metadata fields
+
+    Note:
+        The `offline` parameter controls data fetching:
+        - When `offline=False`: Automatically downloads missing data from CDSE and stores it
+          in the local zarr store (if store is provided).
+        - When `offline=True`: Only reads from the local store. Raises an error if data is
+          missing or if store is None.
+
+        Reflectance processing:
+        - Raw DN values are scaled: (DN / 10000.0) - 0.1
+        - Pixels where SCL==0 or DN==0 are masked as NaN
+        - This matches the data format from GEE and Planet loaders
+
+        Quality mask derivation from SCL:
+        - Invalid (0): NO_DATA, SATURATED_OR_DEFECTIVE
+        - Low quality (1): CAST_SHADOWS, CLOUD_SHADOWS, CLOUD_*, THIN_CIRRUS, SNOW/ICE, WATER
+        - High quality (2): VEGETATION, NOT_VEGETATED
+
+    Example:
+        Load scene with local caching:
+
+        ```python
+        from pathlib import Path
+        from darts_acquisition import load_cdse_s2_sr_scene
+        from darts_utils.copernicus import init_copernicus
+
+        # Setup authentication
+        init_copernicus(profile_name="default")
+
+        # Load with caching
+        s2_ds = load_cdse_s2_sr_scene(
+            s2item="S2A_MSIL2A_20230615T123456_N0509_R012_T33UUP_20230615T145678",
+            bands_mapping="all",
+            store=Path("/data/s2_store"),
+            offline=False  # Download if not cached
+        )
+
+        # Compute NDVI
+        ndvi = (s2_ds.nir - s2_ds.red) / (s2_ds.nir + s2_ds.red)
+
+        # Filter to high quality pixels
+        s2_filtered = s2_ds.where(s2_ds.quality_data_mask == 2)
+        ```
 
     """
     s2id = s2item.id if isinstance(s2item, Item) else s2item

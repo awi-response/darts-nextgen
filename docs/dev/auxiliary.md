@@ -18,17 +18,9 @@ The user can specify the download directory, where the ArcticDEM will be procedu
 The user can also specify the resolution of the ArcticDEM, which is either 2m, 10m or 32m.
 Each resolution is stored in their own Zarr Datacube.
 
-::: darts_acquisition.load_arcticdem
-    options:
-        heading_level: 3
-
 ## Tasseled Cap indices (TCVIS)
 
 The TCVIS data is downloaded from Google Earth-Engine (GEE) using the TCVIS collection from Ingmar Nitze: `"users/ingmarnitze/TCTrend_SR_2000-2019_TCVIS"`.
-
-::: darts_acquisition.load_tcvis
-    options:
-        heading_level: 3
 
 ## Why Zarr Datacubes?
 

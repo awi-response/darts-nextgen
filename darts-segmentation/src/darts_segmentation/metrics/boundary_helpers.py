@@ -73,7 +73,7 @@ def get_boundary(
     binary_instances: torch.Tensor,
     dilation: float | int = 0.02,
     validate_args: bool = False,
-):
+) -> tuple[torch.Tensor, torch.Tensor]:
     """Convert instance masks to instance boundaries.
 
     Args:
@@ -92,9 +92,9 @@ def get_boundary(
     if validate_args:
         assert binary_instances.dim() in [3, 4], f"Expected 3 or 4 dimensions, got {binary_instances.dim()}"
         assert binary_instances.dtype == torch.uint8, f"Expected torch.uint8, got {binary_instances.dtype}"
-        assert (
-            binary_instances.min() >= 0 and binary_instances.max() <= 1
-        ), f"Expected binary mask, got range between {binary_instances.min()} and {binary_instances.max()}"
+        assert binary_instances.min() >= 0 and binary_instances.max() <= 1, (
+            f"Expected binary mask, got range between {binary_instances.min()} and {binary_instances.max()}"
+        )
         assert isinstance(dilation, float | int), f"Expected float or int, got {type(dilation)}"
         assert dilation >= 0, f"Expected dilation >= 0, got {dilation}"
 

@@ -145,7 +145,7 @@ def preprocess_planet_train_data_pingo(
     train_data_dir = train_data_dir or paths.train_data_dir("planet_v2_pingo", patch_size)
     arcticdem_dir = arcticdem_dir or paths.arcticdem(2)
     tcvis_dir = tcvis_dir or paths.tcvis()
-    admin_dir = admin_dir or paths.admin()
+    admin_dir = admin_dir or paths.admin_boundaries()
 
     # Storing the configuration as JSON file
     train_data_dir.mkdir(parents=True, exist_ok=True)

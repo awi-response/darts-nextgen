@@ -8,13 +8,13 @@ Places where this default path management should be used:
 
 This module allows for setting and getting default paths for DARTS data storage.
 
-Intended usage is to use the provided root_dir, fast_dir, and vast_dir functions to build paths.
+Intended usage is to use the provided root_dir, fast_dir, and large_dir functions to build paths.
 
 Example:
     ```python
     from darts_utils.paths import paths
 
-    my_data_pool = paths.vast / "my_data_pool"
+    my_data_pool = paths.large / "my_data_pool"
     my_fast_cache = paths.fast / "my_fast_cache"
     ```
 
@@ -34,7 +34,7 @@ Fast Storage:
     - training
     - models
 
-Vast Storage:
+Large Storage:
     - aux
     - artifacts
     - cache
@@ -77,7 +77,7 @@ class DefaultPaths:
         fast_dir (Path | str | None): The default DARTS fast data directory.
             If None, defaults to the DARTS data directory.
             Defaults to None.
-        vast_dir (Path | str | None): The default DARTS vast data directory.
+        large_dir (Path | str | None): The default DARTS large data directory.
             If None, defaults to the DARTS data directory.
             Defaults to None.
 
@@ -85,7 +85,7 @@ class DefaultPaths:
 
     darts_dir: Path | str | None = None
     fast_dir: Path | str | None = None
-    vast_dir: Path | str | None = None
+    large_dir: Path | str | None = None
 
 
 class PathManagerSingleton:
@@ -104,7 +104,7 @@ class PathManagerSingleton:
         """Initialize the default paths for DARTS."""
         darts_dir = _parse_path(os.environ.get("DARTS_DATA_DIR")) or Path.cwd()
         self.fast_dir = _parse_path(os.environ.get("DARTS_FAST_DATA_DIR")) or darts_dir
-        self.vast_dir = _parse_path(os.environ.get("DARTS_VAST_DATA_DIR")) or darts_dir
+        self.large_dir = _parse_path(os.environ.get("DARTS_LARGE_DATA_DIR")) or darts_dir
 
     def set_defaults(self, defaults: DefaultPaths) -> None:
         """Set the default directories for DARTS.
@@ -114,7 +114,7 @@ class PathManagerSingleton:
         2. Environment variables.
         3. Current working directory.
 
-        Where the fast_dir and vast_dir default to darts_dir if not set.
+        Where the fast_dir and large_dir default to darts_dir if not set.
 
         Args:
             defaults (DefaultPaths): The default paths to set.
@@ -122,13 +122,13 @@ class PathManagerSingleton:
         """
         darts_dir = _parse_path(defaults.darts_dir)
         self.fast_dir = _parse_path(defaults.fast_dir) or darts_dir or self.fast_dir
-        self.vast_dir = _parse_path(defaults.vast_dir) or darts_dir or self.vast_dir
-        logger.debug(f"Set DARTS default paths: fast_dir={self.fast_dir}, vast_dir={self.vast_dir}")
+        self.large_dir = _parse_path(defaults.large_dir) or darts_dir or self.large_dir
+        logger.debug(f"Set DARTS default paths: fast_dir={self.fast_dir}, large_dir={self.large_dir}")
 
     def log_all_paths(self, level: int = logging.DEBUG):
         """Log all paths managed."""
         logger.log(level, f"DARTS Fast Directory: {self.fast_dir}")
-        logger.log(level, f"DARTS Vast Directory: {self.vast_dir}")
+        logger.log(level, f"DARTS Large Directory: {self.large_dir}")
         logger.log(level, f"DARTS Aux Directory: {self.aux}")
         logger.log(level, f"DARTS Artifacts Directory: {self.artifacts}")
         logger.log(level, f"DARTS Training Directory: {self.training}")
@@ -157,16 +157,16 @@ class PathManagerSingleton:
         return self.fast_dir
 
     @property
-    def vast(self) -> Path:  # noqa: D102
-        return self.vast_dir
+    def large(self) -> Path:  # noqa: D102
+        return self.large_dir
 
     @property
     def aux(self) -> Path:  # noqa: D102
-        return self.vast_dir / "aux"
+        return self.large_dir / "aux"
 
     @property
     def artifacts(self) -> Path:  # noqa: D102
-        return self.vast_dir / "artifacts"
+        return self.large_dir / "artifacts"
 
     @property
     def training(self) -> Path:  # noqa: D102
@@ -174,15 +174,15 @@ class PathManagerSingleton:
 
     @property
     def cache(self) -> Path:  # noqa: D102
-        return self.vast_dir / "cache"
+        return self.large_dir / "cache"
 
     @property
     def logs(self) -> Path:  # noqa: D102
-        return self.vast_dir / "logs"
+        return self.large_dir / "logs"
 
     @property
     def out(self) -> Path:  # noqa: D102
-        return self.vast_dir / "output"
+        return self.large_dir / "output"
 
     @property
     def models(self) -> Path:  # noqa: D102
@@ -190,15 +190,15 @@ class PathManagerSingleton:
 
     @property
     def input(self) -> Path:  # noqa: D102
-        return self.vast_dir / "input"
+        return self.large_dir / "input"
 
     @property
     def archive(self) -> Path:  # noqa: D102
-        return self.vast_dir / "archive"
+        return self.large_dir / "archive"
 
-    def admin(self) -> Path:  # noqa: D102
-        d = (self.aux / "admin").resolve()
-        logger.debug(f"Admin path: {d}")
+    def admin_boundaries(self) -> Path:  # noqa: D102
+        d = (self.aux / "admin_boundaries").resolve()
+        logger.debug(f"Administrative boundaries path: {d}")
         return d
 
     def arcticdem(self, res: Literal[2, 10, 32]) -> Path:  # noqa: D102

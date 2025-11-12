@@ -20,9 +20,9 @@ else:
 
 
 def move_to_device(
-        tile: xr.Dataset,
-        device: Literal["cuda", "cpu"] | int,
-):
+    tile: xr.Dataset,
+    device: Literal["cuda", "cpu"] | int,
+) -> xr.Dataset:
     """Context manager to ensure a dataset is on the correct device.
 
     Args:

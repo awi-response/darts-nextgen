@@ -1,4 +1,4 @@
-"""PLANET preprocessing functions for training with the v2 data preprocessing."""
+"""Planet preprocessing functions for training with the v2 data preprocessing."""
 
 import logging
 import time
@@ -111,7 +111,7 @@ def preprocess_planet_train_data(  # noqa: C901
     │   ├── x/          # Input patches [n_patches, n_bands, patch_size, patch_size]
     │   └── y/          # Label patches [n_patches, patch_size, patch_size]
     ├── metadata.parquet
-    └── {timestamp}.cli.json
+    └── {timestamp}.cli.toml
     ```
 
     Args:
@@ -163,7 +163,7 @@ def preprocess_planet_train_data(  # noqa: C901
     train_data_dir = train_data_dir or paths.train_data_dir("planet_v2_rts", patch_size)
     arcticdem_dir = arcticdem_dir or paths.arcticdem(2)
     tcvis_dir = tcvis_dir or paths.tcvis()
-    admin_dir = admin_dir or paths.admin()
+    admin_dir = admin_dir or paths.admin_boundaries()
 
     # Storing the configuration as JSON file
     train_data_dir.mkdir(parents=True, exist_ok=True)

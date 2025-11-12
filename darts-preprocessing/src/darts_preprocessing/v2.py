@@ -119,25 +119,100 @@ def preprocess_v2(
 ) -> xr.Dataset:
     """Preprocess optical data with modern (DARTS v2) preprocessing steps.
 
-    The processing steps are:
-    - Calculate NDVI
-    - Calculate slope, hillshade, aspect, curvature and relative elevation from ArcticDEM
-    - Merge everything into a single ds.
+    This function combines optical imagery with terrain (ArcticDEM) and temporal vegetation
+    indices (TCVIS) to create a multi-source feature dataset for segmentation. All auxiliary
+    data sources are reprojected and cropped to match the optical data's extent and resolution.
+
+    Processing steps:
+        1. Calculate NDVI from optical bands
+        2. If TCVIS provided: Reproject and merge Tasseled Cap trends
+        3. If ArcticDEM provided: Calculate terrain features (TPI, slope, hillshade, aspect, curvature)
+           using solar geometry from optical data attributes
 
     Args:
-        ds_optical (xr.Dataset): The Planet scene optical data or Sentinel 2 scene optical dataset including data_masks.
-        ds_arcticdem (xr.Dataset | None): The ArcticDEM dataset.
-        ds_tcvis (xr.Dataset | None): The TCVIS dataset.
-        tpi_outer_radius (int, optional): The outer radius of the annulus kernel for the tpi calculation
-            in m. Defaults to 100m.
-        tpi_inner_radius (int, optional): The inner radius of the annulus kernel for the tpi calculation
-            in m. Defaults to 0.
-        device (Literal["cuda", "cpu"] | int, optional): The device to run the tpi and slope calculations on.
-            If "cuda" take the first device (0), if int take the specified device.
-            Defaults to "cuda" if cuda is available, else "cpu".
+        ds_optical (xr.Dataset): Optical imagery dataset (PlanetScope or Sentinel-2) containing:
+            - Required variables: blue, green, red, nir (float32, reflectance values)
+            - Required variables: quality_data_mask, valid_data_mask (uint8)
+            - Required attributes: azimuth (float), elevation (float) for hillshade calculation
+        ds_arcticdem (xr.Dataset | None): ArcticDEM dataset containing 'dem' (float32) and
+            'arcticdem_data_mask' (uint8). If None, terrain features are skipped.
+        ds_tcvis (xr.Dataset | None): TCVIS dataset containing tc_brightness, tc_greenness,
+            tc_wetness (float). If None, TCVIS features are skipped.
+        tpi_outer_radius (int, optional): Outer radius for TPI calculation in meters.
+            Defaults to 100m.
+        tpi_inner_radius (int, optional): Inner radius for TPI annulus kernel in meters.
+            Set to 0 for circular kernel. Defaults to 0.
+        device (Literal["cuda", "cpu"] | int, optional): Device for GPU-accelerated computations
+            (NDVI, TPI, slope). Use "cuda" for first GPU, int for specific GPU, or "cpu".
+            Defaults to "cuda" if available, else "cpu".
 
     Returns:
-        xr.Dataset: The preprocessed dataset.
+        xr.Dataset: Preprocessed dataset with all input optical variables plus:
+
+        Added from optical processing:
+            - ndvi (float32): Normalized Difference Vegetation Index
+              Attributes: long_name="NDVI"
+
+        Added from TCVIS (if ds_tcvis provided):
+            - tc_brightness (float): Tasseled Cap brightness trend
+            - tc_greenness (float): Tasseled Cap greenness trend
+            - tc_wetness (float): Tasseled Cap wetness trend
+
+        Added from ArcticDEM (if ds_arcticdem provided):
+            - dem (float32): Elevation in meters
+            - relative_elevation (float32): Topographic Position Index (TPI)
+              Attributes: long_name="Topographic Position Index (TPI)"
+            - slope (float32): Slope in degrees [0-90]
+              Attributes: long_name="Slope"
+            - hillshade (uint8): Hillshade values [0-255]
+              Attributes: long_name="Hillshade"
+            - aspect (float32): Aspect in degrees [0-360]
+              Attributes: long_name="Aspect"
+            - curvature (float32): Surface curvature
+              Attributes: long_name="Curvature"
+            - arcticdem_data_mask (uint8): DEM validity mask
+
+    Note:
+        Attribute usage:
+        - `azimuth` attribute from ds_optical: Used for hillshade calculation (solar azimuth angle).
+          Falls back to 225° if missing or invalid.
+        - `elevation` attribute from ds_optical: Used for hillshade calculation (solar elevation angle).
+          Falls back to 25° if missing or invalid.
+
+        Processing behavior:
+        - If both ds_tcvis and ds_arcticdem are None, only NDVI is calculated.
+        - ArcticDEM is buffered by tpi_outer_radius before reprojection to avoid edge effects,
+          then cropped back to optical extent after terrain feature calculation.
+        - Reprojection uses cubic resampling for smooth terrain features.
+        - GPU acceleration (if device="cuda") significantly speeds up TPI and slope calculations.
+
+    Example:
+        Complete preprocessing with all data sources:
+
+        ```python
+        from darts_preprocessing import preprocess_v2
+        from darts_acquisition import load_cdse_s2_sr_scene, load_arcticdem, load_tcvis
+
+        # Load optical data
+        optical = load_cdse_s2_sr_scene(s2_scene_id, ...)
+
+        # Load auxiliary data
+        arcticdem = load_arcticdem(optical.odc.geobox, ...)
+        tcvis = load_tcvis(optical.odc.geobox, ...)
+
+        # Preprocess
+        preprocessed = preprocess_v2(
+            ds_optical=optical,
+            ds_arcticdem=arcticdem,
+            ds_tcvis=tcvis,
+            tpi_outer_radius=100,
+            tpi_inner_radius=0,
+            device="cuda"
+        )
+
+        # Result contains: blue, green, red, nir, ndvi, tc_brightness, tc_greenness,
+        # tc_wetness, dem, relative_elevation, slope, hillshade, aspect, curvature
+        ```
 
     """
     # Move to GPU for faster calculations

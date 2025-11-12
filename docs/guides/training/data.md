@@ -3,7 +3,7 @@
 To preprocess planet data into the necessary structure, you can use the following command:
 
 ```sh
-[uv run] darts preprocess-planet-train-data --your-args-here ...
+[uv run] darts training create-dataset planet --your-args-here ...
 ```
 
 This will run the v2 preprocessing used by the v2 segmentation pipeline, but instead of passing the preprocessed data it creates patches of a fixed size and stores them into the `data.zarr` array.
@@ -17,9 +17,8 @@ Hence, the same configuration options are available.
 
 ??? tip "You can also use the underlying function directly:"
 
-    ::: darts.training.preprocess_planet_train_data
-        options:
-            heading_level: 3
+    [darts.training.preprocess_planet_train_data][]
+
 
 ## Training data structure
 
@@ -118,6 +117,6 @@ Both examples show the extent in red in the background together with the labels 
 The first example shows which patch comes from which image.
 The second example shows which patch is empty, meaning it has no positive pixels in the labels.
 
-![Patching showing Planet-IDs](../assets/training_patches_planetid.png){ loading=lazy }
+![Patching showing Planet-IDs](../../assets/training_patches_planetid.png){ loading=lazy }
 
-![Patching showing empty patches](../assets/training_patches_empty.png){ loading=lazy }
+![Patching showing empty patches](../../assets/training_patches_empty.png){ loading=lazy }

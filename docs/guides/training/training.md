@@ -3,7 +3,7 @@
 To train a simple SMP (Segmentation Model Pytorch) model you can use the command:
 
 ```sh
-[uv run] darts train-smp --your-args-here ...
+[uv run] darts training train-smp --your-args-here ...
 ```
 
 !!! tip "Model Architecture"
@@ -16,33 +16,17 @@ This command will train a simple SMP model on the data in the `train-data-dir` d
 The training relies on PyTorch Lightning, which is a high-level interface for PyTorch.
 It is recommended to use Weights and Biases (wandb) for the logging, because the training script is heavily influenced by how the organization of wandb works.
 
-The training follows the data splitting, decribed in the [Understanding internal workings](#understanding-internal-workings) section below.
+The training follows the data splitting, decribed in the [Data Guide](./data.md) and [Cross-Validation Guide](./cv.md)
 To test the model on the test split, you can use the following command:
 
 ```sh
-[uv run] darts test-smp --your-args-here ...
-```
-
-The checkpoint stored is not usable for the pipeline yet, since it is stored in a different format.
-To convert the model to a format, you need to convert is first:
-
-```sh
-[uv run] darts convert-lightning-checkpoint --your-args-here ...
+[uv run] darts training test-smp --your-args-here ...
 ```
 
 ??? tip "You can also use the underlying functions directly:"
 
-    ::: darts_segmentation.training.train_smp
-        options:
-            heading_level: 3
-
-    ::: darts_segmentation.training.test_smp
-        options:
-            heading_level: 3
-
-    ::: darts_segmentation.training.convert_lightning_checkpoint
-        options:
-            heading_level: 3
+    [darts_segmentation.training.train_smp][]
+    [darts_segmentation.training.test_smp][]
 
 ## Data splits
 

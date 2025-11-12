@@ -4,12 +4,12 @@ With the tuning script hyperparameters can be tuned by running a sweep.
 The sweep uses cross-validation to evaluate the performance of a single hyperparameter configuration.
 
 ```sh
-[uv run] darts tune-smp ...
+[uv run] darts training tune-smp ...
 ```
 
 ???+ info "Use the function"
 
-    ::: darts_segmentation.training.tune.tune_smp
+    [darts_segmentation.training.tune.tune_smp][]
 
 How the hyperparameters should be sweeped can be configured in a YAML or Toml file, specified by the `hpconfig` parameter.
 This file must contain a key called `"hyperparameters"` containing a list of hyperparameters distributions.
@@ -52,3 +52,55 @@ However, this expects to be every hyperparameter to be configured as either cons
 
 Optionally it is possible to retrain and test with the best hyperparameter configuration by setting `retrain_and_test` to `True`.
 This will retrain the model on the complete train split without folding and test the data on the test split.
+
+## Parallel execution with multiprocessing
+
+The tuning script supports parallel execution of cross-validation runs across multiple devices using multiprocessing.
+This can significantly speed up hyperparameter tuning when you have multiple GPUs available.
+
+To enable parallel execution, use the `--strategy tune-parallel` flag along with specifying multiple devices:
+
+```sh
+[uv run] darts training tune-smp \
+    --strategy tune-parallel \
+    --devices 0 1 2 3 \
+    --hpconfig configs/hyperparameters.yaml \
+    ...
+```
+
+### How it works
+
+When using `tune-parallel`:
+
+- Multiple cross-validation runs (each with a different hyperparameter configuration) are executed in parallel
+- Each cross-validation run is assigned to an available GPU from the device pool
+- Within each cross-validation, the individual folds are executed sequentially (not in parallel)
+- Once a cross-validation completes, the GPU is returned to the pool and assigned to the next pending run
+
+This approach maximizes GPU utilization when running many hyperparameter configurations, as the number of parallel workers equals the number of specified devices.
+
+### Example
+
+If you have 4 GPUs and want to tune 100 hyperparameter configurations with 5-fold cross-validation:
+
+```sh
+[uv run] darts training tune-smp \
+    --strategy tune-parallel \
+    --devices 0 1 2 3 \
+    --n-trials 100 \
+    --n-folds 5 \
+    --hpconfig configs/hyperparameters.yaml \
+    --train-data-dir data/preprocessed
+```
+
+This will run 4 cross-validations in parallel (one per GPU), and each cross-validation will sequentially train 5 models (one per fold). As cross-validations complete, new ones are started until all 100 hyperparameter configurations have been evaluated.
+
+!!! note "Strategy comparison"
+
+    - **Serial execution** (default): Cross-validations run one after another. Within each cross-validation, you can optionally use `--strategy cv-parallel` to parallelize the fold training.
+    - **`tune-parallel`**: Multiple cross-validations run in parallel across GPUs. Within each cross-validation, folds are trained sequentially.
+    - You cannot combine `tune-parallel` with `cv-parallel` - choose one level of parallelization based on your workload.
+
+!!! warning "DDP compatibility"
+
+    When using `tune-parallel`, distributed data parallel (DDP) strategies are automatically disabled for the cross-validation runs to prevent conflicts with multiprocessing. Each training run will use a single device only.

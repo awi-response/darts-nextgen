@@ -1,4 +1,4 @@
-"""PLANET preprocessing functions for training with the v2 data preprocessing."""
+"""Sentinel-2 preprocessing functions for training with the v2 data preprocessing."""
 
 import json
 import logging
@@ -184,8 +184,9 @@ def preprocess_s2_train_data(  # noqa: C901
     │   ├── x/          # Input patches [n_patches, n_bands, patch_size, patch_size]
     │   └── y/          # Label patches [n_patches, patch_size, patch_size]
     ├── metadata.parquet
+    ├── matching-cache.json      # Optional matching cache
     ├── matching-scores.parquet  # Optional matching scores
-    └── {timestamp}.cli.json
+    └── {timestamp}.cli.toml
     ```
 
     Args:
@@ -222,6 +223,9 @@ def preprocess_s2_train_data(  # noqa: C901
             Note: this is different from the matching scores.
             If None, will query the sentinel 2 STAC and calculate the best match based on the criteria.
             Defaults to None.
+        no_matching_cache (bool, optional): If True, will not use or store any matching cache.
+            This overrides the `matching_cache` parameter.
+            Defaults to False.
         force_preprocess (bool, optional): Whether to force the preprocessing of the data. Defaults to False.
         append (bool, optional): Whether to append the data to the existing data. Defaults to True.
         device (Literal["cuda", "cpu"] | int, optional): The device to run the model on.
@@ -258,7 +262,7 @@ def preprocess_s2_train_data(  # noqa: C901
     train_data_dir = train_data_dir or paths.train_data_dir("sentinel2_v2_rts", patch_size)
     arcticdem_dir = arcticdem_dir or paths.arcticdem(10)
     tcvis_dir = tcvis_dir or paths.tcvis()
-    admin_dir = admin_dir or paths.admin()
+    admin_dir = admin_dir or paths.admin_boundaries()
     raw_data_store = raw_data_store or paths.sentinel2_raw_data("cdse")
     if no_raw_data_store:
         raw_data_store = None

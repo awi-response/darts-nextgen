@@ -83,10 +83,10 @@ In future versions, downloading of the model via huggingface will be supported, 
 To run the pipeline run:
 
 ```sh
-uv run darts run-sequential-aoi-sentinel2-pipeline --aoi-shapefile path/to/your/aoi.geojson --model-files path/to/your/model/checkpoint --start-date 2024-07 --end-date 2024-09
+uv run darts inference sentinel2-sequential --aoi-shapefile path/to/your/aoi.geojson --model-files path/to/your/model/checkpoint --start-date 2024-07 --end-date 2024-09
 ```
 
-Run `uv run darts run-sequential-aoi-sentinel2-pipeline --help` for more configuration options.
+Run `uv run darts inference sentinel2-sequential --help` for more configuration options.
 
 !!! tip "Pipeline v2"
 
@@ -203,7 +203,7 @@ A list of all options can be found in the [config guide](guides/config.md) or by
 Finally run the pipeline with the following command. Additional parameters can be passed via the CLI, which will overwrite the config file.
 
 ```sh
-rye run darts run-sequential-planet-pipeline-fast --config-file path/to/your/config.toml
+uv run darts inference planet-sequential --config-file path/to/your/config.toml
 ```
 
 ## Creating your own pipeline

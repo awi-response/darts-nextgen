@@ -1,3 +1,7 @@
+---
+hide:
+  - navigation
+---
 # Quickstart Training
 
 In this tutorial, you should be able to quickly setup the training of a segmentation model on the PLANET data.
@@ -132,7 +136,7 @@ Copy this configuration file to your local machine, e.g. under `configs/planet-t
 ## 2. Preprocess the data
 
 ```sh
-[uv run] darts preprocess-planet-train-data --config-file configs/planet-training-quickstart.toml
+[uv run] darts training create-dataset planet --config-file configs/planet-training-quickstart.toml
 ```
 
 This will create the training data in the `train-data-dir` specified in the configuration file.
@@ -183,13 +187,13 @@ This will create the training data in the `train-data-dir` specified in the conf
 ## 3. Train the model
 
 ```sh
-[uv run] darts train-smp --config-file configs/planet-training-quickstart.toml
+[uv run] darts training train-smp --config-file configs/planet-training-quickstart.toml
 ```
 
 ## 4. Test the model
 
 ```sh
-[uv run] darts test-smp --config-file configs/planet-training-quickstart.toml
+[uv run] darts training test-smp --config-file configs/planet-training-quickstart.toml
 ```
 
 ## 5. Do a cross-validation
@@ -197,7 +201,7 @@ This will create the training data in the `train-data-dir` specified in the conf
 !!! warning "This will take a while"
 
 ```sh
-[uv run] darts cross-validation-smp --config-file configs/planet-training-quickstart.toml
+[uv run] darts training crossval-smp --config-file configs/planet-training-quickstart.toml
 ```
 
 # 6. Hyperparameter tuning
@@ -205,5 +209,5 @@ This will create the training data in the `train-data-dir` specified in the conf
 !!! warning "This will take a while"
 
 ```sh
-[uv run] darts tune-smp --config-file configs/planet-training-quickstart.toml
+[uv run] darts training tune-smp --config-file configs/planet-training-quickstart.toml
 ```
