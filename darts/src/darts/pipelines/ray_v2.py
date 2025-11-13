@@ -210,7 +210,9 @@ class _BaseRayPipeline(ABC):
 
         if os.getenv("RAY_ADDRESS"):
             # Connect to an existing Ray cluster (e.g., on GKE)
-            ray_context = ray.init(address=os.getenv("RAY_ADDRESS"))
+            ray_context = ray.init(address=os.getenv("RAY_ADDRESS"),
+                                   num_cpus=self.num_cpus,
+                                   num_gpus=len(self.devices) if self.devices is not None else None,)
             logger.info(f"Connected to Ray cluster at {os.getenv('RAY_ADDRESS')}")
         else:
             # Fallback to local
