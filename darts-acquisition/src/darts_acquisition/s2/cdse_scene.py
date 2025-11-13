@@ -388,7 +388,7 @@ def load_cdse_s2_sr_scene(
     ds_s2 = move_to_host(ds_s2)
 
     # Convert sun elevation and azimuth to match our naming
-    ds_s2.attrs["azimuth"] = ds_s2.attrs.get("view:azimuth", float("nan"))
+    ds_s2.attrs["azimuth"] = ds_s2.attrs.get("view:sun_azimuth", float("nan"))
     ds_s2.attrs["elevation"] = ds_s2.attrs.get("view:sun_elevation", float("nan"))
 
     ds_s2.attrs["s2_tile_id"] = s2id
