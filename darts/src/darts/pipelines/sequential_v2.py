@@ -384,7 +384,6 @@ class _BasePipeline(ABC):
         """
         assert optical or aux, "Nothing to prepare. Please set optical and/or aux to True."
 
-        self._validate()
         self._dump_config()
 
         from darts.utils.cuda import debug_info
@@ -394,11 +393,11 @@ class _BasePipeline(ABC):
         from darts_acquisition import download_arcticdem, download_tcvis
         from stopuhr import Chronometer
 
-        from darts.utils.cuda import decide_device
         from darts.utils.earthengine import init_ee
 
         timer = Chronometer(printer=logger.debug)
-        self.device = decide_device(self.device)
+        # ? We only want to download stuff - no need for using the GPU here
+        self.device = "cpu"
 
         if aux:
             # Get the ensemble to check which auxiliary data is necessary
