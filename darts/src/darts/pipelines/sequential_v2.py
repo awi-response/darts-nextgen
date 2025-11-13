@@ -2,6 +2,7 @@
 
 import json
 import logging
+import textwrap
 import time
 from abc import ABC, abstractmethod
 from dataclasses import asdict, dataclass, field, is_dataclass
@@ -19,6 +20,54 @@ if TYPE_CHECKING:
     from darts_ensemble import EnsembleV1
 
 logger = logging.getLogger(__name__)
+
+
+@Parameter(name="*")
+@dataclass
+class PipelineV2Paths:
+    """Default paths for v2 pipelines."""
+
+    model_files: list[Path] = None
+    default_dirs: DefaultPaths = field(default_factory=lambda: DefaultPaths())
+    output_data_dir: Path | None = None
+    arcticdem_dir: Path | None = None
+    tcvis_dir: Path | None = None
+    orthotiles_dir: Path | None = None
+    scenes_dir: Path | None = None
+    sentinel2_grid_dir: Path | None = None
+    raw_data_store: Path | None = None
+    raw_data_source: Literal["cdse", "gee"] = "cdse"
+    no_raw_data_store: bool = False
+
+    def __post_init__(self):
+        paths.set_defaults(self.default_dirs)
+        # The defaults will be overwritten in the respective realizations
+        self.output_data_dir = self.output_data_dir or paths.output_data("base_pipeline")
+        self.model_files = self.model_files or paths.ensemble_models()
+        self.arcticdem_dir = self.arcticdem_dir or paths.arcticdem(2)
+        self.tcvis_dir = self.tcvis_dir or paths.tcvis()
+        self.output_data_dir = self.output_data_dir or paths.output_data("planet")
+        self.orthotiles_dir = self.orthotiles_dir or paths.planet_orthotiles()
+        self.scenes_dir = self.scenes_dir or paths.planet_scenes()
+        self.output_data_dir = self.output_data_dir or paths.output_data(f"sentinel2-{self.raw_data_source}")
+        self.raw_data_store = self.raw_data_store or paths.sentinel2_raw_data(self.raw_data_source)
+        if self.no_raw_data_store:
+            self.raw_data_store = None
+
+    def log(self, level: int = logging.DEBUG):
+        """Log all paths managed."""
+        label_width = 47
+        logmsg = textwrap.dedent(f"""
+            === Pipeline (Sequential V2) Paths ===
+            {"Output Data Directory:":<{label_width}} {self.output_data_dir}
+            {"ArcticDEM Directory:":<{label_width}} {self.arcticdem_dir}
+            {"TCVis Directory:":<{label_width}} {self.tcvis_dir}
+            {"Planet Orthotiles Directory:":<{label_width}} {self.orthotiles_dir}
+            {"Planet Scenes Directory:":<{label_width}} {self.scenes_dir}
+            {"Sentinel-2 Grid Directory:":<{label_width}} {self.sentinel2_grid_dir}
+            {"Sentinel-2 Raw Data Directory:":<{label_width}} {self.raw_data_store}
+        """).strip()
+        logger.log(level, logmsg)
 
 
 @Parameter(name="*")
@@ -111,14 +160,11 @@ class _BasePipeline(ABC):
     def __post_init__(self):
         paths.set_defaults(self.default_dirs)
         # The defaults will be overwritten in the respective realizations
-        self.output_data_dir = self.output_data_dir or paths.out
-        self.model_files = self.model_files or list(paths.models.glob("*.pt"))
-        if self.arcticdem_dir is None:
-            arcticdem_resolution = self._arcticdem_resolution()
-            self.arcticdem_dir = paths.arcticdem(arcticdem_resolution)
+        self.output_data_dir = self.output_data_dir or paths.output_data("base_pipeline")
+        self.model_files = self.model_files or paths.ensemble_models()
+        self.arcticdem_dir = self.arcticdem_dir or paths.arcticdem(self._arcticdem_resolution())
         self.tcvis_dir = self.tcvis_dir or paths.tcvis()
-        if self.edge_erosion_size is None:
-            self.edge_erosion_size = self.mask_erosion_size
+        self.edge_erosion_size = self.edge_erosion_size or self.mask_erosion_size
 
     @abstractmethod
     def _arcticdem_resolution(self) -> Literal[2, 10, 32]:
@@ -320,7 +366,7 @@ class _BasePipeline(ABC):
         needs_tcvis = len(required_bands.intersection(tcvis_bands)) > 0
         return needs_arcticdem, needs_tcvis
 
-    def prepare_data(self, optical: bool = False, aux: bool = False):
+    def prepare_data(self, optical: bool = False, aux: bool = False, force: bool = False):
         """Download and prepare data for offline processing.
 
         Validates configuration, determines data requirements from models,
@@ -329,6 +375,8 @@ class _BasePipeline(ABC):
         Args:
             optical: If True, downloads optical imagery. Defaults to False.
             aux: If True, downloads auxiliary data (ArcticDEM, TCVis) as needed. Defaults to False.
+            force: If True, downloads all possible data, independent of `optical` and `aux` flags or model needs.
+                Defaults to False.
 
         Raises:
             KeyboardInterrupt: If user interrupts execution.
@@ -338,26 +386,24 @@ class _BasePipeline(ABC):
         """
         assert optical or aux, "Nothing to prepare. Please set optical and/or aux to True."
 
-        self._validate()
+        # ? We only want to download stuff - no need for using the GPU here
+        self.device = "cpu"
         self._dump_config()
-
-        from darts.utils.cuda import debug_info
-
-        debug_info()
 
         from darts_acquisition import download_arcticdem, download_tcvis
         from stopuhr import Chronometer
 
-        from darts.utils.cuda import decide_device
         from darts.utils.earthengine import init_ee
 
         timer = Chronometer(printer=logger.debug)
-        self.device = decide_device(self.device)
 
-        if aux:
+        if aux or force:
             # Get the ensemble to check which auxiliary data is necessary
-            ensemble = self._load_ensemble()
-            needs_arcticdem, needs_tcvis = self._check_aux_needs(ensemble)
+            if force:
+                needs_arcticdem, needs_tcvis = True, True
+            else:
+                ensemble = self._load_ensemble()
+                needs_arcticdem, needs_tcvis = self._check_aux_needs(ensemble)
 
             if not needs_arcticdem and not needs_tcvis:
                 logger.warning("No auxiliary data required by the models. Skipping download of auxiliary data...")
@@ -378,7 +424,7 @@ class _BasePipeline(ABC):
                         download_tcvis(aoi, self.tcvis_dir)
 
         # Predownload tiles if optical flag is set
-        if not optical:
+        if not optical and not force:
             return
 
         # Iterate over all the data
@@ -644,7 +690,7 @@ class PlanetPipeline(_BasePipeline):
 
     def __post_init__(self):  # noqa: D105
         super().__post_init__()
-        self.output_data_dir = self.output_data_dir or (paths.out / "planet")
+        self.output_data_dir = self.output_data_dir or paths.output_data("planet")
         self.orthotiles_dir = self.orthotiles_dir or paths.planet_orthotiles()
         self.scenes_dir = self.scenes_dir or paths.planet_scenes()
 
@@ -709,17 +755,19 @@ class PlanetPipeline(_BasePipeline):
         return tile
 
     @staticmethod
-    def cli_prepare_data(*, pipeline: "PlanetPipeline", aux: bool = False):
+    def cli_prepare_data(*, pipeline: "PlanetPipeline", aux: bool = False, force: bool = False):
         """Download all necessary data for offline processing.
 
         Args:
             pipeline: Configured PlanetPipeline instance.
             aux: If True, downloads auxiliary data (ArcticDEM, TCVis). Defaults to False.
+            force: If True, downloads all possible data, independent of the `aux` flag or model needs.
+                Defaults to False.
 
         """
         assert not pipeline.offline, "Pipeline must be online to prepare data for offline usage."
         pipeline.__post_init__()
-        pipeline.prepare_data(optical=False, aux=aux)
+        pipeline.prepare_data(optical=False, aux=aux, force=force)
 
     @staticmethod
     def cli(*, pipeline: "PlanetPipeline"):
@@ -851,7 +899,7 @@ class Sentinel2Pipeline(_BasePipeline):
         logger.debug("Before super")
         super().__post_init__()
         logger.debug("After super")
-        self.output_data_dir = self.output_data_dir or (paths.out / f"sentinel2-{self.raw_data_source}")
+        self.output_data_dir = self.output_data_dir or paths.output_data(f"sentinel2-{self.raw_data_source}")
         self.raw_data_store = self.raw_data_store or paths.sentinel2_raw_data(self.raw_data_source)
         if self.no_raw_data_store:
             self.raw_data_store = None
@@ -1032,7 +1080,9 @@ class Sentinel2Pipeline(_BasePipeline):
             )
 
     @staticmethod
-    def cli_prepare_data(*, pipeline: "Sentinel2Pipeline", optical: bool = False, aux: bool = False):
+    def cli_prepare_data(
+        *, pipeline: "Sentinel2Pipeline", optical: bool = False, aux: bool = False, force: bool = False
+    ):
         """Download all necessary data for offline processing.
 
         Queries the data source (CDSE or GEE) for scene IDs and downloads optical and/or auxiliary data.
@@ -1042,6 +1092,8 @@ class Sentinel2Pipeline(_BasePipeline):
             pipeline: Configured Sentinel2Pipeline instance.
             optical: If True, downloads optical (Sentinel-2) imagery. Defaults to False.
             aux: If True, downloads auxiliary data (ArcticDEM, TCVis). Defaults to False.
+            force: If True, downloads all possible data, independent of `optical` and `aux` flags or model needs.
+                Defaults to False.
 
         """
         assert not pipeline.offline, "Pipeline must be online to prepare data for offline usage."
@@ -1058,7 +1110,7 @@ class Sentinel2Pipeline(_BasePipeline):
                     "It will be overwritten."
                 )
                 pipeline.prep_data_scene_id_file.unlink()
-        pipeline.prepare_data(optical=optical, aux=aux)
+        pipeline.prepare_data(optical=optical, aux=aux, force=force)
 
     @staticmethod
     def cli(*, pipeline: "Sentinel2Pipeline"):
