@@ -30,7 +30,7 @@ DARTS organizes data into two main storage categories:
 
 Within the `aux/` directory:
 
-- `admin/`: Administrative boundaries and regions
+- `admin_boundaries/`: Administrative boundaries and regions
 - `arcticdem_2m.icechunk/`: ArcticDEM at 2m resolution
 - `arcticdem_10m.icechunk/`: ArcticDEM at 10m resolution
 - `arcticdem_32m.icechunk/`: ArcticDEM at 32m resolution
