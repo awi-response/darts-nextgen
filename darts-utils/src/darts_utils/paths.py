@@ -30,24 +30,28 @@ The default paths can be set using the set_default_paths function, this should b
 
 ## Structure:
 
-Fast Storage:
-    - training
-    - models
-
-Large Storage:
-    - aux
-    - artifacts
-    - cache
-    - logs
-    - out
-    - input
-
-Other directories must be provided by the user.
+The paths are grouped in 4 hierarchical levels:
+- DARTS Data Directory (DARTS_DATA_DIR): The root directory for all DARTS data.
+- Fast vs. Large Storage:
+    - Fast Storage (DARTS_FAST_DATA_DIR): For data that requires fast access, e.g., training data, models.
+    - Large Storage (DARTS_LARGE_DATA_DIR): For large datasets that do not require fast access.
+- Storage groups:
+    - Auxiliary Data
+    - Artifacts
+    - Training Data (per default in Fast Storage)
+    - Cache
+    - Logs
+    - Output Data
+    - Models (per default in Fast Storage)
+    - Input Data
+    - Archive Data
+- The respective directories
 
 """
 
 import logging
 import os
+import textwrap
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
@@ -127,30 +131,43 @@ class PathManagerSingleton:
 
     def log_all_paths(self, level: int = logging.DEBUG):
         """Log all paths managed."""
-        logger.log(level, f"DARTS Fast Directory: {self.fast_dir}")
-        logger.log(level, f"DARTS Large Directory: {self.large_dir}")
-        logger.log(level, f"DARTS Aux Directory: {self.aux}")
-        logger.log(level, f"DARTS Artifacts Directory: {self.artifacts}")
-        logger.log(level, f"DARTS Training Directory: {self.training}")
-        logger.log(level, f"DARTS Cache Directory: {self.cache}")
-        logger.log(level, f"DARTS Logs Directory: {self.logs}")
-        logger.log(level, f"DARTS Out Directory: {self.out}")
-        logger.log(level, f"DARTS Models Directory: {self.models}")
-        logger.log(level, f"DARTS Input Directory: {self.input}")
-        logger.log(level, f"DARTS Archive Directory: {self.archive}")
-        logger.log(level, f"DARTS Admin Directory: {self.admin()}")
-        logger.log(level, f"DARTS ArcticDEM Directory (2m): {self.arcticdem(2)}")
-        logger.log(level, f"DARTS ArcticDEM Directory (10m): {self.arcticdem(10)}")
-        logger.log(level, f"DARTS ArcticDEM Directory (32m): {self.arcticdem(32)}")
-        logger.log(level, f"DARTS TCVIS Directory: {self.tcvis()}")
-        logger.log(level, f"DARTS Planet Orthotiles Directory: {self.planet_orthotiles()}")
-        logger.log(level, f"DARTS Planet Scenes Directory: {self.planet_scenes()}")
-        logger.log(level, f"DARTS Sentinel-2 Grid Directory: {self.sentinel2_grid()}")
-        logger.log(level, f"DARTS Sentinel-2 Raw Data Directory (CDSE): {self.sentinel2_raw_data('cdse')}")
-        logger.log(level, f"DARTS Sentinel-2 Raw Data Directory (GEE): {self.sentinel2_raw_data('gee')}")
-        logger.log(
-            level, f"DARTS Training Data Directory ('pipeline', 256x256): {self.train_data_dir('pipeline', 256)}"
-        )
+        label_width = 47
+        logmsg = textwrap.dedent(
+            f"""
+            Logging all default DARTS paths.
+            NOTE: these paths may be overridden by the respective pipelines.
+
+            === DARTS Path-Types ===
+            {"Fast Directory:":<{label_width}} {self.fast_dir}
+            {"Large Directory:":<{label_width}} {self.large_dir}
+
+            === DARTS Path-Groups ===
+            {"Aux Directory:":<{label_width}} {self.aux}
+            {"Artifacts Directory:":<{label_width}} {self.artifacts}
+            {"Training Directory:":<{label_width}} {self.training}
+            {"Cache Directory:":<{label_width}} {self.cache}
+            {"Logs Directory:":<{label_width}} {self.logs}
+            {"Out Directory:":<{label_width}} {self.out}
+            {"Models Directory:":<{label_width}} {self.models}
+            {"Input Directory:":<{label_width}} {self.input}
+            {"Archive Directory:":<{label_width}} {self.archive}
+
+            === DARTS Paths ===
+            {"Output Data Directory ('base_pipeline'):":<{label_width}} {self.output_data("base_pipeline")}
+            {"Administrative boundaries Directory:":<{label_width}} {self.admin_boundaries()}
+            {"ArcticDEM Directory (2m):":<{label_width}} {self.arcticdem(2)}
+            {"ArcticDEM Directory (10m):":<{label_width}} {self.arcticdem(10)}
+            {"ArcticDEM Directory (32m):":<{label_width}} {self.arcticdem(32)}
+            {"TCVIS Directory:":<{label_width}} {self.tcvis()}
+            {"Planet Orthotiles Directory:":<{label_width}} {self.planet_orthotiles()}
+            {"Planet Scenes Directory:":<{label_width}} {self.planet_scenes()}
+            {"Sentinel-2 Grid Directory:":<{label_width}} {self.sentinel2_grid()}
+            {"Sentinel-2 Raw Data Directory (CDSE):":<{label_width}} {self.sentinel2_raw_data("cdse")}
+            {"Sentinel-2 Raw Data Directory (GEE):":<{label_width}} {self.sentinel2_raw_data("gee")}
+            {"Training Data Directory ('pipeline', 256x256):":<{label_width}} {self.train_data_dir("pipeline", 256)}
+        """
+        ).strip()
+        logger.log(level, logmsg)
 
     @property
     def fast(self) -> Path:  # noqa: D102
@@ -196,45 +213,59 @@ class PathManagerSingleton:
     def archive(self) -> Path:  # noqa: D102
         return self.large_dir / "archive"
 
+    def output_data(self, pipeline_name: str) -> Path:  # noqa: D102
+        d = (self.out / pipeline_name).resolve()
+        logger.debug(f"Using output data path for pipeline '{pipeline_name}': {d}")
+        return d
+
     def admin_boundaries(self) -> Path:  # noqa: D102
         d = (self.aux / "admin_boundaries").resolve()
-        logger.debug(f"Administrative boundaries path: {d}")
+        d.mkdir(parents=True, exist_ok=True)
+        logger.debug(f"Using administrative boundaries path: {d}")
         return d
 
     def arcticdem(self, res: Literal[2, 10, 32]) -> Path:  # noqa: D102
         d = (self.aux / f"arcticdem_{res}m.icechunk").resolve()
-        logger.debug(f"ArcticDEM path for resolution {res}m: {d}")
+        logger.debug(f"Using ArcticDEM path for resolution {res}m: {d}")
         return d
 
     def tcvis(self) -> Path:  # noqa: D102
         d = (self.aux / "tcvis.icechunk").resolve()
-        logger.debug(f"TCVIS path: {d}")
+        logger.debug(f"Using TCVIS path: {d}")
         return d
 
     def planet_orthotiles(self) -> Path:  # noqa: D102
         d = (self.input / "planet" / "tiles").resolve()
-        logger.debug(f"Planet orthotiles path: {d}")
+        logger.debug(f"Using Planet orthotiles path: {d}")
         return d
 
     def planet_scenes(self) -> Path:  # noqa: D102
         d = (self.input / "planet" / "scenes").resolve()
-        logger.debug(f"Planet scenes path: {d}")
+        logger.debug(f"Using Planet scenes path: {d}")
         return d
 
     def sentinel2_grid(self) -> Path:  # noqa: D102
         d = (self.input / "sentinel2" / "grid").resolve()
-        logger.debug(f"Sentinel-2 grid path: {d}")
+        d.mkdir(parents=True, exist_ok=True)
+        logger.debug(f"Using Sentinel-2 grid path: {d}")
         return d
 
     def sentinel2_raw_data(self, source: Literal["cdse", "gee"]) -> Path:  # noqa: D102
         d = (self.input / "sentinel2" / f"{source}-scenes").resolve()
-        logger.debug(f"Sentinel-2 raw data path for source '{source}': {d}")
+        d.mkdir(parents=True, exist_ok=True)
+        logger.debug(f"Using Sentinel-2 raw data path for source '{source}': {d}")
         return d
 
     def train_data_dir(self, pipeline: str, patch_size: int) -> Path:  # noqa: D102
         d = (self.training / f"{pipeline}_{patch_size}").resolve()
-        logger.debug(f"Training data directory for pipeline '{pipeline}' and patch size {patch_size}: {d}")
+        d.mkdir(parents=True, exist_ok=True)
+        logger.debug(f"Using training data directory for pipeline '{pipeline}' and patch size {patch_size}: {d}")
         return d
+
+    def ensemble_models(self) -> list[Path]:  # noqa: D102
+        model_paths = list(self.models.glob("*.pt"))
+        logger.debug(f"Using ensemble model paths: {model_paths}")
+        return model_paths
 
 
 paths = PathManagerSingleton()

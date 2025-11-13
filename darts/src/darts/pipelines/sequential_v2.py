@@ -2,6 +2,7 @@
 
 import json
 import logging
+import textwrap
 import time
 from abc import ABC, abstractmethod
 from dataclasses import asdict, dataclass, field, is_dataclass
@@ -19,6 +20,54 @@ if TYPE_CHECKING:
     from darts_ensemble import EnsembleV1
 
 logger = logging.getLogger(__name__)
+
+
+@Parameter(name="*")
+@dataclass
+class PipelineV2Paths:
+    """Default paths for v2 pipelines."""
+
+    model_files: list[Path] = None
+    default_dirs: DefaultPaths = field(default_factory=lambda: DefaultPaths())
+    output_data_dir: Path | None = None
+    arcticdem_dir: Path | None = None
+    tcvis_dir: Path | None = None
+    orthotiles_dir: Path | None = None
+    scenes_dir: Path | None = None
+    sentinel2_grid_dir: Path | None = None
+    raw_data_store: Path | None = None
+    raw_data_source: Literal["cdse", "gee"] = "cdse"
+    no_raw_data_store: bool = False
+
+    def __post_init__(self):
+        paths.set_defaults(self.default_dirs)
+        # The defaults will be overwritten in the respective realizations
+        self.output_data_dir = self.output_data_dir or paths.output_data("base_pipeline")
+        self.model_files = self.model_files or paths.ensemble_models()
+        self.arcticdem_dir = self.arcticdem_dir or paths.arcticdem(2)
+        self.tcvis_dir = self.tcvis_dir or paths.tcvis()
+        self.output_data_dir = self.output_data_dir or paths.output_data("planet")
+        self.orthotiles_dir = self.orthotiles_dir or paths.planet_orthotiles()
+        self.scenes_dir = self.scenes_dir or paths.planet_scenes()
+        self.output_data_dir = self.output_data_dir or paths.output_data(f"sentinel2-{self.raw_data_source}")
+        self.raw_data_store = self.raw_data_store or paths.sentinel2_raw_data(self.raw_data_source)
+        if self.no_raw_data_store:
+            self.raw_data_store = None
+
+    def log(self, level: int = logging.DEBUG):
+        """Log all paths managed."""
+        label_width = 47
+        logmsg = textwrap.dedent(f"""
+            === Pipeline (Sequential V2) Paths ===
+            {"Output Data Directory:":<{label_width}} {self.output_data_dir}
+            {"ArcticDEM Directory:":<{label_width}} {self.arcticdem_dir}
+            {"TCVis Directory:":<{label_width}} {self.tcvis_dir}
+            {"Planet Orthotiles Directory:":<{label_width}} {self.orthotiles_dir}
+            {"Planet Scenes Directory:":<{label_width}} {self.scenes_dir}
+            {"Sentinel-2 Grid Directory:":<{label_width}} {self.sentinel2_grid_dir}
+            {"Sentinel-2 Raw Data Directory:":<{label_width}} {self.raw_data_store}
+        """).strip()
+        logger.log(level, logmsg)
 
 
 @Parameter(name="*")
@@ -111,14 +160,11 @@ class _BasePipeline(ABC):
     def __post_init__(self):
         paths.set_defaults(self.default_dirs)
         # The defaults will be overwritten in the respective realizations
-        self.output_data_dir = self.output_data_dir or paths.out
-        self.model_files = self.model_files or list(paths.models.glob("*.pt"))
-        if self.arcticdem_dir is None:
-            arcticdem_resolution = self._arcticdem_resolution()
-            self.arcticdem_dir = paths.arcticdem(arcticdem_resolution)
+        self.output_data_dir = self.output_data_dir or paths.output_data("base_pipeline")
+        self.model_files = self.model_files or paths.ensemble_models()
+        self.arcticdem_dir = self.arcticdem_dir or paths.arcticdem(self._arcticdem_resolution())
         self.tcvis_dir = self.tcvis_dir or paths.tcvis()
-        if self.edge_erosion_size is None:
-            self.edge_erosion_size = self.mask_erosion_size
+        self.edge_erosion_size = self.edge_erosion_size or self.mask_erosion_size
 
     @abstractmethod
     def _arcticdem_resolution(self) -> Literal[2, 10, 32]:
@@ -644,7 +690,7 @@ class PlanetPipeline(_BasePipeline):
 
     def __post_init__(self):  # noqa: D105
         super().__post_init__()
-        self.output_data_dir = self.output_data_dir or (paths.out / "planet")
+        self.output_data_dir = self.output_data_dir or paths.output_data("planet")
         self.orthotiles_dir = self.orthotiles_dir or paths.planet_orthotiles()
         self.scenes_dir = self.scenes_dir or paths.planet_scenes()
 
@@ -851,7 +897,7 @@ class Sentinel2Pipeline(_BasePipeline):
         logger.debug("Before super")
         super().__post_init__()
         logger.debug("After super")
-        self.output_data_dir = self.output_data_dir or (paths.out / f"sentinel2-{self.raw_data_source}")
+        self.output_data_dir = self.output_data_dir or paths.output_data(f"sentinel2-{self.raw_data_source}")
         self.raw_data_store = self.raw_data_store or paths.sentinel2_raw_data(self.raw_data_source)
         if self.no_raw_data_store:
             self.raw_data_store = None

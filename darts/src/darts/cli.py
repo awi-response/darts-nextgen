@@ -24,6 +24,7 @@ from darts.pipelines import (
     Sentinel2Pipeline,
     Sentinel2RayPipeline,
 )
+from darts.pipelines.sequential_v2 import PipelineV2Paths
 from darts.training import (
     preprocess_planet_train_data,
     preprocess_planet_train_data_pingo,
@@ -89,17 +90,22 @@ def env_info():
 
 
 @app.command
-def debug_paths(default_paths: DefaultPaths = DefaultPaths()):
+def debug_default_paths(
+    default_paths: DefaultPaths = DefaultPaths(), pipeline_paths: PipelineV2Paths = PipelineV2Paths()
+):
     """Debug and print the current DARTS paths.
 
     Args:
         default_paths (DefaultPaths, optional): Default paths to set before logging.
             Defaults to DefaultPaths().
+        pipeline_paths (PipelineV2Paths, optional): Pipeline paths to log.
+            Defaults to PipelineV2Paths().
 
     """
-    paths_instance = paths
-    paths_instance.set_defaults(default_paths)
-    paths_instance.log_all_paths(level=logging.INFO)
+    paths.set_defaults(default_paths)
+    paths.log_all_paths(level=logging.INFO)
+    # TODO: This is just temporary until we upgrade to cyclotps v4 and rework our pipeline structure
+    pipeline_paths.log(level=logging.INFO)
 
 
 inference_app = cyclopts.App(name="inference", group=subcommands_group, help="Predefined inference pipelines")
