@@ -412,7 +412,7 @@ def get_gee_s2_sr_scene_ids_from_tile_ids(
             if max_cloud_cover:
                 ic = ic.filterMetadata("CLOUDY_PIXEL_PERCENTAGE", "less_than", max_cloud_cover)
             if max_snow_cover:
-                ic = ic.filterMetadata("SNOW_SNOW_ICE_PERCENTAGE", "less_than", max_snow_cover)
+                ic = ic.filterMetadata("SNOW_ICE_PERCENTAGE", "less_than", max_snow_cover)
             s2ids.update(ic.aggregate_array("system:index").getInfo())
         else:
             logger.warning("No valid date filtering provided. This may result in a too large number of scenes for GEE.")
@@ -420,7 +420,7 @@ def get_gee_s2_sr_scene_ids_from_tile_ids(
             if max_cloud_cover:
                 ic = ic.filterMetadata("CLOUDY_PIXEL_PERCENTAGE", "less_than", max_cloud_cover)
             if max_snow_cover:
-                ic = ic.filterMetadata("SNOW_SNOW_ICE_PERCENTAGE", "less_than", max_snow_cover)
+                ic = ic.filterMetadata("SNOW_ICE_PERCENTAGE", "less_than", max_snow_cover)
             s2ids.update(ic.aggregate_array("system:index").getInfo())
 
     logger.debug(f"Found {len(s2ids)} Sentinel-2 tiles via ee.")
@@ -470,7 +470,7 @@ def get_gee_s2_sr_scene_ids_from_geodataframe(
             if max_cloud_cover:
                 ic = ic.filterMetadata("CLOUDY_PIXEL_PERCENTAGE", "less_than", max_cloud_cover)
             if max_snow_cover:
-                ic = ic.filterMetadata("SNOW_SNOW_ICE_PERCENTAGE", "less_than", max_snow_cover)
+                ic = ic.filterMetadata("SNOW_ICE_PERCENTAGE", "less_than", max_snow_cover)
             s2ids.update(ic.aggregate_array("system:index").getInfo())
         else:
             logger.warning("No valid date filtering provided. This may result in a too large number of scenes for GEE.")
@@ -478,7 +478,7 @@ def get_gee_s2_sr_scene_ids_from_geodataframe(
             if max_cloud_cover:
                 ic = ic.filterMetadata("CLOUDY_PIXEL_PERCENTAGE", "less_than", max_cloud_cover)
             if max_snow_cover:
-                ic = ic.filterMetadata("SNOW_SNOW_ICE_PERCENTAGE", "less_than", max_snow_cover)
+                ic = ic.filterMetadata("SNOW_ICE_PERCENTAGE", "less_than", max_snow_cover)
             s2ids.update(ic.aggregate_array("system:index").getInfo())
 
     logger.debug(f"Found {len(s2ids)} Sentinel-2 tiles via ee.")
