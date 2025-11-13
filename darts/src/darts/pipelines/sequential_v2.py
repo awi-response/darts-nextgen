@@ -366,7 +366,7 @@ class _BasePipeline(ABC):
         needs_tcvis = len(required_bands.intersection(tcvis_bands)) > 0
         return needs_arcticdem, needs_tcvis
 
-    def prepare_data(self, optical: bool = False, aux: bool = False):
+    def prepare_data(self, optical: bool = False, aux: bool = False, force: bool = False):
         """Download and prepare data for offline processing.
 
         Validates configuration, determines data requirements from models,
@@ -375,6 +375,8 @@ class _BasePipeline(ABC):
         Args:
             optical: If True, downloads optical imagery. Defaults to False.
             aux: If True, downloads auxiliary data (ArcticDEM, TCVis) as needed. Defaults to False.
+            force: If True, downloads all possible data, independent of `optical` and `aux` flags or model needs.
+                Defaults to False.
 
         Raises:
             KeyboardInterrupt: If user interrupts execution.
@@ -384,11 +386,9 @@ class _BasePipeline(ABC):
         """
         assert optical or aux, "Nothing to prepare. Please set optical and/or aux to True."
 
+        # ? We only want to download stuff - no need for using the GPU here
+        self.device = "cpu"
         self._dump_config()
-
-        from darts.utils.cuda import debug_info
-
-        debug_info()
 
         from darts_acquisition import download_arcticdem, download_tcvis
         from stopuhr import Chronometer
@@ -396,13 +396,14 @@ class _BasePipeline(ABC):
         from darts.utils.earthengine import init_ee
 
         timer = Chronometer(printer=logger.debug)
-        # ? We only want to download stuff - no need for using the GPU here
-        self.device = "cpu"
 
-        if aux:
+        if aux or force:
             # Get the ensemble to check which auxiliary data is necessary
-            ensemble = self._load_ensemble()
-            needs_arcticdem, needs_tcvis = self._check_aux_needs(ensemble)
+            if force:
+                needs_arcticdem, needs_tcvis = True, True
+            else:
+                ensemble = self._load_ensemble()
+                needs_arcticdem, needs_tcvis = self._check_aux_needs(ensemble)
 
             if not needs_arcticdem and not needs_tcvis:
                 logger.warning("No auxiliary data required by the models. Skipping download of auxiliary data...")
@@ -423,7 +424,7 @@ class _BasePipeline(ABC):
                         download_tcvis(aoi, self.tcvis_dir)
 
         # Predownload tiles if optical flag is set
-        if not optical:
+        if not optical and not force:
             return
 
         # Iterate over all the data
@@ -754,17 +755,19 @@ class PlanetPipeline(_BasePipeline):
         return tile
 
     @staticmethod
-    def cli_prepare_data(*, pipeline: "PlanetPipeline", aux: bool = False):
+    def cli_prepare_data(*, pipeline: "PlanetPipeline", aux: bool = False, force: bool = False):
         """Download all necessary data for offline processing.
 
         Args:
             pipeline: Configured PlanetPipeline instance.
             aux: If True, downloads auxiliary data (ArcticDEM, TCVis). Defaults to False.
+            force: If True, downloads all possible data, independent of the `aux` flag or model needs.
+                Defaults to False.
 
         """
         assert not pipeline.offline, "Pipeline must be online to prepare data for offline usage."
         pipeline.__post_init__()
-        pipeline.prepare_data(optical=False, aux=aux)
+        pipeline.prepare_data(optical=False, aux=aux, force=force)
 
     @staticmethod
     def cli(*, pipeline: "PlanetPipeline"):
@@ -1077,7 +1080,9 @@ class Sentinel2Pipeline(_BasePipeline):
             )
 
     @staticmethod
-    def cli_prepare_data(*, pipeline: "Sentinel2Pipeline", optical: bool = False, aux: bool = False):
+    def cli_prepare_data(
+        *, pipeline: "Sentinel2Pipeline", optical: bool = False, aux: bool = False, force: bool = False
+    ):
         """Download all necessary data for offline processing.
 
         Queries the data source (CDSE or GEE) for scene IDs and downloads optical and/or auxiliary data.
@@ -1087,6 +1092,8 @@ class Sentinel2Pipeline(_BasePipeline):
             pipeline: Configured Sentinel2Pipeline instance.
             optical: If True, downloads optical (Sentinel-2) imagery. Defaults to False.
             aux: If True, downloads auxiliary data (ArcticDEM, TCVis). Defaults to False.
+            force: If True, downloads all possible data, independent of `optical` and `aux` flags or model needs.
+                Defaults to False.
 
         """
         assert not pipeline.offline, "Pipeline must be online to prepare data for offline usage."
@@ -1103,7 +1110,7 @@ class Sentinel2Pipeline(_BasePipeline):
                     "It will be overwritten."
                 )
                 pipeline.prep_data_scene_id_file.unlink()
-        pipeline.prepare_data(optical=optical, aux=aux)
+        pipeline.prepare_data(optical=optical, aux=aux, force=force)
 
     @staticmethod
     def cli(*, pipeline: "Sentinel2Pipeline"):
