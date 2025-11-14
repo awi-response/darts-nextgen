@@ -206,9 +206,7 @@ def calculate_slope(arcticdem_ds: xr.Dataset) -> xr.Dataset:
 
 
 @stopwatch.f("Calculating hillshade", printer=logger.debug, print_kwargs=["azimuth", "angle_altitude"])
-def calculate_hillshade(
-    arcticdem_ds: xr.Dataset, azimuth: int = 225, angle_altitude: int = 25, debug: bool = False
-) -> xr.Dataset:
+def calculate_hillshade(arcticdem_ds: xr.Dataset, azimuth: int = 225, angle_altitude: int = 25) -> xr.Dataset:
     """Calculate hillshade of the terrain surface from an ArcticDEM Dataset.
 
     Hillshade simulates illumination of terrain from a specified sun position, useful
@@ -255,12 +253,9 @@ def calculate_hillshade(
         ```
 
     """
-    if not debug:
-        x, y = arcticdem_ds.x.mean().item(), arcticdem_ds.y.mean().item()
-        correction_offset = np.arctan2(x, y) * (180 / np.pi) + 90
-        azimuth_corrected = (azimuth - correction_offset + 360) % 360
-    else:
-        azimuth_corrected = azimuth
+    x, y = arcticdem_ds.x.mean().item(), arcticdem_ds.y.mean().item()
+    correction_offset = np.arctan2(x, y) * (180 / np.pi) + 90
+    azimuth_corrected = (azimuth - correction_offset + 360) % 360
 
     hillshade_da = hillshade(arcticdem_ds.dem, azimuth=azimuth_corrected, angle_altitude=angle_altitude)
     hillshade_da.attrs = {
@@ -274,7 +269,7 @@ def calculate_hillshade(
 
 
 @stopwatch("Calculating aspect", printer=logger.debug)
-def calculate_aspect(arcticdem_ds: xr.Dataset, debug: bool = False) -> xr.Dataset:
+def calculate_aspect(arcticdem_ds: xr.Dataset) -> xr.Dataset:
     """Calculate aspect (compass direction) of the terrain surface from an ArcticDEM Dataset.
 
     Aspect indicates the downslope direction of the maximum rate of change in elevation.
@@ -317,11 +312,15 @@ def calculate_aspect(arcticdem_ds: xr.Dataset, debug: bool = False) -> xr.Datase
 
     # Aspect is always calculated in the projection - thus "north" is rather an "up"
     # To get the true north, we need to correct the aspect based on the coordinates
-    if not debug:
-        x = arcticdem_ds.x.expand_dims({"y": arcticdem_ds.y})
-        y = arcticdem_ds.y.expand_dims({"x": arcticdem_ds.x})
+    x = arcticdem_ds.x.expand_dims({"y": arcticdem_ds.y})
+    y = arcticdem_ds.y.expand_dims({"x": arcticdem_ds.x})
+    if arcticdem_ds.cupy.is_cupy:
+        x = cp.asarray(x)
+        y = cp.asarray(y)
+        correction_offset = cp.arctan2(x, y) * (180 / np.pi) + 90
+    else:
         correction_offset = np.arctan2(x, y) * (180 / np.pi) + 90
-        aspect_deg = (aspect_deg + correction_offset) % 360
+    aspect_deg = (aspect_deg + correction_offset) % 360
 
     aspect_deg.attrs = {
         "long_name": "Aspect",
