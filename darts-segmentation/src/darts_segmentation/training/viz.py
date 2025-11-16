@@ -1,15 +1,22 @@
 """Visualization utilities for the training module."""
 
 import itertools
+import logging
 
+import albumentations as A  # noqa: N812
 import matplotlib.colors as mcolors
 import matplotlib.patches as mpatches
 import matplotlib.pyplot as plt
 import pandas as pd
 import seaborn as sns
 import torch
+import ultraplot as uplt
+
+from darts_segmentation.training.augmentations import Augmentation, get_augmentation
 
 # TODO: New Plot: Threshold vs. F1-Score and IoU
+
+logger = logging.getLogger(__name__.replace("darts_", "darts."))
 
 
 def plot_sample(
@@ -186,4 +193,46 @@ def plot_sample(
     # ax_rel_elev.axis("off")
     # ax_rel_elev.set_title("Relative Elevation")
 
+    return fig, axs
+
+
+def plot_augmentations(
+    x: torch.Tensor, augmentations: list[Augmentation], band_names: list[str]
+) -> tuple[uplt.Figure, uplt.gridspec.SubplotGrid]:
+    """Plot augmentations applied to a sample image.
+
+    Args:
+        x (torch.Tensor): Input tensor [N, C, H, W] (float).
+        augmentations (list[Augmentation]): List of augmentations to apply.
+        band_names (list[str]): List of band names corresponding to the channels in x.
+
+    Returns:
+        matplotlib.figure.Figure: The figure object containing the plots.
+        ultraplot.gridspec.SubplotGrid: The axes of the plot.
+
+    """
+    compose = get_augmentation(augmentations)
+    augmentations: dict[str, A.BasicTransform] = {aug: get_augmentation([aug], True) for aug in augmentations}
+
+    rgb_idx = [band_names.index(band) for band in ["red", "green", "blue"]]
+
+    nrows = 1 + len(augmentations) + 4
+    ncols = x.shape[0]
+    fig, axs = uplt.subplots(ncols=ncols, nrows=nrows, figsize=(ncols * 5, nrows * 5))
+    for i in range(ncols):
+        img = x[i, rgb_idx].permute(1, 2, 0).cpu().numpy()
+        axs[0, i].imshow(img, vmin=0, vmax=0.1)
+        axs[0, i].set_title("Original Image")
+        for j, (aug_name, aug_fn) in enumerate(augmentations.items()):
+            augmented = aug_fn(image=img)
+            aug_img = augmented["image"]
+            axs[j + 1, i].imshow(aug_img, vmin=0, vmax=0.1)
+            axs[j + 1, i].set_title(f"Augmented: {aug_name}")
+
+        # Apply full compose
+        for j in range(4):
+            augmented = compose(image=img)
+            aug_img = augmented["image"]
+            axs[j + 1 + len(augmentations), i].imshow(aug_img, vmin=0, vmax=0.1)
+            axs[j + 1 + len(augmentations), i].set_title(f"Compose Augmentation {j + 1}")
     return fig, axs

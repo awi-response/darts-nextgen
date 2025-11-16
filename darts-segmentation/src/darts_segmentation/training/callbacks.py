@@ -1,13 +1,16 @@
 """PyTorch Lightning Callbacks for training and validation."""
 
 import copy
+import io
 import logging
 from collections import defaultdict
 from pathlib import Path
 from typing import Literal
 
 import matplotlib.pyplot as plt
+import PIL.Image
 import torch
+import ultraplot as uplt
 import wandb
 from lightning import LightningModule, Trainer
 from lightning.fabric.utilities import measure_flops
@@ -41,11 +44,19 @@ from darts_segmentation.metrics import (
     BinaryInstancePrecisionRecallCurve,
     BinaryInstanceRecall,
 )
-from darts_segmentation.training.viz import plot_sample
+from darts_segmentation.training.augmentations import Augmentation
+from darts_segmentation.training.viz import plot_augmentations, plot_sample
 
 logger = logging.getLogger(__name__.replace("darts_", "darts."))
 
 Stage = Literal["fit", "validate", "test", "predict"]
+
+
+def _uplt_to_pil(fig: uplt.Figure, dpi: int = 100) -> PIL.Image.Image:
+    buf = io.BytesIO()
+    fig.savefig(buf, format="png", dpi=dpi)
+    image = PIL.Image.open(buf)
+    return image
 
 
 class BinarySegmentationMetrics(Callback):
@@ -444,6 +455,7 @@ class BinarySegmentationPreview(Callback):
         self,
         *,
         bands: list[str],
+        augmentations: list[Augmentation] | None = None,
         val_set: str = "val",
         test_set: str = "test",
         plot_every_n_val_epochs: int = 5,
@@ -452,6 +464,7 @@ class BinarySegmentationPreview(Callback):
 
         Args:
             bands (Bands): List of bands to combine for the visualization.
+            augmentations (list[Augmentation] | None): List of augmentations to apply. Default to None.
             val_set (str, optional): Name of the validation set. Only used for naming the validation metrics.
                 Defaults to "val".
             test_set (str, optional): Name of the test set. Only used for naming the test metrics. Defaults to "test".
@@ -464,6 +477,7 @@ class BinarySegmentationPreview(Callback):
         self.test_set = test_set
         self.plot_every_n_val_epochs = plot_every_n_val_epochs
         self.band_names = bands
+        self.augmentations = augmentations
 
     def is_val_plot_epoch(self, current_epoch: int, check_val_every_n_epoch: int | None) -> bool:
         """Check if the current epoch is an epoch where validation samples should be plotted.
@@ -509,9 +523,42 @@ class BinarySegmentationPreview(Callback):
             self._test_pos_visualizations = 0
             self._test_neg_visualizations = 0
 
-    def on_validation_batch_end(  # noqa: D102
+    def on_validation_batch_end(  # noqa: C901, D102
         self, trainer: Trainer, pl_module: LightningModule, outputs, batch, batch_idx, dataloader_idx=0
     ):
+        # Do an augmentation visualization at the start of the training
+        if (
+            pl_module.current_epoch == 0
+            and batch_idx == 0
+            and self.augmentations is not None
+            and len(self.augmentations) > 0
+        ):
+            logger.debug("Creating augmentation visualization, this may take a while...")
+            x, _ = batch
+            fig, _ = plot_augmentations(x, augmentations=self.augmentations, band_names=self.band_names)
+
+            aug_fig_on_disk: Path | None = None
+            for pllogger in pl_module.loggers:
+                if isinstance(pllogger, CSVLogger):
+                    fig_dir = Path(pllogger.log_dir) / "figures" / "augmentations"
+                    fig_dir.mkdir(exist_ok=True, parents=True)
+                    fig.savefig(fig_dir / f"augmentation_{pl_module.global_step}_{batch_idx}.png", dpi=100)
+                    aug_fig_on_disk = fig_dir / f"augmentation_{pl_module.global_step}_{batch_idx}.png"
+                if isinstance(pllogger, WandbLogger):
+                    wandb_run: Run = pllogger.experiment
+                    img_name = f"augmentations/augmentation_{pl_module.global_step}_{batch_idx}"
+                    # Runtime optimization: If we have already saved the figure to disk, use that
+                    if aug_fig_on_disk is not None:
+                        wandb_img = wandb.Image(str(aug_fig_on_disk))
+                    else:
+                        pil_image = _uplt_to_pil(fig, dpi=100)
+                        wandb_img = wandb.Image(pil_image)
+                    # We don't commit the log yet, so that the step is increased with the next lightning log
+                    # Which happens at the end of the validation epoch
+                    wandb_run.log({img_name: wandb_img}, commit=False)
+            fig.clear()
+            plt.close(fig)
+
         # Only do this every self.plot_every_n_val_epochs epochs
         is_val_plot_epoch = self.is_val_plot_epoch(pl_module.current_epoch, trainer.check_val_every_n_epoch)
         if not is_val_plot_epoch:

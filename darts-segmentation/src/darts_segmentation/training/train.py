@@ -536,6 +536,7 @@ def train_smp(
         ),
         BinarySegmentationPreview(
             bands=bands,
+            augmentations=hparams.augment,
             val_set=f"val{run.fold}",
             plot_every_n_val_epochs=logging_config.plot_every_n_val_epochs,
         ),
