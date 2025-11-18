@@ -96,15 +96,15 @@ torchdeps = [
 ]
 cuda11deps = [
     "cucim-cu11>=24.8",
-    "cupy-cuda11x>=14.0.0",
-    "cupy-xarray",
+    "cupy-cuda11x>=13.6.0,<14.0.0",
+    "cupy-xarray>=0.1.4,<0.2.0",    
     "cuda-python>=12.6.2.post1",
     "pynvml==11.4.1",
 ]
 cuda12deps = [
     "cucim-cu12>=24.8",
-    "cupy-cuda12x>=14.0.0",
-    "cupy-xarray",
+    "cupy-cuda12x>=13.6.0,<14.0.0",
+    "cupy-xarray>=0.1.4,<0.2.0",
     "cuda-python>=12.6.2.post1",
     "pynvml==11.4.1",
 ]
@@ -211,8 +211,8 @@ conflicts = [
 ]
 
 [tool.uv.sources]
-cupy-cuda11x = { url="https://github.com/cupy/cupy/releases/download/v14.0.0a1/cupy_cuda11x-14.0.0a1-cp312-cp312-manylinux2014_x86_64.whl" }
-cupy-cuda12x = { url="https://github.com/cupy/cupy/releases/download/v14.0.0a1/cupy_cuda12x-14.0.0a1-cp312-cp312-manylinux2014_x86_64.whl" }
+#cupy-cuda11x = { url="https://github.com/cupy/cupy/releases/download/v14.0.0a1/cupy_cuda11x-14.0.0a1-cp312-cp312-manylinux2014_x86_64.whl" }
+#cupy-cuda12x = { url="https://github.com/cupy/cupy/releases/download/v14.0.0a1/cupy_cuda12x-14.0.0a1-cp312-cp312-manylinux2014_x86_64.whl" }
 
 cupy-xarray = { git = "https://github.com/xarray-contrib/cupy-xarray", branch = "main" }
 torch = [
@@ -364,3 +364,4 @@ extend-ignore-names = ["test_*"]
 
 [tool.ruff.lint.pyflakes]
 allowed-unused-imports = ["hvplot.pandas", "hvplot.xarray", "rioxarray", "odc.geo.xr", "cupy_xarray"]
+
