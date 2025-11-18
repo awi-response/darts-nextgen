@@ -1,15 +1,27 @@
 """Visualization utilities for the training module."""
 
 import itertools
+import logging
 
+import albumentations as A  # noqa: N812
+import cartopy.crs as ccrs
+import cartopy.feature as cfeature
+import geopandas as gpd
 import matplotlib.colors as mcolors
 import matplotlib.patches as mpatches
+import matplotlib.path as mpath
 import matplotlib.pyplot as plt
+import numpy as np
 import pandas as pd
 import seaborn as sns
 import torch
+import ultraplot as uplt
+
+from darts_segmentation.training.augmentations import Augmentation, get_augmentation
 
 # TODO: New Plot: Threshold vs. F1-Score and IoU
+
+logger = logging.getLogger(__name__.replace("darts_", "darts."))
 
 
 def plot_sample(
@@ -186,4 +198,221 @@ def plot_sample(
     # ax_rel_elev.axis("off")
     # ax_rel_elev.set_title("Relative Elevation")
 
+    return fig, axs
+
+
+def plot_augmentations(
+    x: torch.Tensor, augmentations: list[Augmentation], band_names: list[str]
+) -> tuple[uplt.Figure, uplt.gridspec.SubplotGrid]:
+    """Plot augmentations applied to a sample image.
+
+    Args:
+        x (torch.Tensor): Input tensor [N, C, H, W] (float).
+        augmentations (list[Augmentation]): List of augmentations to apply.
+        band_names (list[str]): List of band names corresponding to the channels in x.
+
+    Returns:
+        matplotlib.figure.Figure: The figure object containing the plots.
+        ultraplot.gridspec.SubplotGrid: The axes of the plot.
+
+    """
+    compose = get_augmentation(augmentations)
+    augmentations: dict[str, A.BasicTransform] = {aug: get_augmentation([aug], True) for aug in augmentations}
+
+    rgb_idx = [band_names.index(band) for band in ["red", "green", "blue"]]
+
+    nrows = 1 + len(augmentations) + 4
+    ncols = x.shape[0]
+    fig, axs = uplt.subplots(ncols=ncols, nrows=nrows, figsize=(ncols * 5, nrows * 5))
+    for i in range(ncols):
+        img = x[i, rgb_idx].permute(1, 2, 0).cpu().numpy()
+        axs[0, i].imshow(img, vmin=0, vmax=0.1)
+        axs[0, i].set_title("Original Image")
+        for j, (aug_name, aug_fn) in enumerate(augmentations.items()):
+            augmented = aug_fn(image=img)
+            aug_img = augmented["image"]
+            axs[j + 1, i].imshow(aug_img, vmin=0, vmax=0.1)
+            axs[j + 1, i].set_title(f"Augmented: {aug_name}")
+
+        # Apply full compose
+        for j in range(4):
+            augmented = compose(image=img)
+            aug_img = augmented["image"]
+            axs[j + 1 + len(augmentations), i].imshow(aug_img, vmin=0, vmax=0.1)
+            axs[j + 1 + len(augmentations), i].set_title(f"Compose Augmentation {j + 1}")
+    return fig, axs
+
+
+def plot_training_data_distribution(
+    train_metadata: gpd.GeoDataFrame,
+    val_metadata: gpd.GeoDataFrame | None,
+    test_metadata: gpd.GeoDataFrame | None,
+    name: str,
+) -> tuple[plt.Figure, dict[str, plt.Axes]]:
+    """Plot the distribution of training data by region on a polar projection.
+
+    Args:
+        train_metadata (gpd.GeoDataFrame): GeoDataFrame containing training metadata.
+        val_metadata (gpd.GeoDataFrame | None): GeoDataFrame containing validation metadata.
+        test_metadata (gpd.GeoDataFrame | None): GeoDataFrame containing test metadata.
+        name (str): Name of the dataset or experiment for the plot title.
+
+    Returns:
+        tuple[plt.Figure, plt.Axes]: The figure and axes of the plot.
+
+    """
+    # Aggregate by sample_id to get counts of not-empty tiles for train and test
+    # Get centroids of the aggregated geometries
+    train_metadata["not-empty"] = ~train_metadata["empty"]
+    train_sample_data = train_metadata[["sample_id", "not-empty", "geometry"]].dissolve(by="sample_id", aggfunc="sum")
+    train_centroids = train_sample_data.geometry.centroid
+    if val_metadata is not None:
+        val_metadata["not-empty"] = ~val_metadata["empty"]
+        val_sample_data = val_metadata[["sample_id", "not-empty", "geometry"]].dissolve(by="sample_id", aggfunc="sum")
+        val_centroids = val_sample_data.geometry.centroid
+    if test_metadata is not None:
+        test_metadata["not-empty"] = ~test_metadata["empty"]
+        test_sample_data = test_metadata[["sample_id", "not-empty", "geometry"]].dissolve(by="sample_id", aggfunc="sum")
+        test_centroids = test_sample_data.geometry.centroid
+
+    # Create figure with NorthPolarStereo projection
+    fig, axs = plt.subplot_mosaic(
+        [["map", "map", "map", "train-dist"], ["map", "map", "map", "val-dist"], ["map", "map", "map", "test-dist"]],
+        layout="constrained",
+        figsize=(12, 8),
+        per_subplot_kw={"map": {"projection": ccrs.NorthPolarStereo()}},
+    )
+
+    # Set the extent to limit to 55°N latitude (circular boundary)
+    axs["map"].set_extent([-180, 180, 55, 90], ccrs.PlateCarree())
+
+    # Add map features
+    axs["map"].add_feature(cfeature.LAND, facecolor="lightgray", alpha=0.3)
+    axs["map"].add_feature(cfeature.OCEAN, facecolor="lightblue", alpha=0.3)
+    axs["map"].add_feature(cfeature.COASTLINE, linewidth=0.5)
+    axs["map"].add_feature(cfeature.BORDERS, linewidth=0.3, linestyle=":")
+
+    # Add gridlines
+    axs["map"].gridlines(draw_labels=True, linewidth=0.5, alpha=0.5, linestyle="--")
+
+    # Determine common vmax for consistent color scaling
+    vmax = max(
+        train_sample_data["not-empty"].max(),
+        (val_sample_data["not-empty"].max() if val_metadata is not None else 0),
+        (test_sample_data["not-empty"].max() if test_metadata is not None else 0),
+    )
+
+    # Plot the training regions with circles
+    train_scatter = axs["map"].scatter(
+        train_centroids.x,
+        train_centroids.y,
+        c=train_sample_data["not-empty"],
+        cmap="YlGnBu",
+        s=120,
+        alpha=0.7,
+        transform=ccrs.PlateCarree(),
+        edgecolors="black",
+        linewidths=0.5,
+        vmin=0,
+        vmax=vmax,
+        marker="o",  # Circle for training data
+        label="Training",
+    )
+
+    # Plot the training regions with circles
+    if val_metadata is not None:
+        axs["map"].scatter(
+            val_centroids.x,
+            val_centroids.y,
+            c=val_sample_data["not-empty"],
+            cmap="YlGnBu",
+            s=80,
+            alpha=0.7,
+            transform=ccrs.PlateCarree(),
+            edgecolors="black",
+            linewidths=0.5,
+            vmin=0,
+            vmax=vmax,
+            marker="*",  # Circle for training data
+            label="Validation",
+        )
+
+    # Plot the test regions with triangles
+    if test_metadata is not None:
+        axs["map"].scatter(
+            test_centroids.x,
+            test_centroids.y,
+            c=test_sample_data["not-empty"],
+            cmap="YlGnBu",
+            s=80,
+            alpha=0.7,
+            transform=ccrs.PlateCarree(),
+            edgecolors="black",
+            linewidths=0.5,
+            vmin=0,
+            vmax=vmax,
+            marker="^",  # Triangle for test data
+            label="Test",
+        )
+
+    # Add colorbar
+    cbar = plt.colorbar(train_scatter, ax=axs["map"], shrink=0.6, pad=0.05)
+    cbar.set_label("Number of Patches with Data", rotation=270, labelpad=20, fontsize=12)
+
+    # Add legend for train/test split
+    legend = axs["map"].legend(
+        loc="lower left", frameon=True, fancybox=True, shadow=True, fontsize=11, title="Data Split"
+    )
+    legend.get_frame().set_alpha(0.9)
+
+    # Create circular boundary at 55°N
+    theta = np.linspace(0, 2 * np.pi, 100)
+    verts = np.vstack([np.sin(theta), np.cos(theta)]).T
+    circle = mpath.Path(verts * 0.5 + 0.5)
+    axs["map"].set_boundary(circle, transform=axs["map"].transAxes)
+
+    axs["map"].set_title(f"Training Data Distribution by Region ({name})", fontsize=14, fontweight="bold", pad=20)
+
+    sns.histplot(
+        train_metadata,
+        y="region",
+        hue="not-empty",
+        multiple="stack",
+        ax=axs["train-dist"],
+        palette=["#7f8c8d", "#27ae60"],  # Gray for w/o RTS, Green for w/ RTS
+    )
+    axs["train-dist"].set_title("Training Set Distribution by Region")
+    axs["train-dist"].legend(labels=["w RTS", "w/o RTS"])
+    axs["train-dist"].set_ylabel("")
+    axs["train-dist"].set_xlabel("Number of Patches")
+
+    if val_metadata is not None:
+        sns.histplot(
+            val_metadata,
+            y="region",
+            hue="not-empty",
+            multiple="stack",
+            ax=axs["val-dist"],
+            palette=["#7f8c8d", "#27ae60"],  # Gray for w/o RTS, Green for w/ RTS
+        )
+        axs["val-dist"].set_title("Validation Set Distribution by Region")
+        axs["val-dist"].legend(labels=["w/ RTS", "w/o RTS"])
+        axs["val-dist"].set_ylabel("")
+        axs["val-dist"].set_xlabel("Number of Patches")
+
+    if test_metadata is not None:
+        sns.histplot(
+            test_metadata,
+            y="region",
+            hue="not-empty",
+            multiple="stack",
+            ax=axs["test-dist"],
+            palette=["#7f8c8d", "#27ae60"],  # Gray for w/o RTS, Green for w/ RTS
+        )
+        axs["test-dist"].set_title("Test Set Distribution by Region")
+        axs["test-dist"].legend(labels=["w/ RTS", "w/o RTS"])
+        axs["test-dist"].set_ylabel("")
+        axs["test-dist"].set_xlabel("Number of Patches")
+
+    # fig.tight_layout()
     return fig, axs

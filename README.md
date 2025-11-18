@@ -33,7 +33,7 @@ It is recommended to read the [overview](https://awi-response.github.io/darts-ne
 3. Run the Sentinel 2 based pipeline on an area of interest:
 
     ```sh
-    uv run darts run-sequential-aoi-sentinel2-pipeline \
+    uv run darts inference sentinel2-sequential \
       --aoi-shapefile path/to/your/aoi.geojson \
       --model-files path/to/your/model/checkpoint \
       --start-date 2024-07 \

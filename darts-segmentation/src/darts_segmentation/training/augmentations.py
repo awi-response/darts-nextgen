@@ -10,6 +10,7 @@ Augmentation = Literal[
     "HorizontalFlip",
     "VerticalFlip",
     "RandomRotate90",
+    "D4",
     "Blur",
     "RandomBrightnessContrast",
     "MultiplicativeNoise",
@@ -17,7 +18,7 @@ Augmentation = Literal[
 ]
 
 
-def get_augmentation(augment: list[Augmentation] | None) -> "A.Compose | None":
+def get_augmentation(augment: list[Augmentation] | None, always_apply: bool = False) -> "A.Compose | None":  # noqa: C901
     """Get augmentations for segmentation tasks.
 
     Args:
@@ -25,12 +26,14 @@ def get_augmentation(augment: list[Augmentation] | None) -> "A.Compose | None":
             If None or emtpy, no augmentations are applied.
             If not empty, augmentations are applied in the order they are listed.
             Available augmentations:
-                - HorizontalFlip
-                - VerticalFlip
-                - RandomRotate90
+                - D4 (Combination of HorizontalFlip, VerticalFlip, and RandomRotate90)
                 - Blur
                 - RandomBrightnessContrast
                 - MultiplicativeNoise
+                - Posterize (quantization to reduce number of bits per channel)
+        always_apply (bool): If True, augmentations are always applied.
+            This is useful for visualization/testing augmentations.
+            Default is False.
 
     Raises:
         ValueError: If an unknown augmentation is provided.
@@ -44,21 +47,31 @@ def get_augmentation(augment: list[Augmentation] | None) -> "A.Compose | None":
 
     if not isinstance(augment, list) or len(augment) == 0:
         return None
+
+    # Replace HorizontalFlip, VerticalFlip, RandomRotate90 with D4
+    if "HorizontalFlip" in augment and "VerticalFlip" in augment and "RandomRotate90" in augment:
+        augment = [aug for aug in augment if aug not in ("HorizontalFlip", "VerticalFlip", "RandomRotate90")]
+        augment.insert(0, "D4")
+
     transforms = []
     for aug in augment:
         match aug:
+            case "D4":
+                transforms.append(A.D4())
             case "HorizontalFlip":
-                transforms.append(A.HorizontalFlip())
+                transforms.append(A.HorizontalFlip(p=1.0 if always_apply else 0.5))
             case "VerticalFlip":
-                transforms.append(A.VerticalFlip())
+                transforms.append(A.VerticalFlip(p=1.0 if always_apply else 0.5))
             case "RandomRotate90":
                 transforms.append(A.RandomRotate90())
             case "Blur":
-                transforms.append(A.Blur())
+                transforms.append(A.Blur(p=1.0 if always_apply else 0.5))
             case "RandomBrightnessContrast":
-                transforms.append(A.RandomBrightnessContrast())
+                transforms.append(A.RandomBrightnessContrast(p=1.0 if always_apply else 0.5))
             case "MultiplicativeNoise":
-                transforms.append(A.MultiplicativeNoise(per_channel=True, elementwise=True))
+                transforms.append(
+                    A.MultiplicativeNoise(per_channel=True, elementwise=True, p=1.0 if always_apply else 0.5)
+                )
             case "Posterize":
                 # First convert to uint8, then apply posterization, then convert back to float32
                 # * Note: This does only work for float32 images.

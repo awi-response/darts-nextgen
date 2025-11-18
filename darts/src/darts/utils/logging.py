@@ -2,6 +2,7 @@
 
 import importlib
 import logging
+import re
 import sys
 import time
 from enum import IntEnum
@@ -70,6 +71,34 @@ class LoggingManagerSingleton:
     def logger(self):
         """Get the logger for the application."""
         return logging.getLogger("darts")
+
+    def _overwrite_wandb_logger(self):
+        # Based on https://github.com/wandb/wandb/issues/9840#issuecomment-2888302624
+        import wandb
+
+        wandb_logger = logging.getLogger("darts.wandb")
+
+        def _format_string(s: str) -> str:
+            # Remove the wandb color codes
+            return re.sub(r"\x1b\[[0-9;]*m", "'", s)
+
+        def custom_termlog(string="", newline=True, repeat=True):
+            # Log to your custom logger
+            if string:
+                wandb_logger.info(_format_string(string))
+
+        def custom_termwarn(string="", newline=True, repeat=True):
+            if string:
+                wandb_logger.warning(_format_string(string))
+
+        def custom_termerror(string="", newline=True, repeat=True):
+            if string:
+                wandb_logger.error(_format_string(string))
+
+        # Replace wandb's terminal output functions with our custom versions
+        wandb.termlog = custom_termlog
+        wandb.termwarn = custom_termwarn
+        wandb.termerror = custom_termerror
 
     def setup_logging(self):
         """Set up logging for the application."""

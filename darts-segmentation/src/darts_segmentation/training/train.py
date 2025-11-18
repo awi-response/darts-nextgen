@@ -129,6 +129,7 @@ class TrainingConfig:
             Set to 0 to disable saving checkpoints.
             Set to -1 to save all checkpoints.
             Defaults to 1.
+        advanced_profiler (bool, optional): Whether to use the advanced profiler. Defaults to False.
 
     """
 
@@ -138,6 +139,7 @@ class TrainingConfig:
     early_stopping_patience: int = 5
     num_workers: int = 0
     save_top_k: int = 1
+    advanced_profiler: bool = False
 
 
 @cyclopts.Parameter(name="*")
@@ -307,7 +309,7 @@ class DeviceConfig:
         return self.strategy
 
 
-def train_smp(
+def train_smp(  # noqa: C901
     *,
     default_dirs: DefaultPaths = DefaultPaths(),
     run: TrainRunConfig = TrainRunConfig(),
@@ -381,7 +383,7 @@ def train_smp(
     from darts.utils.logging import LoggingManager
     from darts_utils.namegen import generate_counted_name, generate_id
     from lightning.pytorch import seed_everything
-    from lightning.pytorch.callbacks import EarlyStopping, ModelCheckpoint
+    from lightning.pytorch.callbacks import EarlyStopping, ModelCheckpoint, RichProgressBar
     from lightning.pytorch.loggers import CSVLogger, WandbLogger
 
     from darts_segmentation.segment import SMPSegmenterConfig
@@ -389,6 +391,7 @@ def train_smp(
     from darts_segmentation.training.data import DartsDataModule
     from darts_segmentation.training.module import LitSMP
 
+    LoggingManager._overwrite_wandb_logger()
     LoggingManager.apply_logging_handlers("lightning.pytorch", level=logging.INFO)
 
     tick_fstart = time.perf_counter()
@@ -536,17 +539,16 @@ def train_smp(
         ),
         BinarySegmentationPreview(
             bands=bands,
+            augmentations=hparams.augment,
             val_set=f"val{run.fold}",
             plot_every_n_val_epochs=logging_config.plot_every_n_val_epochs,
         ),
         # Something does not work well here...
         # ThroughputMonitor(batch_size_fn=lambda batch: batch[0].size(0), window_size=log_every_n_steps),
     ]
-    # There is a bug when continuing from a checkpoint and using the RichProgressBar
-    # https://github.com/Lightning-AI/pytorch-lightning/issues/20976
-    # Seems like there is also another bug, so disable rich completly
-    # if training_config.continue_from_checkpoint is None:
-    #     callbacks.append(RichProgressBar())
+    # ! Using rich progress bar can lead to issues sometimes
+    if training_config.continue_from_checkpoint is None:
+        callbacks.append(RichProgressBar())
 
     if training_config.early_stopping_patience:
         logger.debug(f"Using EarlyStopping with patience {training_config.early_stopping_patience}")
@@ -555,11 +557,17 @@ def train_smp(
         )
         callbacks.append(early_stopping)
 
-    # Unsupported: https://github.com/Lightning-AI/pytorch-lightning/issues/19983
-    # profiler_dir = artifact_dir / f"{run_name}-{run_id}" / "profiler"
-    # profiler_dir.mkdir(parents=True, exist_ok=True)
-    # profiler = AdvancedProfiler(dirpath=profiler_dir, filename="perf_logs", dump_stats=True)
-    # logger.debug(f"Using profiler with output to {profiler.dirpath.resolve()}")
+    if training_config.advanced_profiler:
+        logger.error(
+            "Using the advanced profiler is not supported yet. Please see: https://github.com/Lightning-AI/pytorch-lightning/issues/21365"
+        )
+        # profiler_dir = artifact_dir / f"{run_name}-{run_id}" / "profiler"
+        # profiler_dir.mkdir(parents=True, exist_ok=True)
+        # profiler = AdvancedProfiler(dirpath=profiler_dir, filename="perf_logs", dump_stats=True)
+        # logger.debug(f"Using profiler with output to {profiler.dirpath.resolve()}")
+        profiler = None
+    else:
+        profiler = None
 
     logger.debug(
         f"Creating lightning-trainer on {device_config.accelerator} with devices {device_config.devices}"
@@ -571,13 +579,13 @@ def train_smp(
         callbacks=callbacks,
         log_every_n_steps=logging_config.log_every_n_steps,
         logger=trainer_loggers,
-        check_val_every_n_epoch=logging_config.check_val_every_n_epoch,
+        check_val_every_n_epoch=logging_config.check_val_every_n_epoch or None,  # Set 0 to None
         accelerator=device_config.accelerator,
         devices=device_config.devices if device_config.devices[0] != "auto" else "auto",
         strategy=device_config.lightning_strategy,
         num_nodes=device_config.num_nodes,
         deterministic=False,  # True does not work for some reason
-        # profiler=profiler,
+        profiler=profiler,
     )
     trainer.fit(model, datamodule, ckpt_path=training_config.continue_from_checkpoint)
 
@@ -673,6 +681,7 @@ def test_smp(
     from darts_segmentation.training.data import DartsDataModule
     from darts_segmentation.training.module import LitSMP
 
+    LoggingManager._overwrite_wandb_logger()
     LoggingManager.apply_logging_handlers("lightning.pytorch", level=logging.INFO)
 
     tick_fstart = time.perf_counter()

@@ -39,7 +39,7 @@ class PipelineV2Paths:
     raw_data_source: Literal["cdse", "gee"] = "cdse"
     no_raw_data_store: bool = False
 
-    def __post_init__(self):
+    def __post_init__(self):  # noqa: D105
         paths.set_defaults(self.default_dirs)
         # The defaults will be overwritten in the respective realizations
         self.output_data_dir = self.output_data_dir or paths.output_data("base_pipeline")
