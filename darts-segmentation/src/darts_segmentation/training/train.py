@@ -309,7 +309,7 @@ class DeviceConfig:
         return self.strategy
 
 
-def train_smp(
+def train_smp(  # noqa: C901
     *,
     default_dirs: DefaultPaths = DefaultPaths(),
     run: TrainRunConfig = TrainRunConfig(),
