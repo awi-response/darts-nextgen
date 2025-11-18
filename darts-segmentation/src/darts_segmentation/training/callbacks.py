@@ -137,7 +137,7 @@ class BinarySegmentationMetrics(Callback):
             bool: True if the current epoch is a plot epoch, False otherwise.
 
         """
-        if check_val_every_n_epoch is None:
+        if check_val_every_n_epoch is None or check_val_every_n_epoch <= 0 or self.plot_every_n_val_epochs <= 0:
             return False
         n = self.plot_every_n_val_epochs * check_val_every_n_epoch
         return ((current_epoch + 1) % n) == 0 or current_epoch == 0
@@ -491,7 +491,7 @@ class BinarySegmentationPreview(Callback):
             bool: True if the current epoch is a plot epoch, False otherwise.
 
         """
-        if check_val_every_n_epoch is None:
+        if check_val_every_n_epoch is None or check_val_every_n_epoch <= 0 or self.plot_every_n_val_epochs <= 0:
             return False
 
         n = self.plot_every_n_val_epochs * check_val_every_n_epoch
@@ -523,9 +523,31 @@ class BinarySegmentationPreview(Callback):
             self._test_pos_visualizations = 0
             self._test_neg_visualizations = 0
 
-    def on_validation_batch_end(  # noqa: C901, D102
-        self, trainer: Trainer, pl_module: LightningModule, outputs, batch, batch_idx, dataloader_idx=0
-    ):
+        # Plot the data distribution
+        if hasattr(trainer, "datamodule") and hasattr(trainer.datamodule, "plot"):
+            logger.debug("Creating training data distribution plot...")
+            fig, _ = trainer.datamodule.plot()
+            dist_fig_on_disk: Path | None = None
+            for pllogger in pl_module.loggers:
+                if isinstance(pllogger, CSVLogger):
+                    fig_dir = Path(pllogger.log_dir) / "figures" / "data"
+                    fig_dir.mkdir(exist_ok=True, parents=True)
+                    fig.savefig(fig_dir / "data_distribution.png", dpi=150)
+                    dist_fig_on_disk = fig_dir / "data_distribution.png"
+                if isinstance(pllogger, WandbLogger):
+                    wandb_run: Run = pllogger.experiment
+                    if dist_fig_on_disk is not None:
+                        wandb_img = wandb.Image(str(dist_fig_on_disk))
+                    else:
+                        pil_image = _uplt_to_pil(fig, dpi=150)
+                        wandb_img = wandb.Image(pil_image)
+                    # We don't commit the log yet, so that the step is increased with the next lightning log
+                    # Which happens at the end of the validation epoch
+                    wandb_run.log({"data/data_distribution": wandb_img}, commit=False)
+            fig.clear()
+            plt.close(fig)
+
+    def on_train_batch_end(self, trainer: Trainer, pl_module: LightningModule, outputs, batch, batch_idx):  # noqa: D102
         # Do an augmentation visualization at the start of the training
         if (
             pl_module.current_epoch == 0
@@ -540,13 +562,13 @@ class BinarySegmentationPreview(Callback):
             aug_fig_on_disk: Path | None = None
             for pllogger in pl_module.loggers:
                 if isinstance(pllogger, CSVLogger):
-                    fig_dir = Path(pllogger.log_dir) / "figures" / "augmentations"
+                    fig_dir = Path(pllogger.log_dir) / "figures" / "data"
                     fig_dir.mkdir(exist_ok=True, parents=True)
                     fig.savefig(fig_dir / f"augmentation_{pl_module.global_step}_{batch_idx}.png", dpi=100)
                     aug_fig_on_disk = fig_dir / f"augmentation_{pl_module.global_step}_{batch_idx}.png"
                 if isinstance(pllogger, WandbLogger):
                     wandb_run: Run = pllogger.experiment
-                    img_name = f"augmentations/augmentation_{pl_module.global_step}_{batch_idx}"
+                    img_name = f"data/augmentation_{pl_module.global_step}_{batch_idx}"
                     # Runtime optimization: If we have already saved the figure to disk, use that
                     if aug_fig_on_disk is not None:
                         wandb_img = wandb.Image(str(aug_fig_on_disk))
@@ -558,6 +580,13 @@ class BinarySegmentationPreview(Callback):
                     wandb_run.log({img_name: wandb_img}, commit=False)
             fig.clear()
             plt.close(fig)
+
+    def on_validation_batch_end(  # noqa: C901, D102
+        self, trainer: Trainer, pl_module: LightningModule, outputs, batch, batch_idx, dataloader_idx=0
+    ):
+        # Don't plot in sanity check
+        if trainer.state.stage == "sanity_check":
+            return
 
         # Only do this every self.plot_every_n_val_epochs epochs
         is_val_plot_epoch = self.is_val_plot_epoch(pl_module.current_epoch, trainer.check_val_every_n_epoch)
@@ -577,38 +606,43 @@ class BinarySegmentationPreview(Callback):
         # Create figures for the samples (plot at maximum 30)
         # We want to plot at max 20 POSITIVE samples and 10 NEGATIVE samples in a single epoch
         # These should also be the same over all epochs
+        max_pos_samples = 20
+        max_neg_samples = 10
         for i in range(x.shape[0]):
-            if self._val_pos_visualizations >= 20 and self._val_neg_visualizations >= 10:
-                break
-
-            # Don't plot in sanity check
-            if trainer.state.stage == "sanity_check":
+            if self._val_pos_visualizations >= max_pos_samples and self._val_neg_visualizations >= max_neg_samples:
                 break
 
             # Plot positive sample
             is_postive = (y[i] == 1).sum() > 0
-            if is_postive and self._val_pos_visualizations < 20:
+            if is_postive and self._val_pos_visualizations < max_pos_samples:
                 fig, _ = plot_sample(x[i], y[i], y_hat[i], self.band_names)
                 self._val_pos_visualizations += 1
             # Plot negative sample
-            elif not is_postive and self._val_neg_visualizations < 10:
+            elif not is_postive and self._val_neg_visualizations < max_neg_samples:
                 fig, _ = plot_sample(x[i], y[i], y_hat[i], self.band_names)
                 self._val_neg_visualizations += 1
             # Either the number of positive or negative samples is already full
             else:
                 continue
 
+            sample_on_disk: Path | None = None
             for pllogger in pl_module.loggers:
                 if isinstance(pllogger, CSVLogger):
                     fig_dir = Path(pllogger.log_dir) / "figures" / f"{self.val_set}-samples"
                     fig_dir.mkdir(exist_ok=True, parents=True)
-                    fig.savefig(fig_dir / f"sample_{pl_module.global_step}_{batch_idx}_{i}.png")
+                    fig_file = fig_dir / f"sample_{pl_module.global_step}_{batch_idx}_{i}.png"
+                    fig.savefig(fig_file, dpi=100)
+                    sample_on_disk = fig_file
                 if isinstance(pllogger, WandbLogger):
                     wandb_run: Run = pllogger.experiment
                     # We don't commit the log yet, so that the step is increased with the next lightning log
                     # Which happens at the end of the validation epoch
                     img_name = f"{self.val_set}-samples/sample_{batch_idx}_{i}"
-                    wandb_run.log({img_name: wandb.Image(fig)}, commit=False)
+                    if sample_on_disk is not None:
+                        wandb_img = wandb.Image(str(sample_on_disk))
+                    else:
+                        wandb_img = wandb.Image(fig)
+                    wandb_run.log({img_name: wandb_img}, commit=False)
             fig.clear()
             plt.close(fig)
 
@@ -636,33 +670,42 @@ class BinarySegmentationPreview(Callback):
         # Create figures for the samples (plot at maximum 30)
         # We want to plot at max 20 POSITIVE samples and 10 NEGATIVE samples in a single epoch
         # These should also be the same over all epochs
+        max_pos_samples = 20
+        max_neg_samples = 10
         for i in range(x.shape[0]):
-            if self._test_pos_visualizations >= 20 and self._test_neg_visualizations >= 10:
+            if self._test_pos_visualizations >= max_pos_samples and self._test_neg_visualizations >= max_neg_samples:
                 break
 
             # Plot positive sample
-            if y[i].sum() > 0 and self._test_pos_visualizations < 20:
+            if y[i].sum() > 0 and self._test_pos_visualizations < max_pos_samples:
                 fig, _ = plot_sample(x[i], y[i], y_hat[i], self.band_names)
                 self._test_pos_visualizations += 1
             # Plot negative sample
-            elif y[i].sum() == 0 and self._test_neg_visualizations < 10:
+            elif y[i].sum() == 0 and self._test_neg_visualizations < max_neg_samples:
                 fig, _ = plot_sample(x[i], y[i], y_hat[i], self.band_names)
                 self._test_neg_visualizations += 1
             # Either the number of positive or negative samples is already full
             else:
                 continue
 
+            sample_on_disk: Path | None = None
             for pllogger in pl_module.loggers:
                 if isinstance(pllogger, CSVLogger):
                     fig_dir = Path(pllogger.log_dir) / "figures" / f"{self.test_set}-samples"
                     fig_dir.mkdir(exist_ok=True, parents=True)
-                    fig.savefig(fig_dir / f"sample_{pl_module.global_step}_{batch_idx}_{i}.png")
+                    fig_file = fig_dir / f"sample_{pl_module.global_step}_{batch_idx}_{i}.png"
+                    fig.savefig(fig_file, dpi=100)
+                    sample_on_disk = fig_file
                 if isinstance(pllogger, WandbLogger):
                     wandb_run: Run = pllogger.experiment
                     # We don't commit the log yet, so that the step is increased with the next lightning log
                     # Which happens at the end of the validation epoch
                     img_name = f"{self.test_set}-samples/sample_{batch_idx}_{i}"
-                    wandb_run.log({img_name: wandb.Image(fig)}, commit=False)
+                    if sample_on_disk is not None:
+                        wandb_img = wandb.Image(str(sample_on_disk))
+                    else:
+                        wandb_img = wandb.Image(fig)
+                    wandb_run.log({img_name: wandb_img}, commit=False)
             fig.clear()
             plt.close(fig)
 

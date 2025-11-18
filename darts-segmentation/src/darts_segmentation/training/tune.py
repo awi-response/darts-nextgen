@@ -214,8 +214,8 @@ def tune_smp(
 
     paths.set_defaults(default_dirs)
 
-    tune_name = name or generate_counted_name(logging_config.artifact_dir)
-    artifact_dir = logging_config.artifact_dir / tune_name
+    tune_name = name or generate_counted_name(logging_config.artifact_dir or paths.artifacts)
+    artifact_dir = (logging_config.artifact_dir or paths.artifacts) / tune_name
     run_infos_file = artifact_dir / f"{tune_name}.parquet"
 
     # Check if the artifact directory is empty

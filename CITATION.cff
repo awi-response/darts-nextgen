@@ -8,6 +8,16 @@ message: >-
   metadata from this file.
 type: software
 authors:
+  - given-names: Tobias
+    family-names: Hölzer
+    email: tobias.hoelzer@awi.de
+    affiliation: Alfred Wegener Institute for Polar and Marine Research
+    orcid: 'https://orcid.org/0009-0005-9058-0882'
+  - given-names: Jonas
+    family-names: Küpper
+    orcid: 'https://orcid.org/0000-0001-6728-7411'
+    affiliation: Alfred Wegener Institute for Polar and Marine Research
+    email: jonas.kuepper@awi.de
   - given-names: Ingmar
     family-names: Nitze
     email: ingmar.nitze@awi.de
@@ -17,16 +27,6 @@ authors:
     family-names: Heidler
     affiliation: Technical University Munich
     orcid: 'https://orcid.org/0000-0001-8226-0727'
-  - given-names: Jonas
-    family-names: Küpper
-    orcid: 'https://orcid.org/0000-0001-6728-7411'
-    affiliation: Alfred Wegener Institute for Polar and Marine Research
-    email: jonas.kuepper@awi.de
-  - given-names: Tobias
-    family-names: Hölzer
-    email: tobias.hoelzer@awi.de
-    affiliation: Alfred Wegener Institute for Polar and Marine Research
-    orcid: 'https://orcid.org/0009-0005-9058-0882'
 identifiers:
   - type: url
     value: 'https://github.com/awi-response/darts-nextgen'

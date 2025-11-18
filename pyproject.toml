@@ -141,7 +141,7 @@ cuda128 = [
     "darts-nextgen[torchdeps, cuda12deps]"
 ]
 training = [
-    "lightning>=2.4.0",
+    "lightning>=2.5.3",
     "psycopg2-binary>=2.9.10",
     "torchmetrics>=1.6.0",
     "wandb>=0.18.7",

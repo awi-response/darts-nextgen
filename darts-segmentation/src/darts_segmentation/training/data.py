@@ -23,6 +23,7 @@ from torch.utils.data import DataLoader, Dataset
 from zarr.storage import LocalStore
 
 from darts_segmentation.training.augmentations import Augmentation, get_augmentation
+from darts_segmentation.training.viz import plot_training_data_distribution
 
 logger = logging.getLogger(__name__.replace("darts_", "darts."))
 
@@ -327,6 +328,19 @@ class DartsDataModule(L.LightningDataModule):
         zroot = zarr.group(store=LocalStore(data_dir / "data.zarr"))
         self.nsamples = zroot["x"].shape[0]
         logger.debug(f"Data directory {zdir} found with {self.nsamples} samples.")
+
+    def plot(self):
+        name = self.data_dir.name.replace("_", " ").capitalize()
+        metadata = gpd.read_parquet(self.data_dir / "metadata.parquet")
+        if self.subsample is not None:
+            metadata = metadata.sample(n=self.subsample, random_state=42)
+        trainval_metadata, test_metadata = _split_metadata(metadata, self.data_split_method, self.data_split_by)
+        train_index, val_index = _get_fold(trainval_metadata, self.fold_method, self.total_folds, self.fold)
+        train_metadata = trainval_metadata.loc[train_index]
+        val_metadata = trainval_metadata.loc[val_index]
+        test_metadata = test_metadata if self.data_split_method is not None else None
+        val_metadata = val_metadata if self.fold_method is not None else None
+        return plot_training_data_distribution(train_metadata, val_metadata, test_metadata, name)
 
     def setup(self, stage: Literal["fit", "validate", "test", "predict"] | None = None):
         if stage == "predict" or stage is None:
