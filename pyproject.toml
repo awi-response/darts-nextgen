@@ -5,7 +5,7 @@ description = "Panarctic Database of Active Layer Detachment Slides and Retrogre
 dependencies = [
     # General & Utils
     "rich>=13.9.2",
-    "cyclopts>=3.1.0",
+    "cyclopts==3.24.0",
     "lovely-numpy>=0.2.13",
     "setuptools>=75.5.0",
     "stopuhr>=0.0.10",
