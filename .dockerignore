@@ -1,0 +1,10 @@
+.venv
+.github
+.pixi
+.vscode
+dist
+data
+logs
+docs
+notebooks
+config.toml
