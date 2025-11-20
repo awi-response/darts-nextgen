@@ -5,7 +5,7 @@ description = "Panarctic Database of Active Layer Detachment Slides and Retrogre
 dependencies = [
     # General & Utils
     "rich>=13.9.2",
-    "cyclopts>=3.1.0",
+    "cyclopts>=3.1.0,<4.0.0",
     "lovely-numpy>=0.2.13",
     "setuptools>=75.5.0",
     "stopuhr>=0.0.10",
@@ -24,7 +24,7 @@ dependencies = [
     "pystac-client>=0.8.6",
     "odc-geo>=0.4.8",
     "odc-stac[botocore]>=0.3.10",
-    "smart-geocubes[stac,gee]>=0.0.8",
+    "smart-geocubes[stac,gee]>=0.0.8,<0.0.10",
     "toml>=0.10.2",
     "zarr>=3.0.8,<3.1.0",
     # Processing
