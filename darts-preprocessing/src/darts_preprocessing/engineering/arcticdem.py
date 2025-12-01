@@ -315,8 +315,9 @@ def calculate_aspect(arcticdem_ds: xr.Dataset) -> xr.Dataset:
     x = arcticdem_ds.x.expand_dims({"y": arcticdem_ds.y})
     y = arcticdem_ds.y.expand_dims({"x": arcticdem_ds.x})
     if arcticdem_ds.cupy.is_cupy:
-        x = cp.asarray(x)
-        y = cp.asarray(y)
+        assert aspect_deg.dims == ("y", "x")
+        x = cp.asarray(x.transpose("y", "x"))
+        y = cp.asarray(y.transpose("y", "x"))
         correction_offset = cp.arctan2(x, y) * (180 / np.pi) + 90
     else:
         correction_offset = np.arctan2(x, y) * (180 / np.pi) + 90
