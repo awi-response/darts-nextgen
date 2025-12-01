@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+
+{% block outdated %}
+You're not viewing the latest version.
+<a href="{{ '../' ~ base_url }}">
+    <strong>Click here to go to latest.</strong>
+</a>
+{% endblock %}
+
+{% block announce %}
+DARTS nextgen is currently in Beta and the CLI and API are subject to change.
+{% endblock %}
