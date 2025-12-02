@@ -1,6 +1,7 @@
 """Sentinel-2 related data loading. Should be used temporary and maybe moved to the acquisition package."""
 
 import logging
+import time
 from collections.abc import MutableMapping
 from pathlib import Path
 from typing import Literal
@@ -701,16 +702,21 @@ def match_cdse_s2_sr_scene_ids_from_geodataframe(
 
     matches = {}
     scores = []
+
+    last_request_time = time.time()
     for i, row in aoi.iterrows():
         intersects = row.geometry.__geo_interface__
         start_date = (row["date"] - pd.Timedelta(days=day_range)).strftime("%Y-%m-%d")
         end_date = (row["date"] + pd.Timedelta(days=day_range)).strftime("%Y-%m-%d")
+        if time.time() - last_request_time < 3.0:
+            time.sleep(3.0 - (time.time() - last_request_time))
         intersecting_items = search_cdse_s2_sr(
             intersects=intersects,
             start_date=start_date,
             end_date=end_date,
             max_cloud_cover=max_cloud_cover,
         )
+        last_request_time = time.time()
         if not intersecting_items:
             logger.info(f"No Sentinel-2 items found for footprint #{i} in the date range {start_date} to {end_date}.")
             matches[i] = None

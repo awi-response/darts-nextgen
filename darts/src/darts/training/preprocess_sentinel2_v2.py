@@ -51,7 +51,8 @@ def _get_region_name(footprint: "gpd.GeoSeries", admin2: "gpd.GeoDataFrame") -> 
     admin2_of_footprint = admin2[admin2.intersects(footprint.geometry)]
 
     if admin2_of_footprint.empty:
-        raise ValueError("No intersection found between labels and admin2 regions")
+        logger.warning(f"Found no region for footprint {footprint.image_id}. Using 'No Region'")
+        return "No Region"
 
     region_name = admin2_of_footprint.iloc[0]["shapeName"]
 
@@ -409,8 +410,11 @@ def preprocess_s2_train_data(  # noqa: C901
         logger.info(f"Already processed {len(already_processed_planet_ids)} samples.")
         footprints = footprints[~footprints.image_id.isin(already_processed_planet_ids)]
 
-    for i, footprint in track(
-        footprints.iterrows(), description="Processing samples", total=len(footprints), console=rich.get_console()
+    for i, (idx, footprint) in track(
+        enumerate(footprints.iterrows()),
+        description="Processing samples",
+        total=len(footprints),
+        console=rich.get_console(),
     ):
         s2_item = footprint.s2_item
         # Convert to stac item if dictionary
@@ -419,15 +423,15 @@ def preprocess_s2_train_data(  # noqa: C901
 
         s2_id = s2_item.id
         planet_id = footprint.image_id
-        info_id = f"{s2_id=} -> {planet_id=} ({i + 1} of {len(footprints)})"
+        info_id = f"footprint {idx}: {s2_id=} -> {planet_id=} ({i + 1} of {len(footprints)})"
         try:
-            logger.info(f"Processing sample {info_id}")
+            logger.info(f"Processing {info_id}")
 
             if planet_data_dir is not None and (
                 not footprint.fpath or pd.isna(footprint.fpath) or (not footprint.fpath.exists())
             ):
                 logger.warning(
-                    f"Footprint image {planet_id} at {footprint.fpath} does not exist. Skipping sample {info_id}..."
+                    f"Footprint image {planet_id} at {footprint.fpath} does not exist. Skipping {info_id}..."
                 )
                 continue
 
@@ -469,7 +473,7 @@ def preprocess_s2_train_data(  # noqa: C901
 
             # Skip if the size is too small
             if tile.sizes["x"] < patch_size or tile.sizes["y"] < patch_size:
-                logger.info(f"Skipping sample {info_id} due to small size {tile.sizes}.")
+                logger.info(f"Skipping {info_id} due to small size {tile.sizes}.")
                 continue
 
             footprint_labels = labels[labels.image_id == planet_id].to_crs(tile.odc.crs)
@@ -493,7 +497,7 @@ def preprocess_s2_train_data(  # noqa: C901
                     },
                 )
 
-            logger.info(f"Processed sample {info_id}")
+            logger.info(f"Processed {info_id}")
 
         except (KeyboardInterrupt, SystemExit, SystemError):
             logger.info("Interrupted by user.")
@@ -502,7 +506,7 @@ def preprocess_s2_train_data(  # noqa: C901
             logger.error("tried to download from CDSE@AWS but no CDSE credentials found. ")
             return
         except Exception as e:
-            logger.warning(f"Could not process sample {info_id}. Skipping...")
+            logger.warning(f"Could not process {info_id}. Skipping...")
             logger.exception(e)
 
     timer.summary()

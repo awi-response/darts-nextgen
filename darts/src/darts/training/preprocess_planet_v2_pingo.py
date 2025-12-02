@@ -24,7 +24,8 @@ def _get_region_name(footprint: "gpd.GeoSeries", admin2: "gpd.GeoDataFrame") -> 
     admin2_of_footprint = admin2[admin2.intersects(footprint.geometry)]
 
     if admin2_of_footprint.empty:
-        raise ValueError("No intersection found between labels and admin2 regions")
+        logger.warning(f"Found no region for footprint {footprint.image_id}. Using 'No Region'")
+        return "No Region"
 
     region_name = admin2_of_footprint.iloc[0]["shapeName"]
 
@@ -238,11 +239,14 @@ def preprocess_planet_train_data_pingo(
     )
     cache_manager = XarrayCacheManager(preprocess_cache)
 
-    for i, footprint in track(
-        footprints.iterrows(), description="Processing samples", total=len(footprints), console=rich.get_console()
+    for i, (idx, footprint) in track(
+        enumerate(footprints.iterrows()),
+        description="Processing samples",
+        total=len(footprints),
+        console=rich.get_console(),
     ):
         planet_id = footprint.image_id
-        info_id = f"{planet_id=} ({i + 1} of {len(footprint)})"
+        info_id = f"{idx}: {planet_id=} ({i + 1} of {len(footprint)})"
         try:
             logger.debug(f"Processing sample {info_id}")
 
