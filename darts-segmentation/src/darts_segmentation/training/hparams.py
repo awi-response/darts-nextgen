@@ -157,6 +157,8 @@ def parse_hyperparameters(  # noqa: C901
     """
     import scipy.stats
 
+    from darts_segmentation.training.reversed_loguniform import reversed_loguniform
+
     # Read yaml
     if hpconfig_file.suffix == ".yaml" or hpconfig_file.suffix == ".yml":
         with hpconfig_file.open() as f:
@@ -238,6 +240,33 @@ def parse_hyperparameters(  # noqa: C901
                     f" got low={config['low']}, high={config['high']}"
                 )
                 hpdistributions[hparam] = scipy.stats.loguniform(config["low"], config["high"])
+            case "reversed_loguniform":
+                assert "low" in config, f"Missing 'low' key in hyperparameter configuration for loguniform {hparam}"
+                assert "high" in config, f"Missing 'high' key in hyperparameter configuration for loguniform {hparam}"
+                assert isinstance(config["low"], (int, float)), (
+                    f"Invalid 'low' value in hyperparameter configuration for loguniform {hparam}:"
+                    f" got {config['low']} of type {type(config['low'])}"
+                )
+                assert isinstance(config["high"], (int, float)), (
+                    f"Invalid 'high' value in hyperparameter configuration for loguniform {hparam}:"
+                    f" got {config['high']} of type {type(config['high'])}"
+                )
+                assert config["low"] < config["high"], (
+                    f"'low' must be less than 'high' in hyperparameter configuration for loguniform {hparam}:"
+                    f" got low={config['low']}, high={config['high']}"
+                )
+                if "n" in config:
+                    assert isinstance(config["n"], (int, float)), (
+                        f"Invalid 'n' value in hyperparameter configuration for loguniform {hparam}:"
+                        f" got {config['n']} of type {type(config['n'])}"
+                    )
+                else:
+                    config["n"] = 1
+                assert config["high"] < config["n"], (
+                    f"'high' must be less than 'n' in hyperparameter configuration for loguniform {hparam}:"
+                    f" got high={config['high']}, n={config['n']}"
+                )
+                hpdistributions[hparam] = reversed_loguniform(config["low"], config["high"], config["n"])
             case "intuniform":
                 assert "low" in config, f"Missing 'low' key in hyperparameter configuration for int_uniform {hparam}"
                 assert "high" in config, f"Missing 'high' key in hyperparameter configuration for int_uniform {hparam}"
