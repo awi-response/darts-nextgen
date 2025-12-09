@@ -15,7 +15,7 @@ from darts_segmentation.training import (
     tune_smp,
     validate_dataset,
 )
-from darts_utils.paths import DefaultPaths, paths
+from darts_utils.paths import paths
 
 from darts import __version__
 from darts.pipelines import (
@@ -90,19 +90,15 @@ def env_info():
 
 
 @app.command
-def debug_default_paths(
-    default_paths: DefaultPaths = DefaultPaths(), pipeline_paths: PipelineV2Paths = PipelineV2Paths()
-):
+def debug_default_paths(pipeline_paths: PipelineV2Paths = PipelineV2Paths()):
     """Debug and print the current DARTS paths.
 
     Args:
-        default_paths (DefaultPaths, optional): Default paths to set before logging.
-            Defaults to DefaultPaths().
         pipeline_paths (PipelineV2Paths, optional): Pipeline paths to log.
             Defaults to PipelineV2Paths().
 
     """
-    paths.set_defaults(default_paths)
+    paths.set_defaults(pipeline_paths.default_dirs)
     paths.log_all_paths(level=logging.INFO)
     # TODO: This is just temporary until we upgrade to cyclotps v4 and rework our pipeline structure
     pipeline_paths.log(level=logging.INFO)

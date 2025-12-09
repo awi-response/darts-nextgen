@@ -2,6 +2,8 @@
 
 from pathlib import Path
 
+import rasterio as rio
+import rioxarray
 import xarray as xr
 
 
@@ -24,12 +26,19 @@ def save_debug_geotiff(
     optical = dataset[optical_bands].to_dataarray(dim="band").fillna(0).astype("uint16")
     optical.rio.to_raster(output_path / "optical_raw.tiff")
 
+    with rio.open(output_path / "optical_raw.tiff", "r+") as rds:
+        rds.descriptions = optical_bands
+
     band_info = "Optical Bands:\n"
     band_info += "\n".join([f" - {i + 1}: {band}" for i, band in enumerate(optical_bands)])
 
     if mask_bands:
         masks = dataset[mask_bands].to_dataarray(dim="band").fillna(0).astype("uint8")
         masks.rio.to_raster(output_path / "mask_raw.tiff")
+
+        with rio.open(output_path / "mask_raw.tiff", "r+") as rds:
+            rds.descriptions = mask_bands
+
         band_info += "\n\nMask Bands:\n"
         band_info += "\n".join([f" - {i + 1}: {band}" for i, band in enumerate(mask_bands)])
 
