@@ -36,7 +36,7 @@ class PipelineV2Paths:
     scenes_dir: Path | None = None
     sentinel2_grid_dir: Path | None = None
     raw_data_store: Path | None = None
-    raw_data_source: Literal["cdse", "gee"] = "cdse"
+    raw_data_source: Literal["cdse", "cdse-mosaic", "gee"] = "cdse"
     no_raw_data_store: bool = False
 
     def __post_init__(self):  # noqa: D105
@@ -50,7 +50,10 @@ class PipelineV2Paths:
         self.orthotiles_dir = self.orthotiles_dir or paths.planet_orthotiles()
         self.scenes_dir = self.scenes_dir or paths.planet_scenes()
         self.output_data_dir = self.output_data_dir or paths.output_data(f"sentinel2-{self.raw_data_source}")
-        self.raw_data_store = self.raw_data_store or paths.sentinel2_raw_data(self.raw_data_source)
+        if self.raw_data_source == "cdse-mosaic":
+            self.raw_data_store = self.raw_data_store or paths.sentinel2_raw_data("cdse", kind="mosaics")
+        else:
+            self.raw_data_store = self.raw_data_store or paths.sentinel2_raw_data(self.raw_data_source)
         if self.no_raw_data_store:
             self.raw_data_store = None
 
@@ -388,10 +391,10 @@ class _BasePipeline(ABC):
 
         # ? We only want to download stuff - no need for using the GPU here
         self.device = "cpu"
-        self._dump_config()
+        current_time = self._dump_config()
 
         from darts_acquisition import download_arcticdem, download_tcvis
-        from stopuhr import Chronometer
+        from stopuhr import Chronometer, stopwatch
 
         from darts.utils.earthengine import init_ee
 
@@ -446,6 +449,12 @@ class _BasePipeline(ABC):
                     logger.exception(e)
             else:
                 logger.info(f"Downloaded {n_tiles} tiles.")
+
+        if len(timer.durations) > 0:
+            timer.export().to_parquet(self.output_data_dir / f"{current_time}.timer.parquet")
+        if len(stopwatch.durations) > 0:
+            stopwatch.export().to_parquet(self.output_data_dir / f"{current_time}.stopwatch.parquet")
+        timer.summary()
 
     def run(self):  # noqa: C901
         """Run the complete segmentation pipeline.
@@ -791,6 +800,7 @@ class Sentinel2Pipeline(_BasePipeline):
     Source Selection:
         The data source is specified via the `raw_data_source` parameter:
         - "cdse": Copernicus Data Space Ecosystem (CDSE)
+        - "cdse-mosaic": Copernicus Data Space Ecosystem (CDSE), but using the mosaic version
         - "gee": Google Earth Engine (GEE)
 
         Both sources require accounts and proper credential setup on the system.
@@ -807,11 +817,11 @@ class Sentinel2Pipeline(_BasePipeline):
         When using `tile_ids` or `aoi_file`, scenes can be filtered by:
         - Cloud/snow cover: `max_cloud_cover`, `max_snow_cover`
         - Date range: `start_date` and `end_date` (YYYY-MM-DD format)
-        - OR specific months/years: `months` (1-12) and `years`
+        - OR specific months/quarters/years: `months` (1-12), `quarters` (1-4) and `years`
 
         Note: Date range takes priority over month/year filtering.
         Warning: No temporal filtering may cause rate-limit errors.
-        Note: Month/year filtering is experimental and only implemented for CDSE.
+        Note: Month/quarter/year filtering is experimental and only implemented for CDSE.
 
     Offline Processing:
         Use `cli_prepare_data` to download data for offline use.
@@ -827,6 +837,7 @@ class Sentinel2Pipeline(_BasePipeline):
         max_cloud_cover (int | None): Maximum cloud cover percentage (0-100). Defaults to 10.
         max_snow_cover (int | None): Maximum snow cover percentage (0-100). Defaults to 10.
         months (list[int] | None): Filter by months (1-12). Defaults to None.
+        quarters (list[int] | None): Filter by quarters (1-4). Defaults to None.
         years (list[int] | None): Filter by years. Defaults to None.
         prep_data_scene_id_file (Path | None): File to store/load scene IDs for offline processing.
             Written during `prepare_data`, read during offline `run`. Defaults to None.
@@ -836,7 +847,7 @@ class Sentinel2Pipeline(_BasePipeline):
             If None, uses default path based on `raw_data_source`. Defaults to None.
         no_raw_data_store (bool): If True, processes data in-memory without local storage.
             Overrides `raw_data_store`. Defaults to False.
-        raw_data_source (Literal["gee", "cdse"]): Data source to use. Defaults to "cdse".
+        raw_data_source (Literal["gee", "cdse", "cdse-mosaic"]): Data source to use. Defaults to "cdse".
         model_files (Path | list[Path] | None): Path(s) to model file(s) for segmentation.
             Single Path implies `write_model_outputs=False`.
             If None, searches default model directory for all .pt files. Defaults to None.
@@ -887,13 +898,14 @@ class Sentinel2Pipeline(_BasePipeline):
     max_cloud_cover: int | None = 10
     max_snow_cover: int | None = 10
     months: list[int] | None = None
+    quarters: list[int] | None = None
     years: list[int] | None = None
     # For offline use
     prep_data_scene_id_file: Path | None = None
     sentinel2_grid_dir: Path | None = None
     raw_data_store: Path | None = None
     no_raw_data_store: bool = False
-    raw_data_source: Literal["gee", "cdse"] = "cdse"
+    raw_data_source: Literal["gee", "cdse", "cdse-mosaic"] = "cdse"
 
     def __post_init__(self):  # noqa: D105
         logger.debug("Before super")
@@ -916,6 +928,99 @@ class Sentinel2Pipeline(_BasePipeline):
                 "Using only the first one in the order of scene_ids, scene_id_file, tile_ids, aoi_file."
             )
 
+    def _get_s2ids_cdse(self) -> list[str]:
+        from darts_acquisition import get_cdse_s2_sr_scene_ids_from_geodataframe, get_cdse_s2_sr_scene_ids_from_tile_ids
+
+        if self.months is None and self.quarters is not None:
+            self.months = []
+            for quarter in self.quarters:
+                self.months.extend(list(range((quarter - 1) * 3 + 1, quarter * 3 + 1)))
+        elif self.months is not None and self.quarters is not None:
+            logger.warning(
+                "Both months and quarters provided for filtering. "
+                "Using months and ignoring quarters for CDSE scene selection."
+            )
+
+        if self.tile_ids is not None:
+            logger.debug(f"Getting scene ids from {len(self.tile_ids)} tile ids via CDSE.")
+            s2ids = get_cdse_s2_sr_scene_ids_from_tile_ids(
+                self.tile_ids,
+                start_date=self.start_date,
+                end_date=self.end_date,
+                max_cloud_cover=self.max_cloud_cover,
+                max_snow_cover=self.max_snow_cover,
+                months=self.months,
+                years=self.years,
+            ).keys()
+        elif self.aoi_file is not None:
+            logger.debug(f"Getting scene ids from AOI file {self.aoi_file=} via CDSE.")
+            s2ids = get_cdse_s2_sr_scene_ids_from_geodataframe(
+                self.aoi_file,
+                start_date=self.start_date,
+                end_date=self.end_date,
+                max_cloud_cover=self.max_cloud_cover,
+                max_snow_cover=self.max_snow_cover,
+                months=self.months,
+                years=self.years,
+            ).keys()
+        else:
+            logger.error("No valid scene selection method provided for CDSE.")
+            raise ValueError("No valid scene selection method provided for CDSE.")
+        return s2ids
+
+    def _get_s2ids_gee(self) -> list[str]:
+        from darts_acquisition import get_gee_s2_sr_scene_ids_from_geodataframe, get_gee_s2_sr_scene_ids_from_tile_ids
+
+        if any([self.months, self.quarters, self.years]):
+            logger.warning(
+                "Month/quarter/year filtering is not implemented for GEE scene selection. Ignoring these parameters."
+            )
+
+        if self.tile_ids is not None:
+            logger.debug(f"Getting scene ids from {len(self.tile_ids)} tile ids via GEE.")
+            s2ids = get_gee_s2_sr_scene_ids_from_tile_ids(
+                self.tile_ids,
+                start_date=self.start_date,
+                end_date=self.end_date,
+                max_cloud_cover=self.max_cloud_cover,
+                max_snow_cover=self.max_snow_cover,
+            )
+        elif self.aoi_file is not None:
+            logger.debug(f"Getting scene ids from AOI file {self.aoi_file=} via GEE.")
+            s2ids = get_gee_s2_sr_scene_ids_from_geodataframe(
+                self.aoi_file,
+                start_date=self.start_date,
+                end_date=self.end_date,
+                max_cloud_cover=self.max_cloud_cover,
+                max_snow_cover=self.max_snow_cover,
+            )
+        else:
+            logger.error("No valid scene selection method provided for GEE.")
+            raise ValueError("No valid scene selection method provided for GEE.")
+        return s2ids
+
+    def _get_s2ids_cdse_mosaic(self) -> list[str]:
+        from darts_acquisition import get_cdse_s2_mosaic_ids_from_geodataframe, get_cdse_s2_mosaic_ids_from_tile_ids
+
+        if self.tile_ids is not None:
+            logger.debug(f"Getting scene ids from {len(self.tile_ids)} tile ids via CDSE Mosaic.")
+            s2ids = get_cdse_s2_mosaic_ids_from_tile_ids(
+                self.tile_ids,
+                quarters=self.quarters,
+                years=self.years,
+            ).keys()
+        elif self.aoi_file is not None:
+            logger.debug(f"Getting scene ids from AOI file {self.aoi_file=} via CDSE Mosaic.")
+            s2ids = get_cdse_s2_mosaic_ids_from_geodataframe(
+                self.aoi_file,
+                quarters=self.quarters,
+                years=self.years,
+            ).keys()
+        else:
+            logger.error("No valid scene selection method provided for CDSE Mosaic.")
+            raise ValueError("No valid scene selection method provided for CDSE Mosaic.")
+        return s2ids
+
     def _get_s2ids(self) -> list[str]:
         # Logic:
         # Offline: Check for prep_data_scene_id_file first, then scene_ids, then scene_id_file,
@@ -935,54 +1040,12 @@ class Sentinel2Pipeline(_BasePipeline):
             logger.debug(f"Loading scene ids from file {self.scene_id_file=}.")
             s2ids: list[str] = json.loads(self.scene_id_file.read_text())
             return s2ids
-        elif self.tile_ids is not None and self.raw_data_source == "cdse":
-            from darts_acquisition import get_cdse_s2_sr_scene_ids_from_tile_ids
-
-            logger.debug(f"Getting scene ids from {len(self.tile_ids)} tile ids via CDSE.")
-            s2ids = get_cdse_s2_sr_scene_ids_from_tile_ids(
-                self.tile_ids,
-                start_date=self.start_date,
-                end_date=self.end_date,
-                max_cloud_cover=self.max_cloud_cover,
-                max_snow_cover=self.max_snow_cover,
-                months=self.months,
-                years=self.years,
-            ).keys()
-        elif self.tile_ids is not None and self.raw_data_source == "gee":
-            from darts_acquisition import get_gee_s2_sr_scene_ids_from_tile_ids
-
-            logger.debug(f"Getting scene ids from {len(self.tile_ids)} tile ids via GEE.")
-            s2ids = get_gee_s2_sr_scene_ids_from_tile_ids(
-                self.tile_ids,
-                start_date=self.start_date,
-                end_date=self.end_date,
-                max_cloud_cover=self.max_cloud_cover,
-                max_snow_cover=self.max_snow_cover,
-            )
-        elif self.aoi_file is not None and self.raw_data_source == "cdse":
-            from darts_acquisition import get_cdse_s2_sr_scene_ids_from_geodataframe
-
-            logger.debug(f"Getting scene ids from AOI file {self.aoi_file=} via CDSE.")
-            s2ids = get_cdse_s2_sr_scene_ids_from_geodataframe(
-                self.aoi_file,
-                start_date=self.start_date,
-                end_date=self.end_date,
-                max_cloud_cover=self.max_cloud_cover,
-                max_snow_cover=self.max_snow_cover,
-                months=self.months,
-                years=self.years,
-            ).keys()
-        elif self.aoi_file is not None and self.raw_data_source == "gee":
-            from darts_acquisition import get_gee_s2_sr_scene_ids_from_geodataframe
-
-            logger.debug(f"Getting scene ids from AOI file {self.aoi_file=} via GEE.")
-            s2ids = get_gee_s2_sr_scene_ids_from_geodataframe(
-                self.aoi_file,
-                start_date=self.start_date,
-                end_date=self.end_date,
-                max_cloud_cover=self.max_cloud_cover,
-                max_snow_cover=self.max_snow_cover,
-            )
+        elif self.raw_data_source == "cdse-mosaic":
+            s2ids = self._get_s2ids_cdse_mosaic()
+        elif self.raw_data_source == "cdse":
+            s2ids = self._get_s2ids_cdse()
+        elif self.raw_data_source == "gee":
+            s2ids = self._get_s2ids_gee()
         else:
             logger.error("No valid scene selection method provided.")
             raise ValueError("No valid scene selection method provided.")
@@ -1035,23 +1098,39 @@ class Sentinel2Pipeline(_BasePipeline):
             from darts_acquisition import get_aoi_from_cdse_scene_ids
 
             return get_aoi_from_cdse_scene_ids(s2ids)
-        else:
+        elif self.raw_data_source == "cdse-mosaic":
+            from darts_acquisition import get_aoi_from_cdse_mosaic_ids
+
+            return get_aoi_from_cdse_mosaic_ids(s2ids)
+        elif self.raw_data_source == "gee":
             from darts_acquisition import get_aoi_from_gee_scene_ids
 
             return get_aoi_from_gee_scene_ids(s2ids)
+        else:
+            logger.error("No valid scene selection method provided.")
+            raise ValueError("No valid scene selection method provided.")
 
     def _download_tile(self, s2id: str):
         # We default to a path here because the download functions need a path to store the data
         # Note that in the normal load tile function, we can pass None to process in memory
-        raw_data_store = self.raw_data_store or paths.sentinel2_raw_data(self.raw_data_source)
         if self.raw_data_source == "gee":
             from darts_acquisition import download_gee_s2_sr_scene
 
+            raw_data_store = self.raw_data_store or paths.sentinel2_raw_data("gee")
             return download_gee_s2_sr_scene(s2id, store=raw_data_store)
-        else:
+        elif self.raw_data_source == "cdse":
             from darts_acquisition import download_cdse_s2_sr_scene
 
+            raw_data_store = self.raw_data_store or paths.sentinel2_raw_data("cdse")
             return download_cdse_s2_sr_scene(s2id, store=raw_data_store)
+        elif self.raw_data_source == "cdse-mosaic":
+            from darts_acquisition import download_cdse_s2_mosaic
+
+            raw_data_store = self.raw_data_store or paths.sentinel2_raw_data("cdse", kind="mosaics")
+            return download_cdse_s2_mosaic(s2id, store=raw_data_store)
+        else:
+            logger.error("No valid raw data source provided.")
+            raise ValueError("No valid raw data source provided.")
 
     def _load_tile(self, s2id: str) -> "xr.Dataset":
         output_dir_for_debug_geotiff = None
@@ -1068,7 +1147,7 @@ class Sentinel2Pipeline(_BasePipeline):
                 output_dir_for_debug_geotiff=output_dir_for_debug_geotiff,
                 device=self.device,
             )
-        else:
+        elif self.raw_data_source == "cdse":
             from darts_acquisition import load_cdse_s2_sr_scene
 
             return load_cdse_s2_sr_scene(
@@ -1078,6 +1157,19 @@ class Sentinel2Pipeline(_BasePipeline):
                 output_dir_for_debug_geotiff=output_dir_for_debug_geotiff,
                 device=self.device,
             )
+        elif self.raw_data_source == "cdse-mosaic":
+            from darts_acquisition import load_cdse_s2_mosaic
+
+            return load_cdse_s2_mosaic(
+                s2id,
+                store=self.raw_data_store,
+                offline=self.offline,
+                output_dir_for_debug_geotiff=output_dir_for_debug_geotiff,
+                device=self.device,
+            )
+        else:
+            logger.error("No valid raw data source provided.")
+            raise ValueError("No valid raw data source provided.")
 
     @staticmethod
     def cli_prepare_data(

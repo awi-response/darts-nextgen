@@ -43,7 +43,8 @@ Within the `input/` directory:
 - `planet/tiles/`: PlanetScope orthotiles
 - `planet/scenes/`: PlanetScope scenes
 - `sentinel2/grid/`: Sentinel-2 grid data
-- `sentinel2/cdse-scenes/`: Sentinel-2 raw data from Copernicus Data Space Ecosystem
+- `sentinel2/cdse-scenes/`: Sentinel-2 individual scenes from Copernicus Data Space Ecosystem
+- `sentinel2/cdse-mosaics/`: Sentinel-2 quarterly mosaics from Copernicus Data Space Ecosystem
 - `sentinel2/gee-scenes/`: Sentinel-2 raw data from Google Earth Engine
 
 ## Configuration Methods

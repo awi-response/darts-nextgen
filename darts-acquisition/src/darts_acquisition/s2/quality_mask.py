@@ -1,4 +1,4 @@
-"""Sentinel-2 related data loading. Should be used temporary and maybe moved to the acquisition package."""
+"""Sentinel-2 related data loading."""
 
 import logging
 
@@ -42,6 +42,38 @@ def convert_masks(ds_s2: xr.Dataset) -> xr.Dataset:
         (~invalids).astype("uint8")  # 0 for invalid, 1 for valid
         + (high_quality).astype("uint8")  # +1 for high quality
     )
+
+    ds_s2["quality_data_mask"].attrs["data_source"] = "s2"
+    ds_s2["quality_data_mask"].attrs["long_name"] = "Quality Data Mask"
+    ds_s2["quality_data_mask"].attrs["description"] = "0 = Invalid, 1 = Low Quality, 2 = High Quality"
+
+    return ds_s2
+
+
+@stopwatch("Creating Sentinel-2 mask from observations", printer=logger.debug)
+def create_quality_mask_from_observations(ds_s2: xr.Dataset) -> xr.Dataset:
+    """Create a quality mask from the observations band.
+
+    Quality mask derivation from observations:
+    - Invalid (0): observations == 0
+    - Low quality (1): 1 <= observations <= 3
+    - High quality (2): observations > 3
+
+    Args:
+        ds_s2 (xr.Dataset): The Sentinel-2 dataset containing the observations band.
+
+    Returns:
+        xr.Dataset: The modified dataset with the quality_data_mask variable.
+
+    """
+    assert "s2_observations" in ds_s2.data_vars, "The dataset does not contain the s2_observations band."
+
+    observations = ds_s2["s2_observations"].fillna(0)
+
+    ds_s2["quality_data_mask"] = (
+        (observations > 0).astype("uint8")  # 0 if invalid, 1 otherwise
+        + (observations > 3).astype("uint8")  # +1 if high quality (>3)
+    ).astype("uint8")
 
     ds_s2["quality_data_mask"].attrs["data_source"] = "s2"
     ds_s2["quality_data_mask"].attrs["long_name"] = "Quality Data Mask"

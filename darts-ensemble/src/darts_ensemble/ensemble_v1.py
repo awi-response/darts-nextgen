@@ -86,7 +86,8 @@ class EnsembleV1:
         """
         model_paths = {k: Path(v) for k, v in model_dict.items()}
         logger.debug(
-            "Loading models:\n" + "\n".join([f" - {k.upper()} model: {v.resolve()}" for k, v in model_paths.items()])
+            "Loading models:\n"
+            + "\n".join([f" - {k.capitalize()} model: {v.resolve()}" for k, v in model_paths.items()])
         )
         self.models = {k: SMPSegmenter(v, device=device) for k, v in model_paths.items()}
 

@@ -196,9 +196,15 @@ class LoggingManagerSingleton:
         darts_logger.addHandler(file_handler)
         darts_logger.setLevel(logging.DEBUG if verbosity >= VerbosityLevel.VERBOSE else logging.INFO)
 
-        if verbosity >= VerbosityLevel.VERY_VERBOSE:
-            very_verbose_modules = [
-                "smart_geocubes",
+        if verbosity >= VerbosityLevel.DEBUG:
+            debug_modules = [
+                "smarts_geocubes",
+            ]
+            module_level = logging.DEBUG if verbosity >= VerbosityLevel.VERBOSE else logging.INFO
+            self.apply_logging_handlers(*debug_modules, level=module_level)
+
+        if verbosity >= VerbosityLevel.VERBOSE:
+            verbose_modules = [
                 "dask",
                 "lightning",
                 "pytorch_lightning",
@@ -208,8 +214,8 @@ class LoggingManagerSingleton:
                 "distributed",
                 "pandas",
             ]
-            module_level = logging.DEBUG if verbosity >= VerbosityLevel.DEBUG else logging.INFO
-            self.apply_logging_handlers(*very_verbose_modules, level=module_level)
+            module_level = logging.DEBUG if verbosity >= VerbosityLevel.VERBOSE else logging.INFO
+            self.apply_logging_handlers(*verbose_modules, level=module_level)
 
     def apply_logging_handlers(self, *names: str, level: int = logging.INFO):
         """Apply the logging handlers to a (third-party) logger.

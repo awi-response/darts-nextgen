@@ -9,6 +9,27 @@ from darts_acquisition.planet import get_planet_geometry as get_planet_geometry
 from darts_acquisition.planet import load_planet_masks as load_planet_masks
 from darts_acquisition.planet import load_planet_scene as load_planet_scene
 from darts_acquisition.planet import parse_planet_type as parse_planet_type
+from darts_acquisition.s2.cdse_mosaic import (
+    download_cdse_s2_mosaic as download_cdse_s2_mosaic,
+)
+from darts_acquisition.s2.cdse_mosaic import (
+    get_aoi_from_cdse_mosaic_ids as get_aoi_from_cdse_mosaic_ids,
+)
+from darts_acquisition.s2.cdse_mosaic import (
+    get_cdse_s2_mosaic_ids_from_geodataframe as get_cdse_s2_mosaic_ids_from_geodataframe,
+)
+from darts_acquisition.s2.cdse_mosaic import (
+    get_cdse_s2_mosaic_ids_from_tile_ids as get_cdse_s2_mosaic_ids_from_tile_ids,
+)
+from darts_acquisition.s2.cdse_mosaic import (
+    load_cdse_s2_mosaic as load_cdse_s2_mosaic,
+)
+from darts_acquisition.s2.cdse_mosaic import (
+    match_cdse_s2_mosaic_ids_from_geodataframe as match_cdse_s2_mosaic_ids_from_geodataframe,
+)
+from darts_acquisition.s2.cdse_mosaic import (
+    search_cdse_s2_mosaic as search_cdse_s2_mosaic,
+)
 from darts_acquisition.s2.cdse_scene import download_cdse_s2_sr_scene as download_cdse_s2_sr_scene
 from darts_acquisition.s2.cdse_scene import get_aoi_from_cdse_scene_ids as get_aoi_from_cdse_scene_ids
 from darts_acquisition.s2.cdse_scene import (

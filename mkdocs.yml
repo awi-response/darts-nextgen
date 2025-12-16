@@ -16,6 +16,7 @@ nav:
       - Installation: guides/installation.md
       - Pipeline v2: guides/pipeline-v2.md
       - DARTS Components: guides/components.md
+      - Sentinel-2 Data Sources: guides/sentinel2-data-sources.md
       - Paths and Data Management: guides/paths.md
       - Downloads and Offline mode: guides/offline.md
       - Devices: guides/devices.md

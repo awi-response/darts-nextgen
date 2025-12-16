@@ -18,9 +18,11 @@ For optical data it is possible to deactivate caching, which may be useful for v
 When running a Sentinel-2 pipeline, DARTS automatically downloads scenes from either:
 
 - **CDSE (Copernicus Data Space Ecosystem)**: The default source, accessed via STAC API
+    - **CDSE Scenes**: Individual Sentinel-2 scenes
+    - **CDSE Mosaics**: Quarterly composite mosaics (10m resolution) - useful for large-scale processing
 - **GEE (Google Earth Engine)**: Alternative source, useful when working already on Google Cloud
 
-!!! "danger" Different processing pipelines
+!!! danger "Different processing pipelines"
 
     Sentinel 2 data from Google Earth Engine comes in different processing levels, since they loaded data only once.
     Thus, the spectral values are not super comparable across the years and can reduce model performance.
@@ -34,10 +36,19 @@ The default download process works as follows:
 By default, Sentinel-2 raw data is stored in:
 
 ```text
-<DARTS_DATA_DIR>/sentinel2/<source>/
+<DARTS_DATA_DIR>/sentinel2/<source>-<kind>/
 ```
 
-Where `<source>` is either `cdse` or `gee`. You can customize this location using the `raw_data_store` parameter in your pipeline configuration.
+Where:
+- `<source>` is either `cdse` or `gee`
+- `<kind>` is either `scenes` (individual scenes) or `mosaics` (quarterly composites, CDSE only)
+
+Examples:
+- `sentinel2/cdse-scenes/`: Individual CDSE scenes
+- `sentinel2/cdse-mosaics/`: CDSE quarterly mosaics
+- `sentinel2/gee-scenes/`: GEE scenes
+
+You can customize this location using the `raw_data_store` parameter in your pipeline configuration.
 
 The caching functionality can be disabled by passing `--no-raw-data-store` to the CLI when running `uv run darts inference sentinel2-sequential`.
 

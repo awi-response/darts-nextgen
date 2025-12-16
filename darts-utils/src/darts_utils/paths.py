@@ -250,8 +250,8 @@ class PathManagerSingleton:
         logger.debug(f"Using Sentinel-2 grid path: {d}")
         return d
 
-    def sentinel2_raw_data(self, source: Literal["cdse", "gee"]) -> Path:  # noqa: D102
-        d = (self.input / "sentinel2" / f"{source}-scenes").resolve()
+    def sentinel2_raw_data(self, source: Literal["cdse", "gee"], kind: Literal["scenes", "mosaics"] = "scenes") -> Path:  # noqa: D102
+        d = (self.input / "sentinel2" / f"{source}-{kind}").resolve()
         d.mkdir(parents=True, exist_ok=True)
         logger.debug(f"Using Sentinel-2 raw data path for source '{source}': {d}")
         return d

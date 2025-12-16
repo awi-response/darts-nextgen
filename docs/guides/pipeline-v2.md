@@ -24,7 +24,7 @@ The pipeline currently consists of the following steps:
 
 1. Load the optical and auxiliary data
     This step depends on the realization of the pipeline.
-    Either [darts_acquisition.load_planet_scene][], [darts_acquisition.load_gee_s2_sr_scene][] or [darts_acquisition.load_cdse_s2_sr_scene][].
+    Either [darts_acquisition.load_planet_scene][], [darts_acquisition.load_gee_s2_sr_scene][], [darts_acquisition.load_cdse_s2_sr_scene][], or [darts_acquisition.load_cdse_s2_mosaic][].
     Also loads the masks if not loaded from GEE or CDSE: [darts_acquisition.load_planet_masks][], for the GEE and CDSE versions the masks are already included.
     For the auxiliary data: [darts_acquisition.load_arcticdem][] and [darts_acquisition.load_tcvis][]
 2. Preprocess the optical data: [darts_preprocessing.preprocess_v2][].
@@ -136,12 +136,16 @@ Four mutually exclusive methods:
 3. **tile-ids**: List of Sentinel-2 tile IDs + filtering parameters
 4. **aoi-file**: Shapefile with area of interest + filtering parameters
 
+!!! info "Detailed Sentinel-2 Guide"
+    For comprehensive information about Sentinel-2 data sources (CDSE scenes, CDSE mosaics, GEE), filtering methods, and best practices, see the [Sentinel-2 Data Sources Guide](sentinel2-data-sources.md).
+
 ### Filtering Parameters
 
 - **start-date** / **end-date**: Date range in YYYY-MM-DD format
 - **max-cloud-cover**: Maximum cloud cover percentage (default: 10)
 - **max-snow-cover**: Maximum snow cover percentage (default: 10)
-- **months**: List of months (1-12) for filtering
+- **months**: List of months (1-12) for filtering (CDSE scenes only)
+- **quarters**: List of quarters (1-4) for filtering (CDSE mosaics only)
 - **years**: List of years for filtering
 
 ### Processing Parameters
@@ -169,7 +173,10 @@ Four mutually exclusive methods:
 
 ### Data Source Parameters (Sentinel-2)
 
-- **raw-data-source**: Source for S2 data: `"cdse"` or `"gee"` (default: `"cdse"`)
+- **raw-data-source**: Source for S2 data: `"cdse"`, `"cdse-mosaic"`, or `"gee"` (default: `"cdse"`)
+    - `"cdse"`: Individual Sentinel-2 scenes from Copernicus Data Space Ecosystem
+    - `"cdse-mosaic"`: Quarterly mosaics (10m resolution, composite images) from CDSE
+    - `"gee"`: Sentinel-2 scenes from Google Earth Engine
 - **raw-data-store**: Directory for storing raw S2 data locally
 - **no-raw-data-store**: Disable local storage of raw data (default: False)
 - **ee-project**: Earth Engine project ID (required for GEE source)
