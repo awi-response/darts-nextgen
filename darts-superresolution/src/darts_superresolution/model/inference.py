@@ -4,7 +4,8 @@ from typing import TypedDict
 import torch
 import torch.nn as nn
 
-from darts_superresolution.model.wave_modules import diffusion, unet
+from darts_superresolution.model.wave_modules import diffusion_ddim as diffusion
+from darts_superresolution.model.wave_modules import unet
 
 logger = logging.getLogger(__name__)
 
@@ -68,13 +69,14 @@ DEFAULT_MODEL_CONFIG: ModelConfig = {
     },
     "beta_schedule": {
         "train": {"schedule": "linear", "n_timestep": 2000, "linear_start": 1e-6, "linear_end": 1e-2},
-        "val": {"schedule": "linear", "n_timestep": 2000, "linear_start": 1e-6, "linear_end": 1e-2},
+        "val": {"schedule": "linear", "n_timestep": 50, "linear_start": 1e-6, "linear_end": 1e-2},
     },
-    "diffusion": {"image_size": 192, "channels": 4, "conditional": True},
+    "diffusion": {"image_size": 384, "channels": 4, "conditional": True},
 }
 
 
 def define_net(model_opt: ModelConfig = DEFAULT_MODEL_CONFIG, distributed: bool = False):
+
     if ("norm_groups" not in model_opt["unet"]) or model_opt["unet"]["norm_groups"] is None:
         model_opt["unet"]["norm_groups"] = 32
 
@@ -95,7 +97,7 @@ def define_net(model_opt: ModelConfig = DEFAULT_MODEL_CONFIG, distributed: bool 
         channels=model_opt["diffusion"]["channels"],
         loss_type="l1",  # L1 or L2
         conditional=model_opt["diffusion"]["conditional"],
-        schedule_opt=model_opt["beta_schedule"]["train"],
+        schedule_opt=model_opt["beta_schedule"]["val"],
     )
 
     if distributed:

@@ -83,7 +83,7 @@ class DWSR(nn.Module):
                     padding=padding,
                     stride=stride,
                     bias=False,
-                    groups=groups,
+                    groups=groups
                 )
             )
             self.conv_layers.append(nn.ReLU())
@@ -95,7 +95,7 @@ class DWSR(nn.Module):
                 padding=padding,
                 stride=stride,
                 bias=False,
-                groups=groups,
+                groups=groups
             )
         )
         self.convs = nn.Sequential(*self.conv_layers)
@@ -178,10 +178,10 @@ class GaussianDiffusion(nn.Module):
         )
 
     def apply_idwt(self, features, targetW, targetH):
-        sr_images_LL = features[:, 0:3, :, :]
-        sr_images_HL = features[:, 3:6, :, :].unsqueeze(2)
-        sr_images_LH = features[:, 6:9, :, :].unsqueeze(2)
-        sr_images_HH = features[:, 9:12, :, :].unsqueeze(2)
+        sr_images_LL = features[:, 0:4, :, :]#changed it from 0:3
+        sr_images_HL = features[:, 4:8, :, :].unsqueeze(2)
+        sr_images_LH = features[:, 8:12, :, :].unsqueeze(2)
+        sr_images_HH = features[:, 12:16, :, :].unsqueeze(2)
 
         sr_HFreqs = torch.cat([sr_images_HL, sr_images_LH, sr_images_HH], 2)
         sr_images = self.ifm((sr_images_LL, [sr_HFreqs]))
@@ -224,7 +224,9 @@ class GaussianDiffusion(nn.Module):
     @torch.no_grad()
     def p_sample_loop(self, x_in, continous=False, sample_inter=None):
         _, _, w, h = x_in.shape
+        # print("Pre-DWT shape: ", x_in.shape)
         x_in = self.apply_dwt(x_in)
+        # print("Post-DWT shape: ", x_in.shape)
         device = self.betas.device
         if sample_inter is None:
             sample_inter = 1 | (self.num_timesteps // 10)
@@ -242,11 +244,13 @@ class GaussianDiffusion(nn.Module):
         else:
             x = x_in
             shape = x.shape
+            # print("Shape: ", shape)
             img = torch.randn(shape, device=device)
             ret_img = x
             for i in tqdm(
                 reversed(range(0, self.num_timesteps)), desc="sampling loop time step", total=self.num_timesteps
             ):
+                # print("Image shape: ", img.shape)
                 img = self.p_sample(img, i, condition_x=x)
                 if i % sample_inter == 0:
                     ret_img = torch.cat([ret_img, img], dim=0)
@@ -257,7 +261,11 @@ class GaussianDiffusion(nn.Module):
                 result = torch.cat([result, self.apply_idwt((ret_img[i] + x_sr[0]).unsqueeze(0), w, h)], 0)
             return result
         else:
-            return self.apply_idwt((ret_img[-1] + x_sr[0]).unsqueeze(0), w, h).squeeze(0)
+            print("SR: ", x_sr.shape, "Ret_img: ", ret_img[-16:].shape)
+            result = self.apply_idwt((ret_img[-x_sr.shape[0]:] + x_sr), w, h)
+            # result = self.apply_idwt((ret_img[-1] + x_sr[0]).unsqueeze(0), w, h).squeeze(0)
+            return result
+            
 
     @torch.no_grad()
     def sample(self, batch_size=1, continous=False, sample_inter=None):

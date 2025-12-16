@@ -5,7 +5,8 @@ import torch
 import torch.nn as nn
 from torch.nn import init
 
-from darts_superresolution.model.sr3_modules import diffusion, unet
+from darts_superresolution.model.wave_modules import diffusion_ddim as diffusion
+from darts_superresolution.model.wave_modules import unet
 
 logger = logging.getLogger(__name__)
 ####################

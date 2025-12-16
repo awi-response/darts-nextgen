@@ -128,17 +128,24 @@ def adain_color_fix(target: Image, source: Image):
 def wavelet_color_fix(target: Image, source: Image):
     # Convert images to tensors
     to_tensor = ToTensor()
-    target_tensor = to_tensor(target).unsqueeze(0)
-    source_tensor = to_tensor(source).unsqueeze(0)
-
+    if not isinstance(target, torch.Tensor):
+        target_tensor = to_tensor(target).unsqueeze(0)
+    else:
+        target_tensor = target
+    
+    if not isinstance(source, torch.Tensor):
+        source_tensor = to_tensor(source).unsqueeze(0)
+    else:
+        source_tensor = source
+    
     # Apply wavelet reconstruction
     result_tensor = wavelet_reconstruction(target_tensor, source_tensor)
 
     # Convert tensor back to image
-    to_image = ToPILImage()
-    result_image = to_image(result_tensor.squeeze(0).clamp_(0.0, 1.0))
+    # to_image = ToPILImage()
+    # result_image = to_image(result_tensor.squeeze(0).clamp_(0.0, 1.0))
 
-    return result_image
+    return result_tensor
 
 
 def calc_mean_std(feat: Tensor, eps=1e-5):
@@ -186,7 +193,7 @@ def adaptive_instance_normalization(content_feat: Tensor, style_feat: Tensor):
 
 def wavelet_blur(image: Tensor, radius: int):
     """Apply wavelet blur to the input tensor."""
-    # input shape: (1, 3, H, W)
+    # input shape: (1, 3, H, W) or (1, 4, H, W)
     # convolution kernel
     kernel_vals = [
         [0.0625, 0.125, 0.0625],
@@ -197,10 +204,11 @@ def wavelet_blur(image: Tensor, radius: int):
     # add channel dimensions to the kernel to make it a 4D tensor
     kernel = kernel[None, None]
     # repeat the kernel across all input channels
-    kernel = kernel.repeat(3, 1, 1, 1)
+    # kernel = kernel.repeat(3, 1, 1, 1)
+    kernel = kernel.repeat(4, 1, 1, 1) # for 4 channel images, need to repeat 4 times.
     image = F.pad(image, (radius, radius, radius, radius), mode="replicate")
     # apply convolution
-    output = F.conv2d(image, kernel, groups=3, dilation=radius)
+    output = F.conv2d(image, kernel, groups=4, dilation=radius) # Again, change from groups=3, to groups=4
     return output
 
 

@@ -70,20 +70,26 @@ class DDPM(BaseModel):
         # set log
         self.log_dict["l_pix"] = l_pix.item()
 
+    # Check later if needs to be changed for DDIM #
+
     def test(self, continous=False):
+        print("I am indeed being called.")
         self.netG.eval()
         with torch.no_grad():
             if isinstance(self.netG, nn.DataParallel):
-                # print("In: ", self.data['SR'].shape)
+                print("In: ", self.data['SR'].shape)
                 self.SR = self.netG.module.super_resolution(self.data["SR"], continous)
-                # print("Out: ", self.SR.shape)
+                print("Out: ", self.SR.shape)
             else:
-                # print("In: ", self.data['SR'].shape)
+                print("In: ", self.data['SR'].shape)
                 self.SR = self.netG.super_resolution(self.data["SR"], continous)
-                # print("Out: ", self.SR.shape)
+                print("Out: ", self.SR.shape)
         self.netG.train()
-
+    
+    # Check later if needs to be changed for DDIM #
     def sample(self, batch_size=1, continous=False):
+
+        print("I am indeed being called.")
         self.netG.eval()
         with torch.no_grad():
             if isinstance(self.netG, nn.DataParallel):

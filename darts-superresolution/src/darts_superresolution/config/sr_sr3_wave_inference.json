@@ -2,7 +2,7 @@
     "name": "wave_60_192",
     "phase": "train",
     "gpu_ids": [
-        3
+        2
     ],
     "path": {
         "log": "/home/pd/lucham001/Projects/Image-Super-Resolution-via-Iterative-Refinement/logs",

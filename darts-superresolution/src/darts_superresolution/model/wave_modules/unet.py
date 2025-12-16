@@ -252,10 +252,12 @@ class UNet(nn.Module):
         t = self.noise_level_mlp(time) if exists(self.noise_level_mlp) else None
 
         feats = []
+        # print("x shape: ", x.shape)
         for layer in self.downs:
             if isinstance(layer, ResnetBlocWithAttn):
                 x = layer(x, t)
             else:
+                # print("Layer: ", layer)
                 x = layer(x)
             feats.append(x)
 
