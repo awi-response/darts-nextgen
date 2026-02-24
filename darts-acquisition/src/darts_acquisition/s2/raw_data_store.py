@@ -151,8 +151,9 @@ class StoreManager(ABC, Generic[SceneItem]):
 
         """
         identifier = self.identifier(item)
-        assert self.complete(identifier), f"Scene {identifier} is incomplete in store!"
         scene_path = self.store / f"{identifier}.zarr"
+        assert scene_path.exists(), f"data for scene '{identifier}' not found at {scene_path.absolute()} "
+        assert self.complete(identifier), f"Scene {identifier} is incomplete in store!"
         return xr.open_zarr(scene_path, consolidated=False).set_coords("spatial_ref").load()
 
     def download_and_store(self, item: str | SceneItem):

@@ -64,7 +64,7 @@ def move_to_host(tile: xr.Dataset) -> xr.Dataset:
         xr.Dataset: _description_
 
     """
-    if tile.cupy.is_cupy:
+    if hasattr(tile, "cupy") and tile.cupy.is_cupy:
         tile = tile.cupy.as_numpy()
         free_cupy()
     return tile
