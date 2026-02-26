@@ -455,6 +455,10 @@ def search_cdse_s2_mosaic(
                     filter=cql2_filter,
                 )
                 found_items.update(list(search.items()))
+                # CDSE may have some quite aggressive rate limiting.
+                # lets pause here for a sec (shorter sleep times did not help)
+                # TODO: resarch if we can create a single filter covering all selected years and quarters
+                time.sleep(1)
     else:
         search = catalog.search(
             collections=["sentinel-2-global-mosaics"],
