@@ -16,15 +16,19 @@ from darts_utils.cuda import DEFAULT_DEVICE, move_to_device, move_to_host
 from odc.stac import stac_load
 from pystac import Item
 from pystac_client import Client
+from pystac_client.exceptions import APIError
 from stopuhr import stopwatch
 from zarr.codecs import BloscCodec
 
+from darts_acquisition.exceptions import DartsAcquisitionError
 from darts_acquisition.s2.debug_export import save_debug_geotiff
 from darts_acquisition.s2.quality_mask import create_quality_mask_from_observations
 from darts_acquisition.s2.raw_data_store import StoreManager
 from darts_acquisition.utils.copernicus import init_copernicus
 
 logger = logging.getLogger(__name__.replace("darts_", "darts."))
+
+CDSE_MAX_RETRIES = 10
 
 
 def _flatten_dict(d: MutableMapping, parent_key: str = "", sep: str = ".") -> MutableMapping:
@@ -454,11 +458,20 @@ def search_cdse_s2_mosaic(
                     datetime=f"{year}-{month:02d}",
                     filter=cql2_filter,
                 )
-                found_items.update(list(search.items()))
-                # CDSE may have some quite aggressive rate limiting.
-                # lets pause here for a sec (shorter sleep times did not help)
-                # TODO: resarch if we can create a single filter covering all selected years and quarters
-                time.sleep(1)
+
+                query_ctr = 0
+                while query_ctr < CDSE_MAX_RETRIES:
+                    try:
+                        found_items.update(list(search.items()))
+                        break
+                    except APIError as e:
+                        if e.status_code == 429:  # rate limit exceeded
+                            logger.info("CDSE query rate limit exceeded, retrying after another second.")
+                            query_ctr += 1
+                            time.sleep(1)
+                if query_ctr >= CDSE_MAX_RETRIES:
+                    raise DartsAcquisitionError(f"CDSE request failed after {query_ctr} tries")
+
     else:
         search = catalog.search(
             collections=["sentinel-2-global-mosaics"],
