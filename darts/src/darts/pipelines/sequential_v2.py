@@ -1214,3 +1214,277 @@ class Sentinel2Pipeline(_BasePipeline):
         """
         pipeline.__post_init__()
         pipeline.run()
+
+
+@dataclass
+class LandsatPipeline(_BasePipeline):
+    """Pipeline for processing Landsat mosaics.
+
+    Processes Landsat Global Mosaics from Copernicus Data Space Ecosystem (CDSE).
+    Supports mosaic selection via multiple methods with flexible temporal filtering.
+
+    Mosaic Selection:
+        Mosaics can be selected using one of four mutually exclusive methods (priority order):
+
+        1. `mosaic_ids`: Direct list of Landsat mosaic IDs
+        2. `mosaic_id_file`: JSON file containing mosaic IDs
+        3. `tile_ids`: List of CDEM tile IDs (e.g., "74N092E") with optional temporal filters
+        4. `aoi_file`: Shapefile defining area of interest with optional temporal filters
+
+    Filtering Options:
+        When using `tile_ids` or `aoi_file`, mosaics can be filtered by:
+        - Periods (bimonthly): `periods` (e.g., ["01-02", "03-04"]) - pairs of months
+        - Years: `years` (e.g., [2020, 2021, 2022])
+
+        Note: Landsat mosaics are available as bimonthly composites starting from 2017.
+        If no temporal filtering is specified, all available periods will be queried.
+
+    Offline Processing:
+        Use `cli_prepare_data` to download data for offline use.
+        The `prep_data_mosaic_id_file` stores mosaic IDs from queries for offline reuse.
+
+    Args:
+        mosaic_ids (list[str] | None): Direct list of Landsat mosaic IDs to process. Defaults to None.
+        mosaic_id_file (Path | None): JSON file containing mosaic IDs to process. Defaults to None.
+        tile_ids (list[str] | None): List of CDEM tile IDs (requires filtering params). Defaults to None.
+        aoi_file (Path | None): Shapefile with area of interest (requires filtering params). Defaults to None.
+        periods (list[str] | None): Filter by periods (e.g., ["01-02", "03-04", "05-06"]).
+            Periods are bimonthly: "01-02", "03-04", "05-06", "07-08", "09-10", "11-12".
+            Defaults to None.
+        years (list[int] | None): Filter by years (e.g., [2020, 2021, 2022]). Defaults to None.
+        prep_data_mosaic_id_file (Path | None): File to store/load mosaic IDs for offline processing.
+            Written during `prepare_data`, read during offline `run`. Defaults to None.
+        raw_data_store (Path | None): Directory for storing raw Landsat mosaic data locally.
+            If None, uses default path from DARTS paths. Defaults to None.
+        no_raw_data_store (bool): If True, processes data in-memory without local storage.
+            Overrides `raw_data_store`. Defaults to False.
+        model_files (Path | list[Path] | None): Path(s) to model file(s) for segmentation.
+            Single Path implies `write_model_outputs=False`.
+            If None, searches default model directory for all .pt files. Defaults to None.
+        output_data_dir (Path | None): Output directory for results.
+            If None, uses `{default_out}/landsat-mosaics`. Defaults to None.
+        arcticdem_dir (Path | None): Directory for ArcticDEM datacube.
+            Will be created/downloaded if needed. If None, uses default path. Defaults to None.
+        tcvis_dir (Path | None): Directory for TCVis data.
+            If None, uses default path. Defaults to None.
+        device (Literal["cuda", "cpu", "auto"] | int | None): Computation device.
+            "cuda" uses GPU 0, int specifies GPU index, "auto" selects free GPU. Defaults to None.
+        ee_project (str | None): Earth Engine project ID.
+            May be omitted if defined in persistent credentials. Defaults to None.
+        ee_use_highvolume (bool): Whether to use EE high-volume server. Defaults to True.
+        tpi_outer_radius (int): Outer radius (m) for TPI calculation. Defaults to 100.
+        tpi_inner_radius (int): Inner radius (m) for TPI calculation. Defaults to 0.
+        patch_size (int): Patch size for inference. Defaults to 1024.
+        overlap (int): Overlap between patches. Defaults to 256.
+        batch_size (int): Batch size for inference. Defaults to 8.
+        reflection (int): Reflection padding for inference. Defaults to 0.
+        binarization_threshold (float): Threshold for binarizing probabilities. Defaults to 0.5.
+        mask_erosion_size (int): Disk size for mask erosion and inner edge cropping. Defaults to 10.
+        edge_erosion_size (int | None): Size for outer edge cropping.
+            If None, uses `mask_erosion_size`. Defaults to None.
+        min_object_size (int): Minimum object size (pixels) to keep. Defaults to 32.
+        quality_level (int | Literal["high_quality", "low_quality", "none"]): Quality filtering level.
+            0="none", 1="low_quality", 2="high_quality". Defaults to 1.
+        export_bands (list[str]): Bands to export.
+            Can include "probabilities", "binarized", "polygonized", "extent", "thumbnail",
+            "optical", "dem", "tcvis", "metadata", or specific band names.
+            Defaults to ["probabilities", "binarized", "polygonized", "extent", "thumbnail"].
+        write_model_outputs (bool): Save individual model outputs (not just ensemble).
+            Defaults to False.
+        overwrite (bool): Overwrite existing output files. Defaults to False.
+        offline (bool): Skip downloading missing data. Requires pre-downloaded data. Defaults to False.
+        debug_data (bool): Write intermediate debugging data to output directory. Defaults to False.
+        aws_profile_name (str): AWS profile name for Copernicus S3 authentication. Defaults to "default".
+        bands_mapping (dict[str, str] | Literal["all"]): Mapping of Landsat band names to custom names.
+            Use "all" to load all optical bands and the clear_sky_mask. Defaults to "all".
+
+    """
+
+    # Mosaic selection
+    mosaic_ids: list[str] | None = None
+    mosaic_id_file: Path | None = None
+    tile_ids: list[str] | None = None
+    aoi_file: Path | None = None
+    # Mosaic selection filters (only used with tile_ids and aoi_file)
+    periods: list[str] | None = None
+    years: list[int] | None = None
+    # For offline use
+    prep_data_mosaic_id_file: Path | None = None
+    raw_data_store: Path | None = None
+    no_raw_data_store: bool = False
+    # Landsat-specific
+    aws_profile_name: str = "default"
+    bands_mapping: dict[str, str] | Literal["all"] = "all"
+
+    def __post_init__(self):  # noqa: D105
+        super().__post_init__()
+        self.output_data_dir = self.output_data_dir or paths.output_data("landsat-mosaics")
+        self.raw_data_store = self.raw_data_store or paths.output_data("landsat-mosaics-store")
+        if self.no_raw_data_store:
+            self.raw_data_store = None
+
+    def _arcticdem_resolution(self) -> Literal[32]:
+        """Return the ArcticDEM resolution for Landsat (32m)."""
+        return 32
+
+    def _get_tile_id(self, mosaic_id: str) -> str:
+        """Extract a string identifier from a mosaic ID."""
+        return mosaic_id
+
+    def _warn_invalid_selectors(self):
+        """Warn if multiple mosaic selection methods are provided."""
+        selectors = ["mosaic_ids", "mosaic_id_file", "tile_ids", "aoi_file"]
+        user_selectors = [s for s in selectors if getattr(self, s) is not None]
+        if len(user_selectors) > 1:
+            logger.warning(
+                f"Multiple mosaic selection methods provided: {user_selectors}. "
+                "Using only the first one in the order of mosaic_ids, mosaic_id_file, tile_ids, aoi_file."
+            )
+
+    def _get_mosaic_ids(self) -> list[str]:
+        """Get mosaic IDs based on selection method."""
+        from darts_acquisition import (
+            get_cdse_landsat_mosaic_ids_from_geodataframe,
+            get_cdse_landsat_mosaic_ids_from_tile_ids,
+        )
+
+        # Logic:
+        # Offline: Check for prep_data_mosaic_id_file first, then mosaic_ids, then mosaic_id_file,
+        # raise error if tile_ids or aoi_file used
+        # Online: Check for mosaic_ids first, then mosaic_id_file, then tile_ids, then aoi_file
+
+        if self.offline and self.prep_data_mosaic_id_file is not None and self.prep_data_mosaic_id_file.exists():
+            logger.debug(f"Using mosaic id file at {self.prep_data_mosaic_id_file=} for offline processing.")
+            mosaic_ids: list[str] = json.loads(self.prep_data_mosaic_id_file.read_text())
+            return mosaic_ids
+
+        self._warn_invalid_selectors()
+
+        if self.mosaic_ids is not None:
+            logger.debug(f"Using {len(self.mosaic_ids)} provided mosaic ids for processing.")
+            return self.mosaic_ids
+        elif self.mosaic_id_file is not None:
+            logger.debug(f"Loading mosaic ids from file {self.mosaic_id_file=}.")
+            mosaic_ids: list[str] = json.loads(self.mosaic_id_file.read_text())
+            return mosaic_ids
+        elif self.tile_ids is not None:
+            logger.debug(f"Getting mosaic ids from {len(self.tile_ids)} tile ids via CDSE.")
+            mosaic_ids = get_cdse_landsat_mosaic_ids_from_tile_ids(
+                self.tile_ids,
+                periods=self.periods,
+                years=self.years,
+            ).keys()
+        elif self.aoi_file is not None:
+            logger.debug(f"Getting mosaic ids from AOI file {self.aoi_file=} via CDSE.")
+            mosaic_ids = get_cdse_landsat_mosaic_ids_from_geodataframe(
+                self.aoi_file,
+                periods=self.periods,
+                years=self.years,
+            ).keys()
+        else:
+            logger.error("No valid mosaic selection method provided.")
+            raise ValueError("No valid mosaic selection method provided.")
+
+        mosaic_ids = sorted(set(mosaic_ids))
+
+        # Note: This only happens if tile_ids or aoi_file were used
+        if self.prep_data_mosaic_id_file is not None:
+            logger.debug(f"Storing mosaic ids to file {self.prep_data_mosaic_id_file=} for offline processing.")
+            self.prep_data_mosaic_id_file.write_text(json.dumps(mosaic_ids))
+
+        return mosaic_ids
+
+    def _tileinfos(self) -> list[tuple[str, Path]]:
+        """Generate list of tiles to process."""
+        out = []
+        for mosaic_id in self._get_mosaic_ids():
+            outpath = self.output_data_dir / mosaic_id
+            out.append((mosaic_id, outpath))
+        out.sort()
+        return out
+
+    def _tile_aoi(self) -> "gpd.GeoDataFrame":
+        """Return a GeoDataFrame representing the area of interest for all mosaics."""
+        import geopandas as gpd
+        from darts_acquisition import get_aoi_from_cdse_mosaic_ids
+
+        assert not self.offline, "AOI extraction not possible in offline mode without aoi_file."
+
+        if self.mosaic_ids is not None:
+            mosaic_ids = self.mosaic_ids
+        elif self.mosaic_id_file is not None:
+            mosaic_ids = json.loads(self.mosaic_id_file.read_text())
+        elif self.aoi_file is not None:
+            return gpd.read_file(self.aoi_file).to_crs("EPSG:4326")
+        else:
+            raise ValueError("No valid mosaic selection method provided.")
+
+        return get_aoi_from_cdse_mosaic_ids(mosaic_ids)
+
+    def _download_tile(self, mosaic_id: str):
+        """Download a Landsat mosaic from CDSE."""
+        from darts_acquisition import download_cdse_landsat_mosaic
+
+        raw_data_store = self.raw_data_store or paths.output_data("landsat-mosaics-store")
+        return download_cdse_landsat_mosaic(
+            mosaic_id,
+            store=raw_data_store,
+            bands_mapping=self.bands_mapping,
+            aws_profile_name=self.aws_profile_name,
+        )
+
+    def _load_tile(self, mosaic_id: str) -> "xr.Dataset":
+        """Load optical data for a Landsat mosaic."""
+        from darts_acquisition import load_cdse_landsat_mosaic
+
+        output_dir_for_debug_geotiff = None
+        if self.debug_data:
+            output_dir_for_debug_geotiff = self.output_data_dir / mosaic_id
+
+        return load_cdse_landsat_mosaic(
+            mosaic_id,
+            bands_mapping=self.bands_mapping,
+            store=self.raw_data_store,
+            aws_profile_name=self.aws_profile_name,
+            offline=self.offline,
+            output_dir_for_debug_geotiff=output_dir_for_debug_geotiff,
+            device=self.device,
+        )
+
+    @staticmethod
+    def cli_prepare_data(*, pipeline: "LandsatPipeline", optical: bool = False, aux: bool = False, force: bool = False):
+        """Download all necessary data for offline processing.
+
+        Queries CDSE for mosaic IDs and downloads optical and/or auxiliary data.
+        Stores mosaic IDs in `prep_data_mosaic_id_file` if specified for later offline use.
+
+        Args:
+            pipeline: Configured LandsatPipeline instance.
+            optical: If True, downloads Landsat mosaic imagery. Defaults to False.
+            aux: If True, downloads auxiliary data (ArcticDEM, TCVis). Defaults to False.
+            force: If True, downloads all possible data, independent of `optical` and `aux` flags or model needs.
+                Defaults to False.
+
+        """
+        assert not pipeline.offline, "Pipeline must be online to prepare data for offline usage."
+        pipeline.__post_init__()
+        logger.debug(f"Preparing data with {optical=}, {aux=}.")
+        if pipeline.prep_data_mosaic_id_file is not None:
+            if pipeline.prep_data_mosaic_id_file.exists():
+                logger.warning(
+                    f"Prep-data mosaic id file {pipeline.prep_data_mosaic_id_file=} already exists. "
+                    "It will be overwritten."
+                )
+                pipeline.prep_data_mosaic_id_file.unlink()
+        pipeline.prepare_data(optical=optical, aux=aux, force=force)
+
+    @staticmethod
+    def cli(*, pipeline: "LandsatPipeline"):
+        """Run the sequential pipeline for Landsat mosaics.
+
+        Args:
+            pipeline: Configured LandsatPipeline instance.
+
+        """
+        pipeline.__post_init__()
+        pipeline.run()

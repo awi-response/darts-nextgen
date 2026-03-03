@@ -18,12 +18,7 @@ from darts_segmentation.training import (
 from darts_utils.paths import paths
 
 from darts import __version__
-from darts.pipelines import (
-    PlanetPipeline,
-    PlanetRayPipeline,
-    Sentinel2Pipeline,
-    Sentinel2RayPipeline,
-)
+from darts.pipelines import LandsatPipeline, PlanetPipeline, PlanetRayPipeline, Sentinel2Pipeline, Sentinel2RayPipeline
 from darts.pipelines.sequential_v2 import PipelineV2Paths
 from darts.training import (
     preprocess_planet_train_data,
@@ -109,6 +104,7 @@ app.command(inference_app)
 sequential_group = cyclopts.Group.create_ordered("Sequential Pipelines")
 inference_app.command(name="sentinel2-sequential", group=sequential_group)(Sentinel2Pipeline.cli)
 inference_app.command(name="planet-sequential", group=sequential_group)(PlanetPipeline.cli)
+inference_app.command(name="landsat-sequential", group=sequential_group)(LandsatPipeline.cli)
 ray_group = cyclopts.Group.create_ordered("Ray Pipelines")
 inference_app.command(name="sentinel2-ray", group=ray_group)(Sentinel2RayPipeline.cli)
 inference_app.command(name="planet-ray", group=ray_group)(PlanetRayPipeline.cli)
@@ -119,6 +115,7 @@ inference_data_app = cyclopts.App(name="prep-data", group=utilities_group, help=
 inference_app.command(inference_data_app)
 inference_data_app.command(name="sentinel2")(Sentinel2Pipeline.cli_prepare_data)
 inference_data_app.command(name="planet")(PlanetPipeline.cli_prepare_data)
+inference_data_app.command(name="landsat")(LandsatPipeline.cli_prepare_data)
 
 training_app = cyclopts.App(name="training", group=subcommands_group, help="Predefined training pipelines")
 app.command(training_app)

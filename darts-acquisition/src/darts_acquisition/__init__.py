@@ -5,6 +5,27 @@ import importlib.metadata
 from darts_acquisition.admin import download_admin_files as download_admin_files
 from darts_acquisition.arcticdem import download_arcticdem as download_arcticdem
 from darts_acquisition.arcticdem import load_arcticdem as load_arcticdem
+from darts_acquisition.landsat import (
+    download_cdse_landsat_mosaic as download_cdse_landsat_mosaic,
+)
+from darts_acquisition.landsat import (
+    get_aoi_from_cdse_mosaic_ids,
+)
+from darts_acquisition.landsat import (
+    get_cdse_landsat_mosaic_ids_from_geodataframe as get_cdse_landsat_mosaic_ids_from_geodataframe,
+)
+from darts_acquisition.landsat import (
+    get_cdse_landsat_mosaic_ids_from_tile_ids as get_cdse_landsat_mosaic_ids_from_tile_ids,
+)
+from darts_acquisition.landsat import (
+    load_cdse_landsat_mosaic as load_cdse_landsat_mosaic,
+)
+from darts_acquisition.landsat import (
+    match_cdse_landsat_mosaic_ids_from_geodataframe as match_cdse_landsat_mosaic_ids_from_geodataframe,
+)
+from darts_acquisition.landsat import (
+    search_cdse_landsat_mosaic as search_cdse_landsat_mosaic,
+)
 from darts_acquisition.planet import get_planet_geometry as get_planet_geometry
 from darts_acquisition.planet import load_planet_masks as load_planet_masks
 from darts_acquisition.planet import load_planet_scene as load_planet_scene
