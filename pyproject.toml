@@ -24,7 +24,8 @@ dependencies = [
     "pystac-client>=0.8.6",
     "odc-geo>=0.4.8",
     "odc-stac[botocore]>=0.5.1",
-    "smart-geocubes[stac,gee]>=0.0.8,<0.0.10",
+    # "smart-geocubes[stac,gee]>=0.0.8,<0.0.10",
+    "smart-geocubes[stac,gee]",
     "toml>=0.10.2",
     "zarr>=3.0.8,<3.1.0",
     # Processing
@@ -200,6 +201,8 @@ conflicts = [
 ]
 
 [tool.uv.sources]
+#smart-geocubes = { git = "git+https://git@github.com/iona5/smart-geocubes.git", branch = "fixes_0.0.9" }
+smart-geocubes = { git = "git+https://git@github.com/iona5/smart-geocubes.git", tag = "v0.0.9b" }
 # cupy-cuda11x = { url="https://github.com/cupy/cupy/releases/download/v14.0.0a1/cupy_cuda11x-14.0.0a1-cp312-cp312-manylinux2014_x86_64.whl" }
 # cupy-cuda12x = { url="https://github.com/cupy/cupy/releases/download/v14.0.0a1/cupy_cuda12x-14.0.0a1-cp312-cp312-manylinux2014_x86_64.whl" }
 
@@ -276,11 +279,6 @@ members = ["darts-*"]
 # [tool.pixi.pypi-dependencies]
 # darts-nextgen = { path = ".", editable = true }
 #
-# [tool.pixi.feature.cuda118]
-# channels = ["nvidia", "conda-forge"]
-# platforms = ["linux-64", "win-64"]
-# dependencies = { cuda = {version = "11.8.*", channel = "nvidia"} }
-#
 # [tool.pixi.feature.cuda121]
 # channels = ["nvidia", "conda-forge"]
 # platforms = ["linux-64", "win-64"]
@@ -294,7 +292,6 @@ members = ["darts-*"]
 # [tool.pixi.environments]
 # default = { solve-group = "default" }
 # cpu = { features = ["cpu"], solve-group = "default" }
-# cuda118 = { features = ["cuda118"], solve-group = "cuda118" }
 # cuda121 = { features = ["cuda121"], solve-group = "cuda121" }
 # cuda126 = { features = ["cuda126"], solve-group = "cuda126" }
 # dev = { features = ["dev"], solve-group = "default" }

@@ -252,6 +252,7 @@ def preprocess_v2(
             ds_arcticdem = ds_arcticdem.odc.reproject(
                 ds_optical.odc.geobox.buffered(tpi_outer_radius), resampling="cubic"
             )
+            ds_arcticdem = ds_arcticdem.odc.assign_crs(ds_optical.odc.crs)
         # Move to same device as optical
         ds_arcticdem = move_to_device(ds_arcticdem, device)
 
