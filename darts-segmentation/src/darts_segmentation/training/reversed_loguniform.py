@@ -1,9 +1,11 @@
+"""Reversed log-uniform distribution for sampling hyperparameters."""
+
 import numpy as np
 import scipy.stats
 from scipy.stats._distn_infrastructure import rv_continuous
 
 
-class reversed_loguniform_gen(rv_continuous):
+class reversed_loguniform_gen(rv_continuous):  # noqa: N801
     r"""A reversed log-uniform continuous random variable.
 
     This distribution has equal probability density on a logarithmic scale

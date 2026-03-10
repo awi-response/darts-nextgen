@@ -35,12 +35,12 @@ def get_augmentation(augment: list[Augmentation] | None, always_apply: bool = Fa
             This is useful for visualization/testing augmentations.
             Default is False.
 
-    Raises:
-        ValueError: If an unknown augmentation is provided.
-
     Returns:
         A.Compose | None: A Compose object containing the augmentations.
             If no augmentations are provided, returns None.
+
+    Raises:
+        ValueError: If an unknown augmentation is provided.
 
     """
     import albumentations as A  # noqa: N812

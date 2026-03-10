@@ -136,7 +136,7 @@ def calculate_grvi(optical: xr.Dataset) -> xr.DataArray:
 
 
 def calculate_vigreen(optical: xr.Dataset) -> xr.DataArray:
-    """Alias for VIGREEN (Vegetation Index Green) from an xarray Dataset containing spectral bands."""  # noqa: DOC201
+    """Alias for VIGREEN (Vegetation Index Green) from an xarray Dataset containing spectral bands."""
     logger.warning("VIGREEN is an alias for GRVI, using GRVI calculation.")
     return calculate_grvi(optical)
 
@@ -522,7 +522,7 @@ def calculate_gli(optical: xr.Dataset) -> xr.DataArray:
 
 
 def calculate_vdvi(optical: xr.Dataset) -> xr.DataArray:
-    """Alias for GLI (Green Leaf Index) from an xarray Dataset containing spectral bands."""  # noqa: DOC201
+    """Alias for GLI (Green Leaf Index) from an xarray Dataset containing spectral bands."""
     logger.warning("VDVI is an alias for GLI, using GLI calculation.")
     return calculate_gli(optical)
 

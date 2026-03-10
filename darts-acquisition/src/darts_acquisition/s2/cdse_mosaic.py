@@ -71,12 +71,12 @@ def _cdse_query_controlled(search: ItemSearch) -> list[Item]:
     Args:
         search (ItemSearch): The PySTAC-Client search object
 
+    Returns:
+        list[Item]: the resulting items.
+
     Raises:
         APIError: if a non-429 status code error occurs during the STAC query.
         DartsAcquisitionError: if the maximum queries are exhausted.
-
-    Returns:
-        list[Item]: the resulting items.
 
     """
     query_ctr = 0
@@ -583,8 +583,8 @@ def get_cdse_s2_mosaic_ids_from_geodataframe(
     return s2items
 
 
-@stopwatch("Getting AOI from CDSE mosaic IDs", printer=logger.debug)
-def get_aoi_from_cdse_mosaic_ids(
+@stopwatch("Getting AOI from Sentinel-2 CDSE mosaic IDs", printer=logger.debug)
+def get_aoi_from_cdse_s2_mosaic_ids(
     mosaic_ids: list[str],
 ) -> gpd.GeoDataFrame:
     """Get the area of interest (AOI) as a GeoDataFrame from a list of Sentinel-2 mosaic IDs.
@@ -632,13 +632,13 @@ def match_cdse_s2_mosaic_ids_from_geodataframe(
             Defaults to False.
         save_scores (Path | None, optional): If provided, the scores will be saved to this path as a Parquet file.
 
-    Raises:
-        ValueError: If the 'date' column is not present or not of type datetime.
-
     Returns:
         dict[int, Item | None]: A dictionary mapping each row to its best matching Sentinel-2 item.
             The keys are the indices of the rows in the GeoDataFrame, and the values are the matching Sentinel-2 items.
             If no matching item is found, the value will be None.
+
+    Raises:
+        ValueError: If the 'date' column is not present or not of type datetime.
 
     """
     # Check weather the "date" column is present and of type datetime

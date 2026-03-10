@@ -9,7 +9,7 @@ from darts_acquisition.landsat import (
     download_cdse_landsat_mosaic as download_cdse_landsat_mosaic,
 )
 from darts_acquisition.landsat import (
-    get_aoi_from_cdse_mosaic_ids,
+    get_aoi_from_cdse_landsat_mosaic_ids as get_aoi_from_cdse_landsat_mosaic_ids,
 )
 from darts_acquisition.landsat import (
     get_cdse_landsat_mosaic_ids_from_geodataframe as get_cdse_landsat_mosaic_ids_from_geodataframe,
@@ -34,7 +34,7 @@ from darts_acquisition.s2.cdse_mosaic import (
     download_cdse_s2_mosaic as download_cdse_s2_mosaic,
 )
 from darts_acquisition.s2.cdse_mosaic import (
-    get_aoi_from_cdse_mosaic_ids as get_aoi_from_cdse_mosaic_ids,
+    get_aoi_from_cdse_s2_mosaic_ids as get_aoi_from_cdse_s2_mosaic_ids,
 )
 from darts_acquisition.s2.cdse_mosaic import (
     get_cdse_s2_mosaic_ids_from_geodataframe as get_cdse_s2_mosaic_ids_from_geodataframe,
@@ -52,7 +52,7 @@ from darts_acquisition.s2.cdse_mosaic import (
     search_cdse_s2_mosaic as search_cdse_s2_mosaic,
 )
 from darts_acquisition.s2.cdse_scene import download_cdse_s2_sr_scene as download_cdse_s2_sr_scene
-from darts_acquisition.s2.cdse_scene import get_aoi_from_cdse_scene_ids as get_aoi_from_cdse_scene_ids
+from darts_acquisition.s2.cdse_scene import get_aoi_from_cdse_s2_sr_scene_ids as get_aoi_from_cdse_s2_sr_scene_ids
 from darts_acquisition.s2.cdse_scene import (
     get_cdse_s2_sr_scene_ids_from_geodataframe as get_cdse_s2_sr_scene_ids_from_geodataframe,
 )
