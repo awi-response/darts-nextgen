@@ -45,7 +45,8 @@ def _get_band_mapping(bands_mapping: dict[str, str] | Literal["all"]) -> dict[st
             "B01": "blue",
             "B02": "green",
             "B03": "red",
-            "B04": "nir08",
+            # "B04": "nir08",
+            "B04": "nir",
             "B05": "swir16",
             "B06": "swir22",
             "B07": "lwir12",
@@ -484,7 +485,7 @@ def search_cdse_landsat_mosaic(
         if periods is None:
             periods = all_periods
         if years is None:
-            years = list(range(2017, 2026))
+            years = list(range(1997, 2024))
         found_items = set()
         for year in years:
             for period in periods:

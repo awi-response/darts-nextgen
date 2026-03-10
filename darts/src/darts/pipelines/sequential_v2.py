@@ -325,6 +325,8 @@ class _BasePipeline(ABC):
                 accessor = smart_geocubes.ArcticDEM2m(self.arcticdem_dir)
             elif arcticdem_resolution == 10:
                 accessor = smart_geocubes.ArcticDEM10m(self.arcticdem_dir)
+            else:
+                accessor = smart_geocubes.ArcticDEM32m(self.arcticdem_dir)
             if not accessor.created:
                 accessor.create(overwrite=False)
         if tcvis:
