@@ -426,7 +426,7 @@ def _build_cql2_filter(
     return filter
 
 
-@stopwatch("Searching for Sentinel-2 scenes in CDSE", printer=logger.debug)
+@stopwatch("Searching for Sentinel-2 SR scenes in CDSE", printer=logger.debug)
 def search_cdse_s2_sr(
     intersects=None,
     tiles: list[str] | None = None,
@@ -525,7 +525,7 @@ def search_cdse_s2_sr(
     return {item.id: item for item in found_items}
 
 
-@stopwatch("Searching for Sentinel-2 scenes in CDSE from Tile-IDs", printer=logger.debug)
+@stopwatch("Searching for Sentinel-2 SR scenes in CDSE from Tile-IDs", printer=logger.debug)
 def get_cdse_s2_sr_scene_ids_from_tile_ids(
     tile_ids: list[str],
     start_date: str | None = None,
@@ -569,7 +569,7 @@ def get_cdse_s2_sr_scene_ids_from_tile_ids(
     )
 
 
-@stopwatch("Searching for Sentinel-2 scenes in CDSE from AOI", printer=logger.debug)
+@stopwatch("Searching for Sentinel-2 SR scenes in CDSE from AOI", printer=logger.debug)
 def get_cdse_s2_sr_scene_ids_from_geodataframe(
     aoi: gpd.GeoDataFrame | Path | str,
     start_date: str | None = None,
@@ -629,8 +629,8 @@ def get_cdse_s2_sr_scene_ids_from_geodataframe(
     return s2items
 
 
-@stopwatch("Getting AOI from CDSE scene IDs", printer=logger.debug)
-def get_aoi_from_cdse_scene_ids(
+@stopwatch("Getting AOI from CDSE Sentinel-2 SR scene IDs", printer=logger.debug)
+def get_aoi_from_cdse_s2_sr_scene_ids(
     scene_ids: list[str],
 ) -> gpd.GeoDataFrame:
     """Get the area of interest (AOI) as a GeoDataFrame from a list of Sentinel-2 scene IDs.
@@ -660,7 +660,7 @@ def get_aoi_from_cdse_scene_ids(
     return gdf
 
 
-@stopwatch("Matching Sentinel-2 scenes in CDSE from AOI", printer=logger.debug)
+@stopwatch("Matching Sentinel-2 SR scenes in CDSE from AOI", printer=logger.debug)
 def match_cdse_s2_sr_scene_ids_from_geodataframe(
     aoi: gpd.GeoDataFrame,
     day_range: int = 60,
@@ -683,13 +683,13 @@ def match_cdse_s2_sr_scene_ids_from_geodataframe(
             Defaults to False.
         save_scores (Path | None, optional): If provided, the scores will be saved to this path as a Parquet file.
 
-    Raises:
-        ValueError: If the 'date' column is not present or not of type datetime.
-
     Returns:
         dict[int, Item | None]: A dictionary mapping each row to its best matching Sentinel-2 item.
             The keys are the indices of the rows in the GeoDataFrame, and the values are the matching Sentinel-2 items.
             If no matching item is found, the value will be None.
+
+    Raises:
+        ValueError: If the 'date' column is not present or not of type datetime.
 
     """
     # Check weather the "date" column is present and of type datetime

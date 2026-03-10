@@ -1,6 +1,7 @@
 """Sentinel-2 related data loading. Should be used temporary and maybe moved to the acquisition package."""
 
 import logging
+import random
 import time
 from collections.abc import MutableMapping
 from pathlib import Path
@@ -15,16 +16,20 @@ import xarray as xr
 from darts_utils.cuda import DEFAULT_DEVICE, move_to_device, move_to_host
 from odc.stac import stac_load
 from pystac import Item
-from pystac_client import Client
+from pystac_client import Client, ItemSearch
+from pystac_client.exceptions import APIError
 from stopuhr import stopwatch
 from zarr.codecs import BloscCodec
 
+from darts_acquisition.exceptions import DartsAcquisitionError
 from darts_acquisition.s2.debug_export import save_debug_geotiff
 from darts_acquisition.s2.quality_mask import create_quality_mask_from_observations
 from darts_acquisition.s2.raw_data_store import StoreManager
 from darts_acquisition.utils.copernicus import init_copernicus
 
 logger = logging.getLogger(__name__.replace("darts_", "darts."))
+
+CDSE_MAX_RETRIES = 30
 
 
 def _flatten_dict(d: MutableMapping, parent_key: str = "", sep: str = ".") -> MutableMapping:
@@ -54,6 +59,42 @@ def _get_band_mapping(bands_mapping: dict[str, str] | Literal["all"]) -> dict[st
     if "observations" not in bands_mapping.keys():
         bands_mapping["observations"] = "s2_observations"
     return bands_mapping
+
+
+def _cdse_query_controlled(search: ItemSearch) -> list[Item]:
+    """Query the CDSE STAC catalogue reacting to rate limitations.
+
+    If the CDSE server returns a "rate limit exceeded" error, wait
+    a random amount of seconds untile querying again. With each round,
+    we may wait a longer time.
+
+    Args:
+        search (ItemSearch): The PySTAC-Client search object
+
+    Returns:
+        list[Item]: the resulting items.
+
+    Raises:
+        APIError: if a non-429 status code error occurs during the STAC query.
+        DartsAcquisitionError: if the maximum queries are exhausted.
+
+    """
+    query_ctr = 0
+    random.seed("".join([str(p) for p in search.get_parameters().values()]) + str(time.time()))
+    while query_ctr < CDSE_MAX_RETRIES:
+        try:
+            return list(search.items())
+        except APIError as e:
+            if e.status_code == 429:  # rate limit exceeded
+                query_ctr += 1
+                sleep_time = random.randint(query_ctr, 10 + query_ctr * 5)
+
+                logger.info(f"CDSE query rate limit exceeded, retrying after {sleep_time} seconds.")
+                time.sleep(sleep_time)
+            else:
+                raise
+
+    raise DartsAcquisitionError(f"CDSE request failed after {query_ctr} tries")
 
 
 class CDSEMosaicStoreManager(StoreManager[Item]):
@@ -454,7 +495,9 @@ def search_cdse_s2_mosaic(
                     datetime=f"{year}-{month:02d}",
                     filter=cql2_filter,
                 )
-                found_items.update(list(search.items()))
+
+                found_items.update(_cdse_query_controlled(search))
+
     else:
         search = catalog.search(
             collections=["sentinel-2-global-mosaics"],
@@ -540,8 +583,8 @@ def get_cdse_s2_mosaic_ids_from_geodataframe(
     return s2items
 
 
-@stopwatch("Getting AOI from CDSE mosaic IDs", printer=logger.debug)
-def get_aoi_from_cdse_mosaic_ids(
+@stopwatch("Getting AOI from Sentinel-2 CDSE mosaic IDs", printer=logger.debug)
+def get_aoi_from_cdse_s2_mosaic_ids(
     mosaic_ids: list[str],
 ) -> gpd.GeoDataFrame:
     """Get the area of interest (AOI) as a GeoDataFrame from a list of Sentinel-2 mosaic IDs.
@@ -589,13 +632,13 @@ def match_cdse_s2_mosaic_ids_from_geodataframe(
             Defaults to False.
         save_scores (Path | None, optional): If provided, the scores will be saved to this path as a Parquet file.
 
-    Raises:
-        ValueError: If the 'date' column is not present or not of type datetime.
-
     Returns:
         dict[int, Item | None]: A dictionary mapping each row to its best matching Sentinel-2 item.
             The keys are the indices of the rows in the GeoDataFrame, and the values are the matching Sentinel-2 items.
             If no matching item is found, the value will be None.
+
+    Raises:
+        ValueError: If the 'date' column is not present or not of type datetime.
 
     """
     # Check weather the "date" column is present and of type datetime

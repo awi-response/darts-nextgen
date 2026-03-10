@@ -45,7 +45,8 @@ def _get_band_mapping(bands_mapping: dict[str, str] | Literal["all"]) -> dict[st
             "B01": "blue",
             "B02": "green",
             "B03": "red",
-            "B04": "nir08",
+            # "B04": "nir08",
+            "B04": "nir",
             "B05": "swir16",
             "B06": "swir22",
             "B07": "lwir12",
@@ -484,7 +485,7 @@ def search_cdse_landsat_mosaic(
         if periods is None:
             periods = all_periods
         if years is None:
-            years = list(range(2017, 2026))
+            years = list(range(1997, 2024))
         found_items = set()
         for year in years:
             for period in periods:
@@ -579,8 +580,8 @@ def get_cdse_landsat_mosaic_ids_from_geodataframe(
     return landsat_items
 
 
-@stopwatch("Getting AOI from CDSE mosaic IDs", printer=logger.debug)
-def get_aoi_from_cdse_mosaic_ids(
+@stopwatch("Getting AOI from CDSE Landsat mosaic IDs", printer=logger.debug)
+def get_aoi_from_cdse_landsat_mosaic_ids(
     mosaic_ids: list[str],
 ) -> gpd.GeoDataFrame:
     """Get the area of interest (AOI) as a GeoDataFrame from a list of Landsat mosaic IDs.
@@ -611,7 +612,7 @@ def get_aoi_from_cdse_mosaic_ids(
 
 
 @stopwatch("Matching Landsat mosaics in CDSE from AOI", printer=logger.debug)
-def match_cdse_landsat_mosaic_ids_from_geodataframe(
+def match_cdse_landsat_mosaic_ids_from_geodataframe(  # noqa: C901
     aoi: gpd.GeoDataFrame,
     min_intersects: float = 0.7,
     simplify_geometry: float | Literal[False] = False,
@@ -628,13 +629,13 @@ def match_cdse_landsat_mosaic_ids_from_geodataframe(
             Defaults to False.
         save_scores (Path | None, optional): If provided, the scores will be saved to this path as a Parquet file.
 
-    Raises:
-        ValueError: If the 'date' column is not present or not of type datetime.
-
     Returns:
         dict[int, Item | None]: A dictionary mapping each row to its best matching Landsat item.
             The keys are the indices of the rows in the GeoDataFrame, and the values are the matching Landsat items.
             If no matching item is found, the value will be None.
+
+    Raises:
+        ValueError: If the 'date' column is not present or not of type datetime.
 
     """
     # Check weather the "date" column is present and of type datetime

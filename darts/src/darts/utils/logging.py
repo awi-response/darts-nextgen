@@ -198,7 +198,7 @@ class LoggingManagerSingleton:
 
         if verbosity >= VerbosityLevel.DEBUG:
             debug_modules = [
-                "smarts_geocubes",
+                "smart_geocubes",
             ]
             module_level = logging.DEBUG if verbosity >= VerbosityLevel.VERBOSE else logging.INFO
             self.apply_logging_handlers(*debug_modules, level=module_level)

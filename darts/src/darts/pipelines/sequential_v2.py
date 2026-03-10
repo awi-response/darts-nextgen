@@ -325,6 +325,8 @@ class _BasePipeline(ABC):
                 accessor = smart_geocubes.ArcticDEM2m(self.arcticdem_dir)
             elif arcticdem_resolution == 10:
                 accessor = smart_geocubes.ArcticDEM10m(self.arcticdem_dir)
+            else:
+                accessor = smart_geocubes.ArcticDEM32m(self.arcticdem_dir)
             if not accessor.created:
                 accessor.create(overwrite=False)
         if tcvis:
@@ -369,7 +371,7 @@ class _BasePipeline(ABC):
         needs_tcvis = len(required_bands.intersection(tcvis_bands)) > 0
         return needs_arcticdem, needs_tcvis
 
-    def prepare_data(self, optical: bool = False, aux: bool = False, force: bool = False):
+    def prepare_data(self, optical: bool = False, aux: bool = False, force: bool = False):  # noqa: C901
         """Download and prepare data for offline processing.
 
         Validates configuration, determines data requirements from models,
@@ -1095,13 +1097,13 @@ class Sentinel2Pipeline(_BasePipeline):
             raise ValueError("No valid scene selection method provided.")
 
         if self.raw_data_source == "cdse":
-            from darts_acquisition import get_aoi_from_cdse_scene_ids
+            from darts_acquisition import get_aoi_from_cdse_s2_sr_scene_ids
 
-            return get_aoi_from_cdse_scene_ids(s2ids)
+            return get_aoi_from_cdse_s2_sr_scene_ids(s2ids)
         elif self.raw_data_source == "cdse-mosaic":
-            from darts_acquisition import get_aoi_from_cdse_mosaic_ids
+            from darts_acquisition import get_aoi_from_cdse_s2_mosaic_ids
 
-            return get_aoi_from_cdse_mosaic_ids(s2ids)
+            return get_aoi_from_cdse_s2_mosaic_ids(s2ids)
         elif self.raw_data_source == "gee":
             from darts_acquisition import get_aoi_from_gee_scene_ids
 
@@ -1406,7 +1408,7 @@ class LandsatPipeline(_BasePipeline):
     def _tile_aoi(self) -> "gpd.GeoDataFrame":
         """Return a GeoDataFrame representing the area of interest for all mosaics."""
         import geopandas as gpd
-        from darts_acquisition import get_aoi_from_cdse_mosaic_ids
+        from darts_acquisition import get_aoi_from_cdse_landsat_mosaic_ids
 
         assert not self.offline, "AOI extraction not possible in offline mode without aoi_file."
 
@@ -1419,7 +1421,7 @@ class LandsatPipeline(_BasePipeline):
         else:
             raise ValueError("No valid mosaic selection method provided.")
 
-        return get_aoi_from_cdse_mosaic_ids(mosaic_ids)
+        return get_aoi_from_cdse_landsat_mosaic_ids(mosaic_ids)
 
     def _download_tile(self, mosaic_id: str):
         """Download a Landsat mosaic from CDSE."""

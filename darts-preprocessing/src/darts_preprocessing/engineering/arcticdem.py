@@ -40,13 +40,13 @@ class Distance:
             v (int | float | str): The input distance value.
             res (float): The resolution in meters per pixel.
 
+        Returns:
+            Distance: The parsed distance in pixels and meters.
+
         Raises:
             ValueError: If the input distance is negative.
             ValueError: If the input distance is not a valid string format.
             TypeError: If the input distance is not a string, int, or float.
-
-        Returns:
-            Distance: The parsed distance in pixels and meters.
 
         """
         if isinstance(v, str):

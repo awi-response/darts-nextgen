@@ -35,45 +35,45 @@ unstable_run_info_selective = {
 @pytest.mark.parametrize("direction", ["", ":higher", ":lower"])
 def test_single_scoring(direction: Literal["", ":higher", ":lower"]):
     score = score_from_runs(run_infos, "val/JaccardIndex" + direction)
-    assert round(score, 3) == 0.718
+    assert round(score, 3) == pytest.approx(0.718)
 
     score = score_from_runs(run_infos, "val/Recall" + direction)
-    assert round(score, 3) == 0.803
+    assert round(score, 3) == pytest.approx(0.803)
 
     score = score_from_runs(run_infos, "val/loss" + direction)
-    assert round(score, 3) == 0.883
+    assert round(score, 3) == pytest.approx(0.883)
 
 
 def test_multiple_scoring_harmonic():
     score = score_from_runs(run_infos, ["val/JaccardIndex", "val/Recall"], "harmonic")
-    assert round(score, 3) == 0.758
+    assert round(score, 3) == pytest.approx(0.758)
 
     score = score_from_runs(run_infos, ["val/JaccardIndex:higher", "val/Recall:higher", "val/loss:lower"], "harmonic")
-    assert round(score, 3) == 0.893
+    assert round(score, 3) == pytest.approx(0.893)
 
 
 def test_multiple_scoring_arithmetic():
     score = score_from_runs(run_infos, ["val/JaccardIndex", "val/Recall"], "arithmetic")
-    assert round(score, 3) == 0.761
+    assert round(score, 3) == pytest.approx(0.761)
 
     score = score_from_runs(run_infos, ["val/JaccardIndex:higher", "val/Recall:higher", "val/loss:lower"], "arithmetic")
-    assert round(score, 3) == 1.467
+    assert round(score, 3) == pytest.approx(1.467)
 
 
 def test_multiple_scoring_geometric():
     score = score_from_runs(run_infos, ["val/JaccardIndex", "val/Recall"], "geometric")
-    assert round(score, 3) == 0.760
+    assert round(score, 3) == pytest.approx(0.760)
 
     score = score_from_runs(run_infos, ["val/JaccardIndex:higher", "val/Recall:higher", "val/loss:lower"], "geometric")
-    assert round(score, 3) == 1.064
+    assert round(score, 3) == pytest.approx(1.064)
 
 
 def test_multiple_scoring_min():
     score = score_from_runs(run_infos, ["val/JaccardIndex", "val/Recall"], "min")
-    assert round(score, 3) == 0.718
+    assert round(score, 3) == pytest.approx(0.718)
 
     score = score_from_runs(run_infos, ["val/JaccardIndex:higher", "val/Recall:higher", "val/loss:lower"], "min")
-    assert round(score, 3) == 0.663
+    assert round(score, 3) == pytest.approx(0.663)
 
 
 def test_single_stable():

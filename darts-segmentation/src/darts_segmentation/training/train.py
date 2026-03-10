@@ -182,11 +182,11 @@ class LoggingConfig:
             cv_name (str | None): Name of the cross-validation.
             tune_name (str | None): Name of the tuning.
 
-        Raises:
-            ValueError: If tune_name is specified, but cv_name is not, which is invalid.
-
         Returns:
             Path: The nested artifact directory path.
+
+        Raises:
+            ValueError: If tune_name is specified, but cv_name is not, which is invalid.
 
         """
         artifact_dir = self.artifact_dir or paths.artifacts
