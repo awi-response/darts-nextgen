@@ -29,13 +29,13 @@ def _validate_and_get_accessor(
             assert "2m" in data_dir.stem and "32m" not in data_dir.stem, (
                 f"Data directory {data_dir} must have a '2m' in the name!"
             )
-            accessor = smart_geocubes.ArcticDEM2m(data_dir)
+            accessor = smart_geocubes.ArcticDEM2m(data_dir, backend="simple")
         case 10:
             assert "10m" in data_dir.stem, f"Data directory {data_dir} must have a '10m' in the name!"
-            accessor = smart_geocubes.ArcticDEM10m(data_dir)
+            accessor = smart_geocubes.ArcticDEM10m(data_dir, backend="simple")
         case 32:
             assert "32m" in data_dir.stem, f"Data directory {data_dir} must have a '32m' in the name!"
-            accessor = smart_geocubes.ArcticDEM32m(data_dir)
+            accessor = smart_geocubes.ArcticDEM32m(data_dir, backend="simple")
         case _:
             raise ValueError(f"Resolution {resolution} not supported, only 2m, 10m and 32m are supported")
     accessor.assert_created()
@@ -116,11 +116,11 @@ def load_arcticdem(
 
     accessor = _validate_and_get_accessor(data_dir, resolution)
 
+    reference_geobox = geobox.to_crs(accessor.extent.crs, resolution=accessor.extent.resolution.x).pad(buffer)
     if not offline:
-        arcticdem = accessor.load(geobox, buffer=buffer, persist=True)
+        arcticdem = accessor.load(reference_geobox, persist=True)
     else:
         xrcube = accessor.open_xarray()
-        reference_geobox = geobox.to_crs(accessor.extent.crs, resolution=accessor.extent.resolution.x).pad(buffer)
         arcticdem = xrcube.odc.crop(reference_geobox.extent, apply_mask=False)
         arcticdem = arcticdem.load()
 
@@ -184,4 +184,4 @@ def download_arcticdem(
     """
     odc.stac.configure_rio(cloud_defaults=True, aws={"aws_unsigned": True})
     accessor = _validate_and_get_accessor(data_dir, resolution)
-    accessor.download(aoi)
+    accessor.procedural_download(aoi, None)

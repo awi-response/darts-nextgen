@@ -205,6 +205,21 @@ class _BasePipeline(ABC):
         pass
 
     @abstractmethod
+    def _tileyear(self, tilekey: Any) -> int:
+        """Return the year of the tile data to load.
+
+        This is needed to determine which TCVis datacube to load.
+
+        Args:
+            tilekey: The tilekey (e.g., file path or scene ID).
+
+        Returns:
+            The year of the tile data (e.g., 2020).
+
+        """
+        pass
+
+    @abstractmethod
     def _load_tile(self, tileinfo: Any) -> "xr.Dataset":
         """Load optical data for a given tile.
 
@@ -421,7 +436,14 @@ class _BasePipeline(ABC):
                 if needs_arcticdem:
                     logger.info("start download ArcticDEM")
                     with timer("Downloading ArcticDEM"):
-                        download_arcticdem(aoi, self.arcticdem_dir, resolution=self._arcticdem_resolution())
+                        # Buffer the AOI by the maximum needed TPI radius to avoid edge effects in preprocessing
+                        arcticdem_resolution = self._arcticdem_resolution()
+                        buffer = ceil(self.tpi_outer_radius / arcticdem_resolution * sqrt(2))
+                        download_arcticdem(
+                            aoi.to_crs("epsg:3413").buffer(buffer),
+                            self.arcticdem_dir,
+                            resolution=self._arcticdem_resolution(),
+                        )
                 if needs_tcvis:
                     logger.info("start download TCVIS")
                     init_ee(self.ee_project, self.ee_use_highvolume)
@@ -550,7 +572,8 @@ class _BasePipeline(ABC):
 
                 if needs_tcvis:
                     with timer("Loading TCVis", log=False):
-                        tcvis = load_tcvis(tile.odc.geobox, self.tcvis_dir, offline=self.offline)
+                        year = self._tileyear(tilekey)
+                        tcvis = load_tcvis(tile.odc.geobox, year, self.tcvis_dir, offline=self.offline)
                 else:
                     tcvis = None
 
@@ -743,6 +766,23 @@ class PlanetPipeline(_BasePipeline):
             out.append((fpath.resolve(), outpath))
         out.sort()
         return out
+
+    def _tileyear(self, tilekey: Path) -> int:
+        from darts_acquisition import parse_planet_type
+
+        try:
+            fpath = tilekey
+            planet_type = parse_planet_type(fpath)
+            scene_id = fpath.name
+            if planet_type == "orthotile":
+                year = int(scene_id.split("_")[2][:4])
+            else:
+                year = int(scene_id[:4])
+            return year
+        except Exception as e:
+            logger.error("Could not parse Planet tile-year. Please check the input data.")
+            logger.exception(e)
+            raise e
 
     def _tile_aoi(self) -> "gpd.GeoDataFrame":
         import geopandas as gpd
@@ -1072,6 +1112,17 @@ class Sentinel2Pipeline(_BasePipeline):
             out.append((s2id, outpath))
         out.sort()
         return out
+
+    def _tileyear(self, tilekey):
+        if self.raw_data_source == "gee":
+            return int(tilekey[:4])
+        elif self.raw_data_source == "cdse":
+            return int(tilekey.split("_")[2][:4])
+        elif self.raw_data_source == "cdse-mosaic":
+            return int(tilekey.split("_")[2])
+        else:
+            logger.error("No valid raw data source provided.")
+            raise ValueError("No valid raw data source provided.")
 
     def _tile_aoi(self) -> "gpd.GeoDataFrame":
         import geopandas as gpd

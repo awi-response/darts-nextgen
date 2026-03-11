@@ -8,7 +8,7 @@ dependencies = [
     "cyclopts>=3.1.0,<4.0.0",
     "lovely-numpy>=0.2.13",
     "setuptools>=75.5.0",
-    "stopuhr>=0.0.10",
+    "stopuhr>=0.0.11",
     "names-generator>=0.2.0",
     # IO
     "boto3>=1.37.7",
@@ -24,10 +24,11 @@ dependencies = [
     "pystac-client>=0.8.6",
     "odc-geo>=0.4.8",
     "odc-stac[botocore]>=0.5.1",
-    # "smart-geocubes[stac,gee]>=0.0.8,<0.0.10",
-    "smart-geocubes[stac,gee]",
+    "filelock>=3.18.0",
+    "cql2>=0.4.0",
+    "smart-geocubes[stac,gee]>=0.1.4,<0.2",
     "toml>=0.10.2",
-    "zarr>=3.0.8,<3.1.0",
+    "zarr>=3.1.4,<3.2",
     # Processing
     "albumentations>=1.4.21",
     "scikit-image>=0.20",
@@ -58,10 +59,6 @@ dependencies = [
     "darts-segmentation",
     "darts-superresolution",
     "darts-utils",
-    "filelock>=3.18.0",
-    "cql2>=0.4.0",
-    "ultraplot>=1.65.1",
-    "pypalettes>=0.2.1",
 ]
 readme = "README.md"
 requires-python = ">= 3.12, < 3.13"
@@ -144,7 +141,7 @@ darts = "darts.cli:start_app"
 dev = [
     "ipykernel>=6.29.5",
     "matplotlib>=3.9.2",
-    "ruff>=0.14.0",
+    "ruff>=0.15.5",
     "pyright>=1.1.384",
     "pytest>=8",
     "ipywidgets>=8.1.5",
@@ -152,6 +149,9 @@ dev = [
     "mapclassify>=2.8.1",
     "nbconvert>=7.16.6",
     "pyperclip>=1.9.0",
+    "ultraplot>=1.65.1",
+    "pypalettes>=0.2.1",
+    "ty>=0.0.21",
 ]
 
 docs = [
@@ -201,11 +201,6 @@ conflicts = [
 ]
 
 [tool.uv.sources]
-#smart-geocubes = { git = "git+https://git@github.com/iona5/smart-geocubes.git", branch = "fixes_0.0.9" }
-smart-geocubes = { git = "git+https://git@github.com/iona5/smart-geocubes.git", tag = "v0.0.9b" }
-# cupy-cuda11x = { url="https://github.com/cupy/cupy/releases/download/v14.0.0a1/cupy_cuda11x-14.0.0a1-cp312-cp312-manylinux2014_x86_64.whl" }
-# cupy-cuda12x = { url="https://github.com/cupy/cupy/releases/download/v14.0.0a1/cupy_cuda12x-14.0.0a1-cp312-cp312-manylinux2014_x86_64.whl" }
-
 cupy-xarray = { git = "https://github.com/xarray-contrib/cupy-xarray", branch = "main" }
 torch = [
   { index = "pytorch-cpu", extra = "cpu" },

@@ -297,6 +297,7 @@ def preprocess_s2_train_data(  # noqa: C901
     import xarray as xr
     from botocore.exceptions import ProfileNotFound
     from darts_acquisition import (
+        create_tcvis_datacubes,
         load_arcticdem,
         load_cdse_s2_sr_scene,
         load_tcvis,
@@ -320,12 +321,10 @@ def preprocess_s2_train_data(  # noqa: C901
 
     # Create the datacubes if they do not exist
     LoggingManager.apply_logging_handlers("smart_geocubes")
-    accessor = smart_geocubes.ArcticDEM10m(arcticdem_dir)
+    accessor = smart_geocubes.ArcticDEM10m(arcticdem_dir, backend="simple")
     if not accessor.created:
         accessor.create(overwrite=False)
-    accessor = smart_geocubes.TCTrend(tcvis_dir)
-    if not accessor.created:
-        accessor.create(overwrite=False)
+    create_tcvis_datacubes(years=[2019, 2020, 2022, 2024], data_dir=tcvis_dir)
 
     labels = (gpd.read_file(labels_file) for labels_file in labels_dir.glob("*/TrainingLabel*.gpkg"))
     labels = gpd.GeoDataFrame(pd.concat(labels, ignore_index=True))
@@ -422,6 +421,7 @@ def preprocess_s2_train_data(  # noqa: C901
             s2_item = Item.from_dict(s2_item)
 
         s2_id = s2_item.id
+        year = int(s2_id.split("_")[2][:4])
         planet_id = footprint.image_id
         info_id = f"footprint {idx}: {s2_id=} -> {planet_id=} ({i + 1} of {len(footprints)})"
         try:
@@ -451,7 +451,7 @@ def preprocess_s2_train_data(  # noqa: C901
                 arcticdem = load_arcticdem(
                     s2ds.odc.geobox, arcticdem_dir, resolution=arctidem_res, buffer=arcticdem_buffer
                 )
-                tcvis = load_tcvis(s2ds.odc.geobox, tcvis_dir)
+                tcvis = load_tcvis(s2ds.odc.geobox, year, tcvis_dir)
 
                 s2ds: xr.Dataset = preprocess_v2(
                     s2ds,
@@ -493,6 +493,7 @@ def preprocess_s2_train_data(  # noqa: C901
                         "planet_id": planet_id,
                         "s2_id": s2_id,
                         "fpath": footprint.fpath,
+                        "year": year,
                         **offsets_info,
                     },
                 )

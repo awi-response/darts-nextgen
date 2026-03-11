@@ -74,6 +74,7 @@ from darts_acquisition.s2.gee_scene import (
 )
 from darts_acquisition.s2.gee_scene import load_gee_s2_sr_scene as load_gee_s2_sr_scene
 from darts_acquisition.s2.grid import download_sentinel_2_grid as download_sentinel_2_grid
+from darts_acquisition.tcvis import create_tcvis_datacubes as create_tcvis_datacubes
 from darts_acquisition.tcvis import download_tcvis as download_tcvis
 from darts_acquisition.tcvis import load_tcvis as load_tcvis
 
