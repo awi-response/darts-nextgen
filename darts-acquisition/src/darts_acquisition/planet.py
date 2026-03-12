@@ -260,6 +260,7 @@ def load_planet_masks(fpath: str | Path) -> xr.Dataset:
 
     # See udm classes here: https://developers.planet.com/docs/data/udm-2/
     da_udm = xr.open_dataarray(udm_path).astype("uint8")
+    crs = da_udm.odc.geobox.crs
     invalids = da_udm.sel(band=8).fillna(0) != 0
     low_quality = da_udm.sel(band=[2, 3, 4, 5, 6]).max(axis=0) == 1
     high_quality = ~low_quality & ~invalids
@@ -271,6 +272,7 @@ def load_planet_masks(fpath: str | Path) -> xr.Dataset:
         .to_dataset(name="quality_data_mask")
         .drop_vars("band")
     )
+    qa_ds = qa_ds.odc.assign_crs(crs)
     qa_ds["planet_udm"] = da_udm
 
     qa_ds["quality_data_mask"].attrs = {
