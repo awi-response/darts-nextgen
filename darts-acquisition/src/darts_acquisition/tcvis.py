@@ -25,15 +25,19 @@ def _get_accessor_from_year(
         " Providing the store directly is legacy behaviour!"
     )
     if year <= 2019:
+        logger.debug(f"Using TCTrend2019 for {year=}")
         data_dir = data_dir / "TCTrend2019.icechunk"
         accessor = smart_geocubes.TCTrend2019(data_dir, create_icechunk_storage=False, backend="simple")
     elif year == 2020:
+        logger.debug(f"Using TCTrend2020 for {year=}")
         data_dir = data_dir / "TCTrend2020.icechunk"
         accessor = smart_geocubes.TCTrend2020(data_dir, create_icechunk_storage=False, backend="simple")
     elif year in [2021, 2022]:
+        logger.debug(f"Using TCTrend2022 for {year=}")
         data_dir = data_dir / "TCTrend2022.icechunk"
         accessor = smart_geocubes.TCTrend2022(data_dir, create_icechunk_storage=False, backend="simple")
     elif year >= 2023:
+        logger.debug(f"Using TCTrend2024 for {year=}")
         data_dir = data_dir / "TCTrend2024.icechunk"
         accessor = smart_geocubes.TCTrend2024(data_dir, create_icechunk_storage=False, backend="simple")
 

@@ -136,6 +136,7 @@ class _BasePipeline(ABC):
     model_files: list[Path] = None
     default_dirs: DefaultPaths = field(default_factory=lambda: DefaultPaths())
     output_data_dir: Path | None = None
+    metadata_dir: Path | None = None
     arcticdem_dir: Path | None = None
     tcvis_dir: Path | None = None
     device: Literal["cuda", "cpu", "auto"] | int | None = None
@@ -168,6 +169,8 @@ class _BasePipeline(ABC):
         self.arcticdem_dir = self.arcticdem_dir or paths.arcticdem(self._arcticdem_resolution())
         self.tcvis_dir = self.tcvis_dir or paths.tcvis()
         self.edge_erosion_size = self.edge_erosion_size or self.mask_erosion_size
+        current_time = time.strftime("%Y-%m-%d_%H-%M-%S")
+        self.metadata_dir = self.metadata_dir / current_time or self.output_data_dir / f"_metadata_{current_time}"
 
     @abstractmethod
     def _arcticdem_resolution(self) -> Literal[2, 10, 32]:
@@ -293,21 +296,17 @@ class _BasePipeline(ABC):
         if len(self.export_bands) == 0:
             raise ValueError("No export bands provided. Please provide a list of export bands.")
 
-    def _dump_config(self) -> str:
+    def _dump_config(self):
         """Save pipeline configuration to TOML file.
 
-        Creates a timestamped configuration file in the output directory.
-
-        Returns:
-            Timestamp string used for the configuration filename.
-
+        Creates a configuration file in the metadata directory.
         """
         current_time = time.strftime("%Y-%m-%d_%H-%M-%S")
         logger.info(f"Starting pipeline at {current_time}.")
 
         # Storing the configuration as TOML file
-        self.output_data_dir.mkdir(parents=True, exist_ok=True)
-        with open(self.output_data_dir / f"{current_time}.config.toml", "w") as f:
+        self.metadata_dir.mkdir(parents=True, exist_ok=True)
+        with open(self.metadata_dir / "config.toml", "w") as f:
             config = asdict(self)
             # Convert everything to toml serializable
             for key, value in config.items():
@@ -318,7 +317,6 @@ class _BasePipeline(ABC):
                 elif is_dataclass(value):
                     config[key] = asdict(value)
             toml.dump(config, f)
-        return current_time
 
     def _create_auxiliary_datacubes(self, arcticdem: bool = True, tcvis: bool = True):
         """Create auxiliary data datacubes if they don't exist.
@@ -504,7 +502,7 @@ class _BasePipeline(ABC):
 
         """
         self._validate()
-        current_time = self._dump_config()
+        self._dump_config()
 
         from darts.utils.cuda import debug_info
 
@@ -647,11 +645,11 @@ class _BasePipeline(ABC):
                 )
             finally:
                 if len(results) > 0:
-                    pd.DataFrame(results).to_parquet(self.output_data_dir / f"{current_time}.results.parquet")
+                    pd.DataFrame(results).to_parquet(self.metadata_dir / "results.parquet")
                 if len(timer.durations) > 0:
-                    timer.export().to_parquet(self.output_data_dir / f"{current_time}.timer.parquet")
+                    timer.export().to_parquet(self.metadata_dir / "timer.parquet")
                 if len(stopwatch.durations) > 0:
-                    stopwatch.export().to_parquet(self.output_data_dir / f"{current_time}.stopwatch.parquet")
+                    stopwatch.export().to_parquet(self.metadata_dir / "stopwatch.parquet")
         else:
             logger.info(f"Processed {n_tiles} tiles to {self.output_data_dir.resolve()}.")
             timer.summary(printer=logger.info)
