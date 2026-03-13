@@ -928,6 +928,7 @@ torchdeps = [
     { name = "torchvision", version = "0.23.0+cu128", source = { registry = "https://download.pytorch.org/whl/cu128" }, marker = "(extra == 'extra-13-darts-nextgen-cpu' and extra == 'extra-13-darts-nextgen-cuda121') or (extra == 'extra-13-darts-nextgen-cpu' and extra == 'extra-13-darts-nextgen-cuda124') or (extra == 'extra-13-darts-nextgen-cpu' and extra == 'extra-13-darts-nextgen-cuda126') or (extra == 'extra-13-darts-nextgen-cuda121' and extra == 'extra-13-darts-nextgen-cuda124') or (extra == 'extra-13-darts-nextgen-cuda121' and extra == 'extra-13-darts-nextgen-cuda126') or (extra == 'extra-13-darts-nextgen-cuda124' and extra == 'extra-13-darts-nextgen-cuda126') or (extra != 'extra-13-darts-nextgen-cuda126' and extra == 'extra-13-darts-nextgen-cuda128') or (extra != 'extra-13-darts-nextgen-cpu' and extra != 'extra-13-darts-nextgen-cuda121' and extra != 'extra-13-darts-nextgen-cuda124' and extra == 'extra-13-darts-nextgen-cuda128')" },
 ]
 training = [
+    { name = "expecttest" },
     { name = "lightning" },
     { name = "optuna" },
     { name = "psycopg2-binary" },
@@ -1002,6 +1003,7 @@ requires-dist = [
     { name = "datashader", specifier = ">=0.16.3" },
     { name = "distributed", specifier = ">=2024.12.0" },
     { name = "earthengine-api", specifier = ">=1.1.5" },
+    { name = "expecttest", marker = "extra == 'training'", specifier = ">=0.3.0" },
     { name = "filelock", specifier = ">=3.18.0" },
     { name = "folium", specifier = ">=0.18.0" },
     { name = "geocube", specifier = ">=0.7.0" },
@@ -1322,6 +1324,15 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/cc/28/c14e053b6762b1044f34a13aab6859bbf40456d37d23aa286ac24cfd9a5d/executing-2.2.1.tar.gz", hash = "sha256:3632cc370565f6648cc328b32435bd120a1e4ebb20c77e3fdde9a13cd1e533c4", size = 1129488, upload-time = "2025-09-01T09:48:10.866Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/c1/ea/53f2148663b321f21b5a606bd5f191517cf40b7072c0497d3c92c4a13b1e/executing-2.2.1-py2.py3-none-any.whl", hash = "sha256:760643d3452b4d777d295bb167ccc74c64a81df23fb5e08eff250c425a4b2017", size = 28317, upload-time = "2025-09-01T09:48:08.5Z" },
+]
+
+[[package]]
+name = "expecttest"
+version = "0.3.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/22/0a/8868083a2b25c28811a88da6a4cb561f84feab0c9fa953c45820a3eb3a65/expecttest-0.3.0.tar.gz", hash = "sha256:6e8512fb86523ada1f94fd1b14e280f924e379064bb8a29ee399950e513eeccd", size = 7742, upload-time = "2024-12-11T15:32:15.72Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/27/fb/deeefea1ea549273817ca7bed3db2f39cc238a75a745a20e3651619f7335/expecttest-0.3.0-py3-none-any.whl", hash = "sha256:60f88103086e1754240b42175f622be83b6ffeac419434691ee5a5be819d0544", size = 8238, upload-time = "2024-12-11T15:32:13.523Z" },
 ]
 
 [[package]]
