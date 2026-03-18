@@ -170,7 +170,11 @@ class _BasePipeline(ABC):
         self.tcvis_dir = self.tcvis_dir or paths.tcvis()
         self.edge_erosion_size = self.edge_erosion_size or self.mask_erosion_size
         current_time = time.strftime("%Y-%m-%d_%H-%M-%S")
-        self.metadata_dir = self.metadata_dir / current_time or self.output_data_dir / f"_metadata_{current_time}"
+        self.metadata_dir = (
+            self.metadata_dir / current_time
+            if self.metadata_dir is not None
+            else self.output_data_dir / f"_metadata_{current_time}"
+        )
 
     @abstractmethod
     def _arcticdem_resolution(self) -> Literal[2, 10, 32]:
@@ -406,7 +410,7 @@ class _BasePipeline(ABC):
 
         # ? We only want to download stuff - no need for using the GPU here
         self.device = "cpu"
-        current_time = self._dump_config()
+        self._dump_config()
 
         from darts_acquisition import download_arcticdem, download_tcvis
         from stopuhr import Chronometer, stopwatch
@@ -473,9 +477,9 @@ class _BasePipeline(ABC):
                 logger.info(f"Downloaded {n_tiles} tiles.")
 
         if len(timer.durations) > 0:
-            timer.export().to_parquet(self.output_data_dir / f"{current_time}.timer.parquet")
+            timer.export().to_parquet(self.metadata_dir / "prepare.timer.parquet")
         if len(stopwatch.durations) > 0:
-            stopwatch.export().to_parquet(self.output_data_dir / f"{current_time}.stopwatch.parquet")
+            stopwatch.export().to_parquet(self.metadata_dir / "prepare.stopwatch.parquet")
         timer.summary()
 
     def run(self):  # noqa: C901
@@ -790,7 +794,8 @@ class PlanetPipeline(_BasePipeline):
         aoi = []
         for fpath, _ in tileinfos:
             geom = get_planet_geometry(fpath)
-            aoi.append({"tilekey": fpath, "geometry": geom.to_crs("EPSG:4326").geom})
+            year = self._tileyear(fpath)
+            aoi.append({"tilekey": fpath, "geometry": geom.to_crs("EPSG:4326").geom, "year": year})
         aoi = gpd.GeoDataFrame(aoi, geometry="geometry", crs="EPSG:4326")
         return aoi
 
@@ -1124,6 +1129,7 @@ class Sentinel2Pipeline(_BasePipeline):
 
     def _tile_aoi(self) -> "gpd.GeoDataFrame":
         import geopandas as gpd
+        import pandas as pd
 
         assert not self.offline, "AOI extraction not possible in offline mode without aoi_file."
 
@@ -1148,15 +1154,21 @@ class Sentinel2Pipeline(_BasePipeline):
         if self.raw_data_source == "cdse":
             from darts_acquisition import get_aoi_from_cdse_s2_sr_scene_ids
 
-            return get_aoi_from_cdse_s2_sr_scene_ids(s2ids)
+            aoi = get_aoi_from_cdse_s2_sr_scene_ids(s2ids)
+            aoi["year"] = pd.to_datetime(aoi["datetime"]).dt.year
+            return aoi
         elif self.raw_data_source == "cdse-mosaic":
             from darts_acquisition import get_aoi_from_cdse_s2_mosaic_ids
 
-            return get_aoi_from_cdse_s2_mosaic_ids(s2ids)
+            aoi = get_aoi_from_cdse_s2_mosaic_ids(s2ids)
+            aoi["year"] = pd.to_datetime(aoi["datetime"]).dt.year
+            return aoi
         elif self.raw_data_source == "gee":
             from darts_acquisition import get_aoi_from_gee_scene_ids
 
-            return get_aoi_from_gee_scene_ids(s2ids)
+            aoi = get_aoi_from_gee_scene_ids(s2ids)
+            aoi["year"] = [int(s2id.split("_")[1][:4]) for s2id in s2ids]
+            return aoi
         else:
             logger.error("No valid scene selection method provided.")
             raise ValueError("No valid scene selection method provided.")
@@ -1457,6 +1469,7 @@ class LandsatPipeline(_BasePipeline):
     def _tile_aoi(self) -> "gpd.GeoDataFrame":
         """Return a GeoDataFrame representing the area of interest for all mosaics."""
         import geopandas as gpd
+        import pandas as pd
         from darts_acquisition import get_aoi_from_cdse_landsat_mosaic_ids
 
         assert not self.offline, "AOI extraction not possible in offline mode without aoi_file."
@@ -1470,7 +1483,9 @@ class LandsatPipeline(_BasePipeline):
         else:
             raise ValueError("No valid mosaic selection method provided.")
 
-        return get_aoi_from_cdse_landsat_mosaic_ids(mosaic_ids)
+        aoi = get_aoi_from_cdse_landsat_mosaic_ids(mosaic_ids)
+        aoi["year"] = pd.to_datetime(aoi["datetime"]).dt.year
+        return aoi
 
     def _download_tile(self, mosaic_id: str):
         """Download a Landsat mosaic from CDSE."""

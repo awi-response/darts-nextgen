@@ -190,8 +190,8 @@ def load_tcvis(
 @stopwatch.f("Downloading TCVIS", printer=logger.debug, print_kwargs=["year", "data_dir"])
 def download_tcvis(
     aoi: gpd.GeoDataFrame,
-    year: int | Literal["all"],
     data_dir: Path | str,
+    year: int | Literal["all"] | None = None,
 ) -> None:
     """Download TCVIS (Tasseled Cap trends) data for the specified area of interest.
 
@@ -202,6 +202,15 @@ def download_tcvis(
         aoi (gpd.GeoDataFrame): Area of interest for which to download TCVIS data.
             Can be in any CRS; will be reprojected to the TCVIS dataset's native CRS.
         data_dir (Path | str): Path to the icechunk data directory (must have .icechunk suffix).
+        year (int | Literal["all"], optional): The year for which to download the TCVIS data.
+            This is used to determine the relevant time period for the trends and the version of TCVIS to download.
+            If "all", downloads all available years (2019, 2020, 2022, 2024).
+            If None will try to extract for each aoi the year from a "year" column if it exists,
+            otherwise defaults to "all".
+            Defaults to None.
+
+    Raises:
+        ValueError: If the `year` parameter is not an int, "all", or if the `data_dir` does not have the correct format.
 
     Note:
         Requires Google Earth Engine authentication to be set up before calling this function.
@@ -229,10 +238,34 @@ def download_tcvis(
         ```
 
     """
+    if year is None:
+        if "year" in aoi.columns:
+            # 2019
+            if (aoi["year"] <= 2019).any():
+                accessor = _get_accessor_from_year(2019, data_dir)
+                accessor.procedural_download(aoi[aoi["year"] <= 2019], None)
+            # 2020
+            if (aoi["year"] == 2020).any():
+                accessor = _get_accessor_from_year(2020, data_dir)
+                accessor.procedural_download(aoi[aoi["year"] == 2020], None)
+            # 2022
+            if (aoi["year"].isin([2021, 2022])).any():
+                accessor = _get_accessor_from_year(2022, data_dir)
+                accessor.procedural_download(aoi[aoi["year"].isin([2021, 2022])], None)
+            # 2024
+            if (aoi["year"] >= 2023).any():
+                accessor = _get_accessor_from_year(2024, data_dir)
+                accessor.procedural_download(aoi[aoi["year"] >= 2023], None)
+            return
+        else:
+            year = "all"
+
     if year == "all":
         years_to_download = [2019, 2020, 2022, 2024]
         for year in years_to_download:
-            download_tcvis(aoi, year, data_dir)
-    else:
+            download_tcvis(aoi, data_dir, year)
+    elif isinstance(year, int):
         accessor = _get_accessor_from_year(year, data_dir)
         accessor.procedural_download(aoi, None)
+    else:
+        raise ValueError(f"Invalid year parameter: {year}. Must be an int or 'all'.")
