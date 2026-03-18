@@ -331,6 +331,7 @@ class _BasePipeline(ABC):
 
         """
         import smart_geocubes
+        from darts_acquisition.tcvis import create_tcvis_datacubes
 
         from darts.utils.logging import LoggingManager
 
@@ -347,9 +348,7 @@ class _BasePipeline(ABC):
             if not accessor.created:
                 accessor.create(overwrite=False)
         if tcvis:
-            accessor = smart_geocubes.TCTrend(self.tcvis_dir)
-            if not accessor.created:
-                accessor.create(overwrite=False)
+            create_tcvis_datacubes([2019, 2020, 2022, 2024], self.tcvis_dir)
 
     def _load_ensemble(self) -> "EnsembleV1":
         """Load and initialize the ensemble of segmentation models.
