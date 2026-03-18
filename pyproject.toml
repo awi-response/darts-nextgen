@@ -61,7 +61,7 @@ dependencies = [
     "darts-utils",
 ]
 readme = "README.md"
-requires-python = ">= 3.12, < 3.13"
+requires-python = "== 3.13.*"
 authors = [
     { name = "Ingmar Nitze", email = "ingmar.nitze@awi.de" },
     { name = "Konrad Heidler", email = "k.heidler@tum.de" },
@@ -95,7 +95,7 @@ torchdeps = [
     "timm>=1.0.13",
 ]
 cuda12deps = [
-    "cucim-cu12>=24.8",
+    "cucim-cu12>=26.2.1",
     "cupy-cuda12x>=14.0.0",
     "cupy-xarray",
     "cuda-python>=12.6.2.post1",
@@ -106,11 +106,11 @@ cpu = [
     "torchvision>=0.20.0,<0.24.0",
     "darts-nextgen[torchdeps]"
 ]
-cuda121 = [
-    "torch>=2.2.0",
-    "torchvision>=0.20.0,<0.24.0",
-    "darts-nextgen[torchdeps, cuda12deps]"
-]
+#cuda121 = [
+#    "torch>=2.2.0",
+#    "torchvision>=0.20.0,<0.24.0",
+#    "darts-nextgen[torchdeps, cuda12deps]"
+#]
 cuda124 = [
     "torch>=2.2.0",
     "torchvision>=0.20.0,<0.24.0",
@@ -194,7 +194,7 @@ style = "semver"
 conflicts = [
   [
     { extra = "cpu" },
-    { extra = "cuda121" },
+    #{ extra = "cuda121" },
     { extra = "cuda124" },
     { extra = "cuda126" },
     { extra = "cuda128" },
@@ -205,14 +205,14 @@ conflicts = [
 cupy-xarray = { git = "https://github.com/xarray-contrib/cupy-xarray", branch = "main" }
 torch = [
   { index = "pytorch-cpu", extra = "cpu" },
-  { index = "pytorch-cu121", extra = "cuda121" },
+  #{ index = "pytorch-cu121", extra = "cuda121" },
   { index = "pytorch-cu124", extra = "cuda124" },
   { index = "pytorch-cu126", extra = "cuda126" },
   { index = "pytorch-cu128", extra = "cuda128" },
 ]
 torchvision = [
   { index = "pytorch-cpu", extra = "cpu" },
-  { index = "pytorch-cu121", extra = "cuda121" },
+  #{ index = "pytorch-cu121", extra = "cuda121" },
   { index = "pytorch-cu124", extra = "cuda124" },
   { index = "pytorch-cu126", extra = "cuda126" },
   { index = "pytorch-cu128", extra = "cuda128" },
