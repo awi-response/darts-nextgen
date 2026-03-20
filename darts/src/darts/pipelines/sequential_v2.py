@@ -136,6 +136,7 @@ class _BasePipeline(ABC):
     model_files: list[Path] = None
     default_dirs: DefaultPaths = field(default_factory=lambda: DefaultPaths())
     output_data_dir: Path | None = None
+    metadata_dir: Path | None = None
     arcticdem_dir: Path | None = None
     tcvis_dir: Path | None = None
     device: Literal["cuda", "cpu", "auto"] | int | None = None
@@ -168,6 +169,12 @@ class _BasePipeline(ABC):
         self.arcticdem_dir = self.arcticdem_dir or paths.arcticdem(self._arcticdem_resolution())
         self.tcvis_dir = self.tcvis_dir or paths.tcvis()
         self.edge_erosion_size = self.edge_erosion_size or self.mask_erosion_size
+        current_time = time.strftime("%Y-%m-%d_%H-%M-%S")
+        self.metadata_dir = (
+            self.metadata_dir / current_time
+            if self.metadata_dir is not None
+            else self.output_data_dir / f"_metadata_{current_time}"
+        )
 
     @abstractmethod
     def _arcticdem_resolution(self) -> Literal[2, 10, 32]:
@@ -200,6 +207,21 @@ class _BasePipeline(ABC):
             List of tuples containing:
                 - tilekey: Anything needed to load the tile (e.g., path or tile ID)
                 - output_path: Path to the output directory for this tile
+
+        """
+        pass
+
+    @abstractmethod
+    def _tileyear(self, tilekey: Any) -> int:
+        """Return the year of the tile data to load.
+
+        This is needed to determine which TCVis datacube to load.
+
+        Args:
+            tilekey: The tilekey (e.g., file path or scene ID).
+
+        Returns:
+            The year of the tile data (e.g., 2020).
 
         """
         pass
@@ -278,21 +300,17 @@ class _BasePipeline(ABC):
         if len(self.export_bands) == 0:
             raise ValueError("No export bands provided. Please provide a list of export bands.")
 
-    def _dump_config(self) -> str:
+    def _dump_config(self):
         """Save pipeline configuration to TOML file.
 
-        Creates a timestamped configuration file in the output directory.
-
-        Returns:
-            Timestamp string used for the configuration filename.
-
+        Creates a configuration file in the metadata directory.
         """
         current_time = time.strftime("%Y-%m-%d_%H-%M-%S")
         logger.info(f"Starting pipeline at {current_time}.")
 
         # Storing the configuration as TOML file
-        self.output_data_dir.mkdir(parents=True, exist_ok=True)
-        with open(self.output_data_dir / f"{current_time}.config.toml", "w") as f:
+        self.metadata_dir.mkdir(parents=True, exist_ok=True)
+        with open(self.metadata_dir / "config.toml", "w") as f:
             config = asdict(self)
             # Convert everything to toml serializable
             for key, value in config.items():
@@ -303,7 +321,6 @@ class _BasePipeline(ABC):
                 elif is_dataclass(value):
                     config[key] = asdict(value)
             toml.dump(config, f)
-        return current_time
 
     def _create_auxiliary_datacubes(self, arcticdem: bool = True, tcvis: bool = True):
         """Create auxiliary data datacubes if they don't exist.
@@ -314,6 +331,7 @@ class _BasePipeline(ABC):
 
         """
         import smart_geocubes
+        from darts_acquisition.tcvis import create_tcvis_datacubes
 
         from darts.utils.logging import LoggingManager
 
@@ -330,9 +348,7 @@ class _BasePipeline(ABC):
             if not accessor.created:
                 accessor.create(overwrite=False)
         if tcvis:
-            accessor = smart_geocubes.TCTrend(self.tcvis_dir)
-            if not accessor.created:
-                accessor.create(overwrite=False)
+            create_tcvis_datacubes([2019, 2020, 2022, 2024], self.tcvis_dir)
 
     def _load_ensemble(self) -> "EnsembleV1":
         """Load and initialize the ensemble of segmentation models.
@@ -393,7 +409,7 @@ class _BasePipeline(ABC):
 
         # ? We only want to download stuff - no need for using the GPU here
         self.device = "cpu"
-        current_time = self._dump_config()
+        self._dump_config()
 
         from darts_acquisition import download_arcticdem, download_tcvis
         from stopuhr import Chronometer, stopwatch
@@ -421,7 +437,14 @@ class _BasePipeline(ABC):
                 if needs_arcticdem:
                     logger.info("start download ArcticDEM")
                     with timer("Downloading ArcticDEM"):
-                        download_arcticdem(aoi, self.arcticdem_dir, resolution=self._arcticdem_resolution())
+                        # Buffer the AOI by the maximum needed TPI radius to avoid edge effects in preprocessing
+                        arcticdem_resolution = self._arcticdem_resolution()
+                        buffer = ceil(self.tpi_outer_radius / arcticdem_resolution * sqrt(2))
+                        download_arcticdem(
+                            aoi.to_crs("epsg:3413").buffer(buffer),
+                            self.arcticdem_dir,
+                            resolution=self._arcticdem_resolution(),
+                        )
                 if needs_tcvis:
                     logger.info("start download TCVIS")
                     init_ee(self.ee_project, self.ee_use_highvolume)
@@ -453,9 +476,9 @@ class _BasePipeline(ABC):
                 logger.info(f"Downloaded {n_tiles} tiles.")
 
         if len(timer.durations) > 0:
-            timer.export().to_parquet(self.output_data_dir / f"{current_time}.timer.parquet")
+            timer.export().to_parquet(self.metadata_dir / "prepare.timer.parquet")
         if len(stopwatch.durations) > 0:
-            stopwatch.export().to_parquet(self.output_data_dir / f"{current_time}.stopwatch.parquet")
+            stopwatch.export().to_parquet(self.metadata_dir / "prepare.stopwatch.parquet")
         timer.summary()
 
     def run(self):  # noqa: C901
@@ -482,7 +505,7 @@ class _BasePipeline(ABC):
 
         """
         self._validate()
-        current_time = self._dump_config()
+        self._dump_config()
 
         from darts.utils.cuda import debug_info
 
@@ -550,7 +573,8 @@ class _BasePipeline(ABC):
 
                 if needs_tcvis:
                     with timer("Loading TCVis", log=False):
-                        tcvis = load_tcvis(tile.odc.geobox, self.tcvis_dir, offline=self.offline)
+                        year = self._tileyear(tilekey)
+                        tcvis = load_tcvis(tile.odc.geobox, year, self.tcvis_dir, offline=self.offline)
                 else:
                     tcvis = None
 
@@ -624,11 +648,11 @@ class _BasePipeline(ABC):
                 )
             finally:
                 if len(results) > 0:
-                    pd.DataFrame(results).to_parquet(self.output_data_dir / f"{current_time}.results.parquet")
+                    pd.DataFrame(results).to_parquet(self.metadata_dir / "results.parquet")
                 if len(timer.durations) > 0:
-                    timer.export().to_parquet(self.output_data_dir / f"{current_time}.timer.parquet")
+                    timer.export().to_parquet(self.metadata_dir / "timer.parquet")
                 if len(stopwatch.durations) > 0:
-                    stopwatch.export().to_parquet(self.output_data_dir / f"{current_time}.stopwatch.parquet")
+                    stopwatch.export().to_parquet(self.metadata_dir / "stopwatch.parquet")
         else:
             logger.info(f"Processed {n_tiles} tiles to {self.output_data_dir.resolve()}.")
             timer.summary(printer=logger.info)
@@ -744,6 +768,23 @@ class PlanetPipeline(_BasePipeline):
         out.sort()
         return out
 
+    def _tileyear(self, tilekey: Path) -> int:
+        from darts_acquisition import parse_planet_type
+
+        try:
+            fpath = tilekey
+            planet_type = parse_planet_type(fpath)
+            scene_id = fpath.name
+            if planet_type == "orthotile":
+                year = int(scene_id.split("_")[2][:4])
+            else:
+                year = int(scene_id[:4])
+            return year
+        except Exception as e:
+            logger.error("Could not parse Planet tile-year. Please check the input data.")
+            logger.exception(e)
+            raise e
+
     def _tile_aoi(self) -> "gpd.GeoDataFrame":
         import geopandas as gpd
         from darts_acquisition import get_planet_geometry
@@ -752,7 +793,8 @@ class PlanetPipeline(_BasePipeline):
         aoi = []
         for fpath, _ in tileinfos:
             geom = get_planet_geometry(fpath)
-            aoi.append({"tilekey": fpath, "geometry": geom.to_crs("EPSG:4326").geom})
+            year = self._tileyear(fpath)
+            aoi.append({"tilekey": fpath, "geometry": geom.to_crs("EPSG:4326").geom, "year": year})
         aoi = gpd.GeoDataFrame(aoi, geometry="geometry", crs="EPSG:4326")
         return aoi
 
@@ -1073,8 +1115,20 @@ class Sentinel2Pipeline(_BasePipeline):
         out.sort()
         return out
 
+    def _tileyear(self, tilekey):
+        if self.raw_data_source == "gee":
+            return int(tilekey[:4])
+        elif self.raw_data_source == "cdse":
+            return int(tilekey.split("_")[2][:4])
+        elif self.raw_data_source == "cdse-mosaic":
+            return int(tilekey.split("_")[2])
+        else:
+            logger.error("No valid raw data source provided.")
+            raise ValueError("No valid raw data source provided.")
+
     def _tile_aoi(self) -> "gpd.GeoDataFrame":
         import geopandas as gpd
+        import pandas as pd
 
         assert not self.offline, "AOI extraction not possible in offline mode without aoi_file."
 
@@ -1099,15 +1153,21 @@ class Sentinel2Pipeline(_BasePipeline):
         if self.raw_data_source == "cdse":
             from darts_acquisition import get_aoi_from_cdse_s2_sr_scene_ids
 
-            return get_aoi_from_cdse_s2_sr_scene_ids(s2ids)
+            aoi = get_aoi_from_cdse_s2_sr_scene_ids(s2ids)
+            aoi["year"] = pd.to_datetime(aoi["datetime"]).dt.year
+            return aoi
         elif self.raw_data_source == "cdse-mosaic":
             from darts_acquisition import get_aoi_from_cdse_s2_mosaic_ids
 
-            return get_aoi_from_cdse_s2_mosaic_ids(s2ids)
+            aoi = get_aoi_from_cdse_s2_mosaic_ids(s2ids)
+            aoi["year"] = pd.to_datetime(aoi["datetime"]).dt.year
+            return aoi
         elif self.raw_data_source == "gee":
             from darts_acquisition import get_aoi_from_gee_scene_ids
 
-            return get_aoi_from_gee_scene_ids(s2ids)
+            aoi = get_aoi_from_gee_scene_ids(s2ids)
+            aoi["year"] = [int(s2id.split("_")[1][:4]) for s2id in s2ids]
+            return aoi
         else:
             logger.error("No valid scene selection method provided.")
             raise ValueError("No valid scene selection method provided.")
@@ -1408,6 +1468,7 @@ class LandsatPipeline(_BasePipeline):
     def _tile_aoi(self) -> "gpd.GeoDataFrame":
         """Return a GeoDataFrame representing the area of interest for all mosaics."""
         import geopandas as gpd
+        import pandas as pd
         from darts_acquisition import get_aoi_from_cdse_landsat_mosaic_ids
 
         assert not self.offline, "AOI extraction not possible in offline mode without aoi_file."
@@ -1421,7 +1482,9 @@ class LandsatPipeline(_BasePipeline):
         else:
             raise ValueError("No valid mosaic selection method provided.")
 
-        return get_aoi_from_cdse_landsat_mosaic_ids(mosaic_ids)
+        aoi = get_aoi_from_cdse_landsat_mosaic_ids(mosaic_ids)
+        aoi["year"] = pd.to_datetime(aoi["datetime"]).dt.year
+        return aoi
 
     def _download_tile(self, mosaic_id: str):
         """Download a Landsat mosaic from CDSE."""

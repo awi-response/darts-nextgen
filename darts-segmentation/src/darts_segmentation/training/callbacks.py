@@ -192,10 +192,18 @@ class BinarySegmentationMetrics(Callback):
 
             if stage == "fit":
                 # We use sum as a dummy loss function because we don't have a second input available
-                self.pl_module.flops_per_batch = measure_flops(model, sample_forward, loss_fn=torch.Tensor.sum)
+                try:
+                    self.pl_module.flops_per_batch = measure_flops(model, sample_forward, loss_fn=torch.Tensor.sum)
+                except Exception as e:
+                    logger.warning(f"Error occurred while measuring FLOPS: {e}")
+                    self.pl_module.flops_per_batch = 0
             else:
                 # Don't compute backward pass for validation and test
-                self.pl_module.flops_per_batch = measure_flops(model, sample_forward)
+                try:
+                    self.pl_module.flops_per_batch = measure_flops(model, sample_forward)
+                except Exception as e:
+                    logger.warning(f"Error occurred while measuring FLOPS: {e}")
+                    self.pl_module.flops_per_batch = 0
             logger.debug(f"FLOPS per batch: {self.pl_module.flops_per_batch}")
 
         metric_kwargs = {"task": "binary", "validate_args": False, "ignore_index": 2}

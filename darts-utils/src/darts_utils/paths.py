@@ -229,8 +229,9 @@ class PathManagerSingleton:
         logger.debug(f"Using ArcticDEM path for resolution {res}m: {d}")
         return d
 
-    def tcvis(self) -> Path:  # noqa: D102
-        d = (self.aux / "tcvis.icechunk").resolve()
+    def tcvis(self) -> Path:
+        """Links to aux, just exists for backwards compatibility."""
+        d = self.aux.resolve()
         logger.debug(f"Using TCVIS path: {d}")
         return d
 

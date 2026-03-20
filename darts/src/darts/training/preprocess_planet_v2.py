@@ -190,7 +190,14 @@ def preprocess_planet_train_data(  # noqa: C901
     import rich
     import smart_geocubes
     import xarray as xr
-    from darts_acquisition import load_arcticdem, load_planet_masks, load_planet_scene, load_tcvis
+    from darts_acquisition import (
+        create_tcvis_datacubes,
+        load_arcticdem,
+        load_planet_masks,
+        load_planet_scene,
+        load_tcvis,
+        parse_planet_type,
+    )
     from darts_acquisition.admin import download_admin_files
     from darts_preprocessing import preprocess_v2
     from darts_segmentation.training.prepare_training import TrainDatasetBuilder
@@ -209,12 +216,10 @@ def preprocess_planet_train_data(  # noqa: C901
 
     # Create the datacubes if they do not exist
     LoggingManager.apply_logging_handlers("smart_geocubes")
-    accessor = smart_geocubes.ArcticDEM2m(arcticdem_dir)
+    accessor = smart_geocubes.ArcticDEM2m(arcticdem_dir, backend="simple")
     if not accessor.created:
         accessor.create(overwrite=False)
-    accessor = smart_geocubes.TCTrend(tcvis_dir)
-    if not accessor.created:
-        accessor.create(overwrite=False)
+    create_tcvis_datacubes(years=[2019, 2020, 2022, 2024], data_dir=tcvis_dir)
 
     labels = (gpd.read_file(labels_file) for labels_file in labels_dir.glob("*/TrainingLabel*.gpkg"))
     labels = gpd.GeoDataFrame(pd.concat(labels, ignore_index=True))
@@ -273,6 +278,14 @@ def preprocess_planet_train_data(  # noqa: C901
     ):
         planet_id = footprint.image_id
         info_id = f"{idx}: {planet_id=} ({i + 1} of {len(footprint)})"
+
+        scene_id = footprint.fpath.stem
+        planet_type = parse_planet_type(scene_id)
+        if planet_type == "orthotile":
+            year = int(scene_id.split("_")[2][:4])
+        else:
+            year = int(scene_id[:4])
+
         try:
             logger.info(f"Processing sample {info_id}")
 
@@ -289,7 +302,7 @@ def preprocess_planet_train_data(  # noqa: C901
                 arcticdem = load_arcticdem(
                     tile.odc.geobox, arcticdem_dir, resolution=arctidem_res, buffer=arcticdem_buffer
                 )
-                tcvis = load_tcvis(tile.odc.geobox, tcvis_dir)
+                tcvis = load_tcvis(tile.odc.geobox, year, tcvis_dir)
                 data_masks = load_planet_masks(footprint.fpath)
                 tile = xr.merge([tile, data_masks])
 

@@ -2,6 +2,7 @@
 
 import logging
 from pathlib import Path
+from typing import Literal
 
 import geopandas as gpd
 import smart_geocubes
@@ -12,11 +13,86 @@ from stopuhr import stopwatch
 logger = logging.getLogger(__name__.replace("darts_", "darts."))
 
 
-@stopwatch.f("Loading TCVIS", printer=logger.debug, print_kwargs=["data_dir", "buffer", "offline"])
+def _get_accessor_from_year(
+    year: int, data_dir: Path | str
+) -> smart_geocubes.TCTrend2019 | smart_geocubes.TCTrend2020 | smart_geocubes.TCTrend2022 | smart_geocubes.TCTrend2024:
+    if isinstance(data_dir, str):
+        data_dir = Path(data_dir)
+
+    assert ".icechunk" != data_dir.suffix, (
+        f"Data directory {data_dir} must not have an .icechunk suffix!"
+        " It should point to the directory containing the .icechunk store, not the store itself."
+        " Providing the store directly is legacy behaviour!"
+    )
+    if year <= 2019:
+        logger.debug(f"Using TCTrend2019 for {year=}")
+        data_dir = data_dir / "TCTrend2019.icechunk"
+        accessor = smart_geocubes.TCTrend2019(data_dir, create_icechunk_storage=False, backend="simple")
+    elif year == 2020:
+        logger.debug(f"Using TCTrend2020 for {year=}")
+        data_dir = data_dir / "TCTrend2020.icechunk"
+        accessor = smart_geocubes.TCTrend2020(data_dir, create_icechunk_storage=False, backend="simple")
+    elif year in [2021, 2022]:
+        logger.debug(f"Using TCTrend2022 for {year=}")
+        data_dir = data_dir / "TCTrend2022.icechunk"
+        accessor = smart_geocubes.TCTrend2022(data_dir, create_icechunk_storage=False, backend="simple")
+    elif year >= 2023:
+        logger.debug(f"Using TCTrend2024 for {year=}")
+        data_dir = data_dir / "TCTrend2024.icechunk"
+        accessor = smart_geocubes.TCTrend2024(data_dir, create_icechunk_storage=False, backend="simple")
+
+    # We want to assume that the datacube is already created to be save in a multi-process environment
+    accessor.assert_created()
+
+    return accessor
+
+
+def create_tcvis_datacubes(years: list[Literal[2019, 2020, 2022, 2024]], data_dir: Path | str) -> None:
+    """Create the TCVIS datacubes for the given years.
+
+    Should be used in a single-process environment to set up the datacubes for the first time.
+
+    Args:
+        years (list[Literal[2019, 2020, 2022, 2024]]): List of years for which to create the datacubes.
+        data_dir (Path | str): Path to the directory where the datacubes should be created.
+            This should be the directory containing the .icechunk stores, not the stores themselves.
+
+    Example:
+        ```python
+        create_tcvis_datacubes(
+            years=[2019, 2020, 2022, 2024],
+            data_dir="/data/tcvis"
+        )
+        ```
+
+    """
+    if isinstance(data_dir, str):
+        data_dir = Path(data_dir)
+
+    assert ".icechunk" != data_dir.suffix, (
+        f"Data directory {data_dir} must not have an .icechunk suffix!"
+        " It should point to the directory containing the .icechunk store, not the store itself."
+        " Providing the store directly is legacy behaviour!"
+    )
+    for year in years:
+        if year <= 2019:
+            accessor = smart_geocubes.TCTrend2019(data_dir / "TCTrend2019.icechunk", backend="simple")
+        elif year == 2020:
+            accessor = smart_geocubes.TCTrend2020(data_dir / "TCTrend2020.icechunk", backend="simple")
+        elif year in [2021, 2022]:
+            accessor = smart_geocubes.TCTrend2022(data_dir / "TCTrend2022.icechunk", backend="simple")
+        elif year >= 2023:
+            accessor = smart_geocubes.TCTrend2024(data_dir / "TCTrend2024.icechunk", backend="simple")
+
+        if not accessor.created:
+            accessor.create(overwrite=False)
+
+
+@stopwatch.f("Loading TCVIS", printer=logger.debug, print_kwargs=["year", "data_dir", "offline"])
 def load_tcvis(
     geobox: GeoBox,
+    year: int,
     data_dir: Path | str,
-    buffer: int = 0,
     offline: bool = False,
 ) -> xr.Dataset:
     """Load TCVIS (Tasseled Cap trends) for the given geobox, fetch new data from GEE if necessary.
@@ -26,12 +102,23 @@ def load_tcvis(
     The data contains temporal trends in brightness, greenness, and wetness derived from
     Landsat imagery.
 
+    Note:
+        Year mapping to TCVIS versions:
+        - <= 2019 -> TCTrend2019
+        - 2020 -> TCTrend2020
+        - 2021 -> TCTrend2022
+        - 2022 -> TCTrend2022
+        - 2023 -> TCTrend2024
+        - >= 2024 -> TCTrend2024
+
     Args:
         geobox (GeoBox): The geobox for which to load the data. Can be in any CRS.
+        year (int): The year for which to load the TCVIS data.
+            This is used to determine the relevant time period for the trends.
+            As currently only 2019, 2020, 2022 and 2024 TCVIS data is available,
+            the year is used to determine the version of the data to load.
         data_dir (Path | str): Path to the icechunk data directory (must have .icechunk suffix).
             This directory stores downloaded TCVIS data for faster consecutive access.
-        buffer (int, optional): Buffer around the geobox in pixels. The buffer is applied in the
-            TCVIS dataset's native CRS after reprojecting the input geobox. Defaults to 0.
         offline (bool, optional): If True, only loads data already present in the local store
             without attempting any downloads. If False, missing data is downloaded from GEE.
             Defaults to False.
@@ -65,8 +152,8 @@ def load_tcvis(
         # Assume "optical" is a loaded Sentinel-2 dataset
         tcvis = load_tcvis(
             geobox=optical.odc.geobox,
+            year=2019,
             data_dir="/data/tcvis.icechunk",
-            buffer=0,
             offline=False
         )
 
@@ -75,19 +162,18 @@ def load_tcvis(
         ```
 
     """
-    assert ".icechunk" == data_dir.suffix, f"Data directory {data_dir} must have an .icechunk suffix!"
-    accessor = smart_geocubes.TCTrend(data_dir, create_icechunk_storage=False)
-
-    # We want to assume that the datacube is already created to be save in a multi-process environment
-    accessor.assert_created()
+    accessor = _get_accessor_from_year(year, data_dir)
 
     if not offline:
-        tcvis = accessor.load(geobox, buffer=buffer, persist=True)
+        tcvis = accessor.load(geobox, persist=True)
     else:
         xrcube = accessor.open_xarray()
-        reference_geobox = geobox.to_crs(accessor.extent.crs, resolution=accessor.extent.resolution.x).pad(buffer)
+        reference_geobox = geobox.to_crs(accessor.extent.crs, resolution=accessor.extent.resolution.x)
         tcvis = xrcube.odc.crop(reference_geobox.extent, apply_mask=False)
         tcvis = tcvis.load()
+
+    # In case there are any missing values, will them with 0
+    tcvis = tcvis.fillna(0)
 
     # Rename to follow our conventions
     tcvis = tcvis.rename_vars(
@@ -101,10 +187,11 @@ def load_tcvis(
     return tcvis
 
 
-@stopwatch.f("Downloading TCVIS", printer=logger.debug, print_kwargs=["data_dir"])
+@stopwatch.f("Downloading TCVIS", printer=logger.debug, print_kwargs=["year", "data_dir"])
 def download_tcvis(
     aoi: gpd.GeoDataFrame,
     data_dir: Path | str,
+    year: int | Literal["all"] | None = None,
 ) -> None:
     """Download TCVIS (Tasseled Cap trends) data for the specified area of interest.
 
@@ -115,6 +202,15 @@ def download_tcvis(
         aoi (gpd.GeoDataFrame): Area of interest for which to download TCVIS data.
             Can be in any CRS; will be reprojected to the TCVIS dataset's native CRS.
         data_dir (Path | str): Path to the icechunk data directory (must have .icechunk suffix).
+        year (int | Literal["all"], optional): The year for which to download the TCVIS data.
+            This is used to determine the relevant time period for the trends and the version of TCVIS to download.
+            If "all", downloads all available years (2019, 2020, 2022, 2024).
+            If None will try to extract for each aoi the year from a "year" column if it exists,
+            otherwise defaults to "all".
+            Defaults to None.
+
+    Raises:
+        ValueError: If the `year` parameter is not an int, "all", or if the `data_dir` does not have the correct format.
 
     Note:
         Requires Google Earth Engine authentication to be set up before calling this function.
@@ -142,7 +238,34 @@ def download_tcvis(
         ```
 
     """
-    assert ".icechunk" == data_dir.suffix, f"Data directory {data_dir} must have an .icechunk suffix!"
-    accessor = smart_geocubes.TCTrend(data_dir, create_icechunk_storage=False)
-    accessor.assert_created()
-    accessor.download(aoi)
+    if year is None:
+        if "year" in aoi.columns:
+            # 2019
+            if (aoi["year"] <= 2019).any():
+                accessor = _get_accessor_from_year(2019, data_dir)
+                accessor.procedural_download(aoi[aoi["year"] <= 2019], None)
+            # 2020
+            if (aoi["year"] == 2020).any():
+                accessor = _get_accessor_from_year(2020, data_dir)
+                accessor.procedural_download(aoi[aoi["year"] == 2020], None)
+            # 2022
+            if (aoi["year"].isin([2021, 2022])).any():
+                accessor = _get_accessor_from_year(2022, data_dir)
+                accessor.procedural_download(aoi[aoi["year"].isin([2021, 2022])], None)
+            # 2024
+            if (aoi["year"] >= 2023).any():
+                accessor = _get_accessor_from_year(2024, data_dir)
+                accessor.procedural_download(aoi[aoi["year"] >= 2023], None)
+            return
+        else:
+            year = "all"
+
+    if year == "all":
+        years_to_download = [2019, 2020, 2022, 2024]
+        for year in years_to_download:
+            download_tcvis(aoi, data_dir, year)
+    elif isinstance(year, int):
+        accessor = _get_accessor_from_year(year, data_dir)
+        accessor.procedural_download(aoi, None)
+    else:
+        raise ValueError(f"Invalid year parameter: {year}. Must be an int or 'all'.")
