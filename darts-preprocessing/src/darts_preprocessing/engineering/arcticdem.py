@@ -314,7 +314,7 @@ def calculate_aspect(arcticdem_ds: xr.Dataset) -> xr.Dataset:
     # To get the true north, we need to correct the aspect based on the coordinates
     x = arcticdem_ds.x.expand_dims({"y": arcticdem_ds.y})
     y = arcticdem_ds.y.expand_dims({"x": arcticdem_ds.x})
-    if arcticdem_ds.cupy.is_cupy:
+    if has_cuda_and_cupy() and arcticdem_ds.cupy.is_cupy:
         assert aspect_deg.dims == ("y", "x")
         x = cp.asarray(x.transpose("y", "x"))
         y = cp.asarray(y.transpose("y", "x"))

@@ -113,6 +113,14 @@ def debug_info():  # noqa: C901
     try:
         import numba.cuda
 
+        try:
+            cuda_detected = numba.cuda.detect()
+            logger.debug(f"Numba CUDA detected: {cuda_detected}")
+        except Exception as e:
+            logger.error("Error while trying to detect CUDA devices with numba:")
+            logger.exception(e, exc_info=True)
+            raise e
+
         cuda_available = numba.cuda.is_available()
         logger.debug(f"Numba CUDA is available: {cuda_available}")
         if cuda_available:

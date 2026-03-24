@@ -219,7 +219,7 @@ def preprocess_planet_train_data(  # noqa: C901
     accessor = smart_geocubes.ArcticDEM2m(arcticdem_dir, backend="simple")
     if not accessor.created:
         accessor.create(overwrite=False)
-    create_tcvis_datacubes(years=[2019, 2020, 2022, 2024], data_dir=tcvis_dir)
+    create_tcvis_datacubes(years=list(range(2017, 2025)), data_dir=tcvis_dir)
 
     labels = (gpd.read_file(labels_file) for labels_file in labels_dir.glob("*/TrainingLabel*.gpkg"))
     labels = gpd.GeoDataFrame(pd.concat(labels, ignore_index=True))

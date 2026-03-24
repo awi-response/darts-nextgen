@@ -348,7 +348,7 @@ class _BasePipeline(ABC):
             if not accessor.created:
                 accessor.create(overwrite=False)
         if tcvis:
-            create_tcvis_datacubes([2019, 2020, 2022, 2024], self.tcvis_dir)
+            create_tcvis_datacubes(list(range(2017, 2025)), self.tcvis_dir)
 
     def _load_ensemble(self) -> "EnsembleV1":
         """Load and initialize the ensemble of segmentation models.

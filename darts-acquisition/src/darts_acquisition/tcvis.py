@@ -12,6 +12,22 @@ from stopuhr import stopwatch
 
 logger = logging.getLogger(__name__.replace("darts_", "darts."))
 
+LAG = 1
+
+
+def _sat_to_tcvis_year_lagged(sat_year: int, lag: int = 0) -> Literal[2019, 2020, 2022, 2024]:
+    match sat_year + lag:
+        case year if year <= 2019:
+            return 2019
+        case 2020:
+            return 2020
+        case 2021 | 2022:
+            return 2022
+        case year if year >= 2023:
+            return 2024
+        case _:
+            raise ValueError(f"Invalid satellite year: {sat_year}. Must be an int.")
+
 
 def _get_accessor_from_year(
     year: int, data_dir: Path | str
@@ -24,22 +40,18 @@ def _get_accessor_from_year(
         " It should point to the directory containing the .icechunk store, not the store itself."
         " Providing the store directly is legacy behaviour!"
     )
-    if year <= 2019:
-        logger.debug(f"Using TCTrend2019 for {year=}")
-        data_dir = data_dir / "TCTrend2019.icechunk"
-        accessor = smart_geocubes.TCTrend2019(data_dir, create_icechunk_storage=False, backend="simple")
-    elif year == 2020:
-        logger.debug(f"Using TCTrend2020 for {year=}")
-        data_dir = data_dir / "TCTrend2020.icechunk"
-        accessor = smart_geocubes.TCTrend2020(data_dir, create_icechunk_storage=False, backend="simple")
-    elif year in [2021, 2022]:
-        logger.debug(f"Using TCTrend2022 for {year=}")
-        data_dir = data_dir / "TCTrend2022.icechunk"
-        accessor = smart_geocubes.TCTrend2022(data_dir, create_icechunk_storage=False, backend="simple")
-    elif year >= 2023:
-        logger.debug(f"Using TCTrend2024 for {year=}")
-        data_dir = data_dir / "TCTrend2024.icechunk"
-        accessor = smart_geocubes.TCTrend2024(data_dir, create_icechunk_storage=False, backend="simple")
+    tcvis_year = _sat_to_tcvis_year_lagged(year, lag=LAG)
+    logger.debug(f"Using TCTrend{tcvis_year} for {year=}")
+    data_dir = data_dir / f"TCTrend{tcvis_year}.icechunk"
+    match tcvis_year:
+        case 2019:
+            accessor = smart_geocubes.TCTrend2019(data_dir, create_icechunk_storage=False, backend="threaded")
+        case 2020:
+            accessor = smart_geocubes.TCTrend2020(data_dir, create_icechunk_storage=False, backend="threaded")
+        case 2022:
+            accessor = smart_geocubes.TCTrend2022(data_dir, create_icechunk_storage=False, backend="threaded")
+        case 2024:
+            accessor = smart_geocubes.TCTrend2024(data_dir, create_icechunk_storage=False, backend="threaded")
 
     # We want to assume that the datacube is already created to be save in a multi-process environment
     accessor.assert_created()
@@ -47,13 +59,13 @@ def _get_accessor_from_year(
     return accessor
 
 
-def create_tcvis_datacubes(years: list[Literal[2019, 2020, 2022, 2024]], data_dir: Path | str) -> None:
+def create_tcvis_datacubes(years: list[int], data_dir: Path | str) -> None:
     """Create the TCVIS datacubes for the given years.
 
     Should be used in a single-process environment to set up the datacubes for the first time.
 
     Args:
-        years (list[Literal[2019, 2020, 2022, 2024]]): List of years for which to create the datacubes.
+        years (list[int]): List of years for which to create the datacubes.
         data_dir (Path | str): Path to the directory where the datacubes should be created.
             This should be the directory containing the .icechunk stores, not the stores themselves.
 
@@ -74,15 +86,21 @@ def create_tcvis_datacubes(years: list[Literal[2019, 2020, 2022, 2024]], data_di
         " It should point to the directory containing the .icechunk store, not the store itself."
         " Providing the store directly is legacy behaviour!"
     )
-    for year in years:
-        if year <= 2019:
-            accessor = smart_geocubes.TCTrend2019(data_dir / "TCTrend2019.icechunk", backend="simple")
-        elif year == 2020:
-            accessor = smart_geocubes.TCTrend2020(data_dir / "TCTrend2020.icechunk", backend="simple")
-        elif year in [2021, 2022]:
-            accessor = smart_geocubes.TCTrend2022(data_dir / "TCTrend2022.icechunk", backend="simple")
-        elif year >= 2023:
-            accessor = smart_geocubes.TCTrend2024(data_dir / "TCTrend2024.icechunk", backend="simple")
+
+    tcvis_years = {_sat_to_tcvis_year_lagged(year, lag=LAG) for year in years}
+    logger.info(f"Creating TCVIS datacubes for years {years} (mapped to TCVIS years {tcvis_years}) in {data_dir}.")
+
+    for tcvis_year in tcvis_years:
+        data_dir = data_dir / f"TCTrend{tcvis_year}.icechunk"
+        match tcvis_year:
+            case 2019:
+                accessor = smart_geocubes.TCTrend2019(data_dir, backend="threaded")
+            case 2020:
+                accessor = smart_geocubes.TCTrend2020(data_dir, backend="threaded")
+            case 2022:
+                accessor = smart_geocubes.TCTrend2022(data_dir, backend="threaded")
+            case 2024:
+                accessor = smart_geocubes.TCTrend2024(data_dir, backend="threaded")
 
         if not accessor.created:
             accessor.create(overwrite=False)
@@ -104,12 +122,12 @@ def load_tcvis(
 
     Note:
         Year mapping to TCVIS versions:
-        - <= 2019 -> TCTrend2019
-        - 2020 -> TCTrend2020
+        - <= 2018 -> TCTrend2019
+        - 2019 -> TCTrend2020
+        - 2020 -> TCTrend2022
         - 2021 -> TCTrend2022
-        - 2022 -> TCTrend2022
-        - 2023 -> TCTrend2024
-        - >= 2024 -> TCTrend2024
+        - 2022 -> TCTrend2024
+        - >= 2023 -> TCTrend2024
 
     Args:
         geobox (GeoBox): The geobox for which to load the data. Can be in any CRS.
@@ -238,34 +256,24 @@ def download_tcvis(
         ```
 
     """
-    if year is None:
-        if "year" in aoi.columns:
-            # 2019
-            if (aoi["year"] <= 2019).any():
-                accessor = _get_accessor_from_year(2019, data_dir)
-                accessor.procedural_download(aoi[aoi["year"] <= 2019], None)
-            # 2020
-            if (aoi["year"] == 2020).any():
-                accessor = _get_accessor_from_year(2020, data_dir)
-                accessor.procedural_download(aoi[aoi["year"] == 2020], None)
-            # 2022
-            if (aoi["year"].isin([2021, 2022])).any():
-                accessor = _get_accessor_from_year(2022, data_dir)
-                accessor.procedural_download(aoi[aoi["year"].isin([2021, 2022])], None)
-            # 2024
-            if (aoi["year"] >= 2023).any():
-                accessor = _get_accessor_from_year(2024, data_dir)
-                accessor.procedural_download(aoi[aoi["year"] >= 2023], None)
-            return
-        else:
-            year = "all"
-
-    if year == "all":
-        years_to_download = [2019, 2020, 2022, 2024]
-        for year in years_to_download:
-            download_tcvis(aoi, data_dir, year)
-    elif isinstance(year, int):
-        accessor = _get_accessor_from_year(year, data_dir)
-        accessor.procedural_download(aoi, None)
-    else:
-        raise ValueError(f"Invalid year parameter: {year}. Must be an int or 'all'.")
+    match (year, "year" in aoi.columns):
+        case (None, True):
+            # This groups the AOI by mapped tcvis-years to optimize the download:
+            # Instead of triggering a download per year, a download is triggered per tcvis-year,
+            # which can cover multiple satellite years, enabling a more efficient use of the threaded download.
+            tcvis_years = aoi["year"].apply(lambda y: _sat_to_tcvis_year_lagged(y, lag=LAG))
+            for tcvis_year in tcvis_years.unique():
+                accessor = _get_accessor_from_year(tcvis_year, data_dir)
+                aoi_subset = aoi[tcvis_years == tcvis_year]
+                accessor.procedural_download(aoi_subset, None)
+        case (None, False) | ("all", _):
+            years_to_download = [2019, 2020, 2022, 2024]
+            for year in years_to_download:
+                # Single level recursive call to download each year separately -> Anker is the isinstace call below
+                # Will not trigger infinite recursion
+                download_tcvis(aoi, data_dir, year)
+        case (int(), _):
+            accessor = _get_accessor_from_year(year, data_dir)  # ty:ignore[invalid-argument-type]
+            accessor.procedural_download(aoi, None)
+        case _:
+            raise ValueError(f"Invalid year parameter: {year=}. Must be an int, None or 'all'.")
