@@ -85,7 +85,7 @@ def _cdse_query_controlled(search: ItemSearch) -> list[Item]:
         try:
             return list(search.items())
         except APIError as e:
-            if e.status_code == 429:  # rate limit exceeded
+            if hasattr(e, "status_code") and (e.status_code == 429):  # rate limit exceeded
                 query_ctr += 1
                 sleep_time = random.randint(query_ctr, 10 + query_ctr * 5)
 
