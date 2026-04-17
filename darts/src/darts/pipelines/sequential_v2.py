@@ -573,8 +573,10 @@ class _BasePipeline(ABC):
 
                 if needs_tcvis:
                     with timer("Loading TCVis", log=False):
-                        year = self._tileyear(tilekey)
-                        tcvis = load_tcvis(tile.odc.geobox, year, self.tcvis_dir, offline=self.offline)
+                        # year = self._tileyear(tilekey)
+                        tcvis = load_tcvis(
+                            tile.odc.geobox, 2024, self.tcvis_dir, offline=self.offline
+                        )
                 else:
                     tcvis = None
 
@@ -973,7 +975,10 @@ class Sentinel2Pipeline(_BasePipeline):
             )
 
     def _get_s2ids_cdse(self) -> list[str]:
-        from darts_acquisition import get_cdse_s2_sr_scene_ids_from_geodataframe, get_cdse_s2_sr_scene_ids_from_tile_ids
+        from darts_acquisition import (
+            get_cdse_s2_sr_scene_ids_from_geodataframe,
+            get_cdse_s2_sr_scene_ids_from_tile_ids,
+        )
 
         if self.months is None and self.quarters is not None:
             self.months = []
@@ -1013,7 +1018,10 @@ class Sentinel2Pipeline(_BasePipeline):
         return s2ids
 
     def _get_s2ids_gee(self) -> list[str]:
-        from darts_acquisition import get_gee_s2_sr_scene_ids_from_geodataframe, get_gee_s2_sr_scene_ids_from_tile_ids
+        from darts_acquisition import (
+            get_gee_s2_sr_scene_ids_from_geodataframe,
+            get_gee_s2_sr_scene_ids_from_tile_ids,
+        )
 
         if any([self.months, self.quarters, self.years]):
             logger.warning(
@@ -1044,7 +1052,10 @@ class Sentinel2Pipeline(_BasePipeline):
         return s2ids
 
     def _get_s2ids_cdse_mosaic(self) -> list[str]:
-        from darts_acquisition import get_cdse_s2_mosaic_ids_from_geodataframe, get_cdse_s2_mosaic_ids_from_tile_ids
+        from darts_acquisition import (
+            get_cdse_s2_mosaic_ids_from_geodataframe,
+            get_cdse_s2_mosaic_ids_from_tile_ids,
+        )
 
         if self.tile_ids is not None:
             logger.debug(f"Getting scene ids from {len(self.tile_ids)} tile ids via CDSE Mosaic.")
