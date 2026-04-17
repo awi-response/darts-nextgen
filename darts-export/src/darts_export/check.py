@@ -28,7 +28,13 @@ def _missing_files(output_dir: Path, file_names: list[str]) -> list[str]:
 
 def missing_outputs(  # noqa: C901
     out_dir: Path,
-    bands: list[str] = ["probabilities", "binarized", "polygonized", "extent", "thumbnail"],
+    bands: list[str] = [
+        "probabilities",
+        "binarized",
+        "polygonized",
+        "extent",
+        "thumbnail",
+    ],
     ensemble_subsets: list[str] = [],
 ) -> Literal["all", "some", "none"]:
     """Check for missing output files in the given directory.
@@ -63,11 +69,18 @@ def missing_outputs(  # noqa: C901
                     f"prediction_segments-{es}.parquet" for es in ensemble_subsets
                 ]
             case "binarized":
-                expected_files += ["binarized.tif"] + [f"binarized-{es}.tif" for es in ensemble_subsets]
+                expected_files += ["binarized.tif"] + [
+                    f"binarized-{es}.tif" for es in ensemble_subsets
+                ]
             case "probabilities":
-                expected_files += ["probabilities.tif"] + [f"probabilities-{es}.tif" for es in ensemble_subsets]
+                expected_files += ["probabilities.tif"] + [
+                    f"probabilities-{es}.tif" for es in ensemble_subsets
+                ]
             case "extent":
-                expected_files += ["extent.gpkg", "extent.parquet"]
+                expected_files += [
+                    "prediction_extent.gpkg",
+                    "prediction_extent.parquet",
+                ]
             case "thumbnail":
                 expected_files += ["thumbnail.jpg"]
             case _:
