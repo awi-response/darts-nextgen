@@ -449,7 +449,7 @@ class _BasePipeline(ABC):
                     logger.info("start download TCVIS")
                     init_ee(self.ee_project, self.ee_use_highvolume)
                     with timer("Downloading TCVis"):
-                        download_tcvis(aoi, self.tcvis_dir)
+                        download_tcvis(aoi, self.tcvis_dir, 2024)
 
         # Predownload tiles if optical flag is set
         if not optical and not force:
