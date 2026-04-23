@@ -2,6 +2,7 @@
 
 import logging
 import time
+from collections import defaultdict
 from collections.abc import MutableMapping
 from pathlib import Path
 from typing import Literal
@@ -64,6 +65,20 @@ def _get_band_mapping(bands_mapping: dict[str, str] | Literal["all"]) -> dict[st
     return bands_mapping
 
 
+def _extract_proj_code_from_item(s2item: Item) -> str:
+    # For the Sentinel-2 L2A catalogue, the proj information is per-band instead of per item
+    # Therefore we need to extract the proj code from the assets
+    # We use a defaultdict to group the bands by their proj code for better debugging in case an Item is corrupt and
+    # contains multiple proj codes
+    proj_codes = defaultdict(list)
+    for name, asset in s2item.assets.items():
+        crs = asset.to_dict().get("proj:code")
+        if crs is not None:
+            proj_codes[crs].append(name)
+    assert len(proj_codes) == 1, f"Expected exactly one unique CRS in the item assets, but found: {proj_codes}"
+    return next(iter(proj_codes.keys()))
+
+
 class CDSEStoreManager(StoreManager[Item]):
     """Raw Data Store manager for CDSE."""
 
@@ -119,6 +134,10 @@ class CDSEStoreManager(StoreManager[Item]):
             )
             s2item = next(search.items())
 
+        # Hardcode CRS and resolution to ensure that all bands are loaded in 10m resolution
+        crs = _extract_proj_code_from_item(s2item)
+        assert crs.startswith("EPSG:32"), "Expected UTM projection"
+
         with stopwatch("Downloading data from CDSE", printer=logger.debug):
             # We can't use xpystac here, because they enforce chunking of 1024x1024, which results in long loading times
             # and a potential AWS limit error.
@@ -126,7 +145,7 @@ class CDSEStoreManager(StoreManager[Item]):
             ds_s2 = stac_load(
                 [s2item],
                 bands=bands,
-                crs="utm",
+                crs=crs,
                 resolution=10,
                 resampling="nearest",  # is used as default, but lets be sure
             )

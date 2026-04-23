@@ -153,6 +153,10 @@ class CDSEMosaicStoreManager(StoreManager[Item]):
             )
             s2item = next(search.items())
 
+        crs = s2item.properties.get("proj:code")
+        assert crs is not None, "Expected proj:code in item properties, S2 item is likely corrupt"
+        assert crs.startswith("EPSG:32"), f"Expected UTM projection, but got {crs}, S2 item is likely corrupt"
+
         with stopwatch("Downloading data from CDSE", printer=logger.debug):
             # We can't use xpystac here, because they enforce chunking of 1024x1024, which results in long loading times
             # and a potential AWS limit error.
@@ -160,7 +164,7 @@ class CDSEMosaicStoreManager(StoreManager[Item]):
             ds_s2 = stac_load(
                 [s2item],
                 bands=bands,
-                crs="utm",
+                crs=crs,
                 resolution=10,
                 resampling="nearest",  # is used as default, but lets be sure
             )
