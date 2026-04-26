@@ -157,9 +157,23 @@ class CDSEMosaicStoreManager(StoreManager[Item]):
             # We can't use xpystac here, because they enforce chunking of 1024x1024, which results in long loading times
             # and a potential AWS limit error.
             init_copernicus(profile_name=self.aws_profile_name)
+
+            # to download the data without reprojection even if the CDSE STAC metadata
+            # is incomplete, we have to explicitly tell odc what CRS the data is in.
+            # so we make lot of assertions to make sure we pass the correct data, because
+            # otherwise odc may silently reproject
+            assert s2item.properties["proj:code"][-2:] == s2item.id[-9:-7]  # e.g. 32610 == 10WGS
+            assert s2item.properties["gsd"] == 10  # 10m ground resolution
+
+            logger.debug(f"start download of '{s2item.id}'")
             ds_s2 = stac_load(
                 [s2item],
                 bands=bands,
+                crs=s2item.properties["proj:code"],  # explicit in case of missing STAC metadata
+                resolution=s2item.properties["gsd"],
+            )
+            assert (  # check if downloaded dataset is really in advertised EPSG code
+                str(ds_s2.odc.crs.to_epsg()) == s2item.properties["proj:code"][5:]  # e.g. 36210
             )
 
         ds_s2.attrs = _flatten_dict(s2item.properties)
