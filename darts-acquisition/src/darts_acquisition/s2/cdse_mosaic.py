@@ -203,7 +203,7 @@ class CDSEMosaicStoreManager(StoreManager[Item]):
         return ds_s2
 
 
-@stopwatch.f("Downloading Sentinel-2 mosaic from CDSE if missing", printer=logger.debug, print_kwargs=["s2item"])
+@stopwatch.f("Acquiring Sentinel-2 mosaic", printer=logger.debug, print_kwargs=["s2item"])
 def download_cdse_s2_mosaic(
     s2item: str | Item,
     store: Path,

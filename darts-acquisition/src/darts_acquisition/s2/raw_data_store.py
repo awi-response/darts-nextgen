@@ -127,6 +127,7 @@ class StoreManager(ABC, Generic[SceneItem]):
         assert self.store is not None, "Store must be provided to save scenes!"
         scene_path = self.store / f"{identifier}.zarr"
         encoding = self.encodings(list(dataset.data_vars))
+        logger.debug(f"Writing to {scene_path}")
         if not scene_path.exists():
             dataset.to_zarr(scene_path, encoding=encoding, consolidated=False, mode="w")
         else:
@@ -170,6 +171,7 @@ class StoreManager(ABC, Generic[SceneItem]):
         identifier = self.identifier(item)
         missing_bands = self.missing_bands(identifier)
         if not missing_bands:
+            logger.debug(f"Found item '{item}' in local store, skipping download ")
             return
         dataset = self.download_scene_from_source(item, missing_bands)
         self.save_to_store(dataset, identifier)

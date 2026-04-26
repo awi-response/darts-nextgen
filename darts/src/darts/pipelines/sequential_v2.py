@@ -455,6 +455,8 @@ class _BasePipeline(ABC):
         if not optical and not force:
             return
 
+        errors = []
+
         # Iterate over all the data
         with timer("Loading Optical"):
             tileinfo = self._tileinfos()
@@ -465,21 +467,33 @@ class _BasePipeline(ABC):
                 try:
                     self._download_tile(tilekey)
                     n_tiles += 1
-                    logger.info(f"Downloaded sample {i + 1} of {len(tileinfo)} '{tilekey}' ({tile_id=}).")
+                    logger.info(f"Sample {i + 1} of {len(tileinfo)} '{tilekey}' complete. ({tile_id=}).")
                 except (KeyboardInterrupt, SystemError, SystemExit) as e:
                     logger.warning(f"{type(e).__name__} detected.\nExiting...")
                     raise e
                 except Exception as e:
                     logger.warning(f"Could not process '{tilekey}' ({tile_id=}).\nSkipping...")
                     logger.exception(e)
+                    errors.append(
+                        {
+                            "message": f"{e.__class__.__name__}: {e}",
+                            "tilekey": tilekey,
+                            "tile_id": tile_id,
+                        },
+                    )
             else:
-                logger.info(f"Downloaded {n_tiles} tiles.")
+                logger.info(f"Acquired {n_tiles} tiles.")
 
         if len(timer.durations) > 0:
             timer.export().to_parquet(self.metadata_dir / "prepare.timer.parquet")
         if len(stopwatch.durations) > 0:
             stopwatch.export().to_parquet(self.metadata_dir / "prepare.stopwatch.parquet")
         timer.summary()
+
+        if len(errors) > 0:
+            logger.warning("There were errors during download:")
+            for error in errors:
+                print(f"! {error['tilekey']}/{error['tile_id']}\n  '{error['message']}'")
 
     def run(self):  # noqa: C901
         """Run the complete segmentation pipeline.
