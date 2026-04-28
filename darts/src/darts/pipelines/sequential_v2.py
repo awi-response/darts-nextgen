@@ -10,12 +10,12 @@ from math import ceil, sqrt
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
 
+import geopandas as gpd
 import toml
 from cyclopts import Parameter
 from darts_utils.paths import DefaultPaths, paths
 
 if TYPE_CHECKING:
-    import geopandas as gpd
     import xarray as xr
     from darts_ensemble import EnsembleV1
 
@@ -441,7 +441,7 @@ class _BasePipeline(ABC):
                         arcticdem_resolution = self._arcticdem_resolution()
                         buffer = ceil(self.tpi_outer_radius / arcticdem_resolution * sqrt(2))
                         download_arcticdem(
-                            aoi.to_crs("epsg:3413").buffer(buffer),
+                            gpd.GeoDataFrame(geometry=aoi.to_crs("epsg:3413").buffer(buffer)),
                             self.arcticdem_dir,
                             resolution=self._arcticdem_resolution(),
                         )
