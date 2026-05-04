@@ -102,6 +102,11 @@ class _BasePipeline(ABC):
             If None, will use the default directory based on DARTS paths and resolution. Defaults to None.
         tcvis_dir (Path | None): Directory containing TCVis data.
             If None, will use the default TCVis directory. Defaults to None.
+        tcvis_year (int | Literal["auto"]): The year of the TCVis data to use.
+            If "auto", will determine based on tile years.
+            Defaults to "auto".
+        tcvis_lag (int): The lag in years to apply when mapping the input year to the TCVIS version.
+            Defaults to 0.
         device (Literal["cuda", "cpu", "auto"] | int | None): Device for computation.
             "cuda" uses GPU 0, int specifies GPU index, "auto" selects free GPU, "cpu" uses CPU.
             Defaults to None (auto-selected).
@@ -139,6 +144,8 @@ class _BasePipeline(ABC):
     metadata_dir: Path | None = None
     arcticdem_dir: Path | None = None
     tcvis_dir: Path | None = None
+    tcvis_year: Literal[2019, 2020, 2022, 2024, "auto"] = "auto"
+    tcvis_lag: int = 0
     device: Literal["cuda", "cpu", "auto"] | int | None = None
     ee_project: str | None = None
     ee_use_highvolume: bool = True
@@ -168,6 +175,8 @@ class _BasePipeline(ABC):
         self.model_files = self.model_files or paths.ensemble_models()
         self.arcticdem_dir = self.arcticdem_dir or paths.arcticdem(self._arcticdem_resolution())
         self.tcvis_dir = self.tcvis_dir or paths.tcvis()
+        if self.tcvis_year != "auto":
+            self.tcvis_lag = 0
         self.edge_erosion_size = self.edge_erosion_size or self.mask_erosion_size
         current_time = time.strftime("%Y-%m-%d_%H-%M-%S")
         self.metadata_dir = (
@@ -348,7 +357,10 @@ class _BasePipeline(ABC):
             if not accessor.created:
                 accessor.create(overwrite=False)
         if tcvis:
-            create_tcvis_datacubes(list(range(2017, 2025)), self.tcvis_dir)
+            if self.tcvis_year == "auto":
+                create_tcvis_datacubes(list(range(2017, 2025)), self.tcvis_dir, lag=self.tcvis_lag)
+            else:
+                create_tcvis_datacubes([self.tcvis_year], self.tcvis_dir)
 
     def _load_ensemble(self) -> "EnsembleV1":
         """Load and initialize the ensemble of segmentation models.
@@ -451,7 +463,10 @@ class _BasePipeline(ABC):
                     logger.info("start download TCVIS")
                     init_ee(self.ee_project, self.ee_use_highvolume)
                     with timer("Downloading TCVis"):
-                        download_tcvis(aoi, self.tcvis_dir)
+                        if self.tcvis_year == "auto":
+                            download_tcvis(aoi, self.tcvis_dir, lag=self.tcvis_lag)
+                        else:
+                            download_tcvis(aoi, self.tcvis_dir, year=self.tcvis_year)
 
         # Predownload tiles if optical flag is set
         if not optical and not force:
@@ -575,8 +590,14 @@ class _BasePipeline(ABC):
 
                 if needs_tcvis:
                     with timer("Loading TCVis", log=False):
-                        year = self._tileyear(tilekey)
-                        tcvis = load_tcvis(tile.odc.geobox, year, self.tcvis_dir, offline=self.offline)
+                        year = self.tcvis_year if self.tcvis_year != "auto" else self._tileyear(tilekey)
+                        tcvis = load_tcvis(
+                            tile.odc.geobox,
+                            year,
+                            self.tcvis_dir,
+                            offline=self.offline,
+                            lag=self.tcvis_lag if self.tcvis_year == "auto" else 0,
+                        )
                 else:
                     tcvis = None
 
