@@ -10,12 +10,12 @@ from math import ceil, sqrt
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
 
-import geopandas as gpd
 import toml
 from cyclopts import Parameter
 from darts_utils.paths import DefaultPaths, paths
 
 if TYPE_CHECKING:
+    import geopandas as gpd
     import xarray as xr
     from darts_ensemble import EnsembleV1
 
@@ -405,6 +405,8 @@ class _BasePipeline(ABC):
             SystemError: If a system error occurs.
 
         """
+        import geopandas as gpd
+
         assert optical or aux, "Nothing to prepare. Please set optical and/or aux to True."
 
         # ? We only want to download stuff - no need for using the GPU here
