@@ -82,7 +82,8 @@ class _BasePipeline(ABC):
 
     This class is meant to be subclassed by the specific pipelines (e.g., PlanetPipeline, Sentinel2Pipeline).
     Subclasses must implement the following abstract methods:
-        - `_arcticdem_resolution`: Return the ArcticDEM resolution to use (2, 10, or 32 meters).
+        - `_satellite_arcticdem_resolution`: Return the ArcticDEM resolution to use if not provided by the user
+            (2, 10, or 32 meters).
         - `_get_tile_id`: Extract a tile identifier from a tilekey.
         - `_tileinfos`: Return a list of (tilekey, output_path) tuples for all tiles to process.
         - `_load_tile`: Load optical data for a given tilekey.
@@ -107,6 +108,9 @@ class _BasePipeline(ABC):
             Defaults to "auto".
         tcvis_lag (int): The lag in years to apply when mapping the input year to the TCVIS version.
             Defaults to 0.
+        arcticdem_resolution (Literal[2, 10, 32] | None): The resolution of the ArcticDEM data to use in meters.
+            If None, will be determined by the used satellite data (e.g., 2m for Planet, 10m for Sentinel-2).
+            Defaults to None.
         device (Literal["cuda", "cpu", "auto"] | int | None): Device for computation.
             "cuda" uses GPU 0, int specifies GPU index, "auto" selects free GPU, "cpu" uses CPU.
             Defaults to None (auto-selected).
@@ -146,6 +150,7 @@ class _BasePipeline(ABC):
     tcvis_dir: Path | None = None
     tcvis_year: Literal[2019, 2020, 2022, 2024, "auto"] = "auto"
     tcvis_lag: int = 0
+    arcticdem_resolution: Literal[2, 10, 32] = None
     device: Literal["cuda", "cpu", "auto"] | int | None = None
     ee_project: str | None = None
     ee_use_highvolume: bool = True
@@ -173,9 +178,15 @@ class _BasePipeline(ABC):
         # The defaults will be overwritten in the respective realizations
         self.output_data_dir = self.output_data_dir or paths.output_data("base_pipeline")
         self.model_files = self.model_files or paths.ensemble_models()
-        self.arcticdem_dir = self.arcticdem_dir or paths.arcticdem(self._arcticdem_resolution())
+        if self.arcticdem_resolution is None:
+            self.arcticdem_resolution = self._satellite_arcticdem_resolution()
+        self.arcticdem_dir = self.arcticdem_dir or paths.arcticdem(self.arcticdem_resolution)
         self.tcvis_dir = self.tcvis_dir or paths.tcvis()
-        if self.tcvis_year != "auto":
+        if self.tcvis_year != "auto" and self.tcvis_lag != 0:
+            logger.debug(
+                f"TCVis year is set to {self.tcvis_year} with a lag of {self.tcvis_lag}."
+                " The lag will be ignored (set to 0) since a specific year is provided."
+            )
             self.tcvis_lag = 0
         self.edge_erosion_size = self.edge_erosion_size or self.mask_erosion_size
         current_time = time.strftime("%Y-%m-%d_%H-%M-%S")
@@ -186,8 +197,10 @@ class _BasePipeline(ABC):
         )
 
     @abstractmethod
-    def _arcticdem_resolution(self) -> Literal[2, 10, 32]:
-        """Return the resolution of the ArcticDEM data.
+    def _satellite_arcticdem_resolution(self) -> Literal[2, 10, 32]:
+        """Return the resolution of the ArcticDEM data based on the satellite imagery used.
+
+        This is used as a fall-back value if the user does not explicitly provide an ArcticDEM resolution.
 
         Returns:
             The ArcticDEM resolution in meters (2, 10, or 32).
@@ -347,10 +360,9 @@ class _BasePipeline(ABC):
         # Create the datacubes if they do not exist
         LoggingManager.apply_logging_handlers("smart_geocubes")
         if arcticdem:
-            arcticdem_resolution = self._arcticdem_resolution()
-            if arcticdem_resolution == 2:
+            if self.arcticdem_resolution == 2:
                 accessor = smart_geocubes.ArcticDEM2m(self.arcticdem_dir)
-            elif arcticdem_resolution == 10:
+            elif self.arcticdem_resolution == 10:
                 accessor = smart_geocubes.ArcticDEM10m(self.arcticdem_dir)
             else:
                 accessor = smart_geocubes.ArcticDEM32m(self.arcticdem_dir)
@@ -452,12 +464,11 @@ class _BasePipeline(ABC):
                     logger.info("start download ArcticDEM")
                     with timer("Downloading ArcticDEM"):
                         # Buffer the AOI by the maximum needed TPI radius to avoid edge effects in preprocessing
-                        arcticdem_resolution = self._arcticdem_resolution()
-                        buffer = ceil(self.tpi_outer_radius / arcticdem_resolution * sqrt(2))
+                        buffer = ceil(self.tpi_outer_radius / self.arcticdem_resolution * sqrt(2))
                         download_arcticdem(
                             gpd.GeoDataFrame(geometry=aoi.to_crs("epsg:3413").buffer(buffer)),
                             self.arcticdem_dir,
-                            resolution=self._arcticdem_resolution(),
+                            resolution=self.arcticdem_resolution,
                         )
                 if needs_tcvis:
                     logger.info("start download TCVIS")
@@ -577,12 +588,11 @@ class _BasePipeline(ABC):
 
                 if needs_arcticdem:
                     with timer("Loading ArcticDEM", log=False):
-                        arcticdem_resolution = self._arcticdem_resolution()
                         arcticdem = load_arcticdem(
                             tile.odc.geobox,
                             self.arcticdem_dir,
-                            resolution=arcticdem_resolution,
-                            buffer=ceil(self.tpi_outer_radius / arcticdem_resolution * sqrt(2)),
+                            resolution=self.arcticdem_resolution,
+                            buffer=ceil(self.tpi_outer_radius / self.arcticdem_resolution * sqrt(2)),
                             offline=self.offline,
                         )
                 else:
@@ -752,7 +762,7 @@ class PlanetPipeline(_BasePipeline):
         self.orthotiles_dir = self.orthotiles_dir or paths.planet_orthotiles()
         self.scenes_dir = self.scenes_dir or paths.planet_scenes()
 
-    def _arcticdem_resolution(self) -> Literal[2]:
+    def _satellite_arcticdem_resolution(self) -> Literal[2]:
         return 2
 
     def _get_tile_id(self, tilekey: Path) -> str:
@@ -983,7 +993,7 @@ class Sentinel2Pipeline(_BasePipeline):
         if self.no_raw_data_store:
             self.raw_data_store = None
 
-    def _arcticdem_resolution(self) -> Literal[10]:
+    def _satellite_arcticdem_resolution(self) -> Literal[10]:
         return 10
 
     def _warn_invalid_selectors(self):
@@ -1408,7 +1418,7 @@ class LandsatPipeline(_BasePipeline):
         if self.no_raw_data_store:
             self.raw_data_store = None
 
-    def _arcticdem_resolution(self) -> Literal[32]:
+    def _satellite_arcticdem_resolution(self) -> Literal[32]:
         """Return the ArcticDEM resolution for Landsat (32m)."""
         return 32
 
