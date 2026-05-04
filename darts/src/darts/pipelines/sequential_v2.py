@@ -99,6 +99,7 @@ class _BasePipeline(ABC):
         default_dirs (DefaultPaths): Default directory paths configuration. Defaults to DefaultPaths().
         output_data_dir (Path | None): The output directory for results.
             If None, will use the default output directory based on DARTS paths. Defaults to None.
+        aux_dir (Path | None): Directory for auxiliary data (tcvis and arcticdem).
         arcticdem_dir (Path | None): Directory containing ArcticDEM datacube and extent files.
             If None, will use the default directory based on DARTS paths and resolution. Defaults to None.
         tcvis_dir (Path | None): Directory containing TCVis data.
@@ -146,6 +147,7 @@ class _BasePipeline(ABC):
     default_dirs: DefaultPaths = field(default_factory=lambda: DefaultPaths())
     output_data_dir: Path | None = None
     metadata_dir: Path | None = None
+    aux_dir: Path | None = None
     arcticdem_dir: Path | None = None
     tcvis_dir: Path | None = None
     tcvis_year: Literal[2019, 2020, 2022, 2024, "auto"] = "auto"
@@ -180,8 +182,11 @@ class _BasePipeline(ABC):
         self.model_files = self.model_files or paths.ensemble_models()
         if self.arcticdem_resolution is None:
             self.arcticdem_resolution = self._satellite_arcticdem_resolution()
+        if self.aux_dir is not None:
+            self.aux_dir.mkdir(parents=True, exist_ok=True)
+            self.arcticdem_dir = self.aux_dir / f"arcticdem_{self.arcticdem_resolution}m.icechunk"
         self.arcticdem_dir = self.arcticdem_dir or paths.arcticdem(self.arcticdem_resolution)
-        self.tcvis_dir = self.tcvis_dir or paths.tcvis()
+        self.tcvis_dir = self.tcvis_dir or self.aux_dir or paths.tcvis()
         if self.tcvis_year != "auto" and self.tcvis_lag != 0:
             logger.debug(
                 f"TCVis year is set to {self.tcvis_year} with a lag of {self.tcvis_lag}."
