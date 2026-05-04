@@ -69,13 +69,9 @@ def missing_outputs(  # noqa: C901
                     f"prediction_segments-{es}.parquet" for es in ensemble_subsets
                 ]
             case "binarized":
-                expected_files += ["binarized.tif"] + [
-                    f"binarized-{es}.tif" for es in ensemble_subsets
-                ]
+                expected_files += ["binarized.tif"] + [f"binarized-{es}.tif" for es in ensemble_subsets]
             case "probabilities":
-                expected_files += ["probabilities.tif"] + [
-                    f"probabilities-{es}.tif" for es in ensemble_subsets
-                ]
+                expected_files += ["probabilities.tif"] + [f"probabilities-{es}.tif" for es in ensemble_subsets]
             case "extent":
                 expected_files += [
                     "prediction_extent.gpkg",
