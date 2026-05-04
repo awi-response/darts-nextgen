@@ -61,7 +61,30 @@ def _get_band_mapping(bands_mapping: dict[str, str] | Literal["all"]) -> dict[st
     return bands_mapping
 
 
-def _cdse_query_controlled(search: ItemSearch) -> list[Item]:
+def _query_controlled(query_func):
+    def inner_qc(*args, **kwargs):
+        query_ctr = 0
+        random.seed(str(time.time()))
+        while query_ctr < CDSE_MAX_RETRIES:
+            try:
+                return query_func(*args, **kwargs)
+            except APIError as e:
+                if hasattr(e, "status_code") and (e.status_code == 429):  # rate limit exceeded
+                    query_ctr += 1
+                    sleep_time = random.randint(query_ctr, 10 + query_ctr * 5)
+
+                    logger.info(f"CDSE query rate limit exceeded, retrying after {sleep_time} seconds.")
+                    time.sleep(sleep_time)
+                else:
+                    raise
+
+        raise DartsAcquisitionError(f"CDSE request failed after {query_ctr} tries")
+
+    return inner_qc
+
+
+@_query_controlled
+def _cdse_search_controlled(search: ItemSearch) -> list[Item]:
     """Query the CDSE STAC catalogue reacting to rate limitations.
 
     If the CDSE server returns a "rate limit exceeded" error, wait
@@ -74,27 +97,13 @@ def _cdse_query_controlled(search: ItemSearch) -> list[Item]:
     Returns:
         list[Item]: the resulting items.
 
-    Raises:
-        APIError: if a non-429 status code error occurs during the STAC query.
-        DartsAcquisitionError: if the maximum queries are exhausted.
-
     """
-    query_ctr = 0
-    random.seed("".join([str(p) for p in search.get_parameters().values()]) + str(time.time()))
-    while query_ctr < CDSE_MAX_RETRIES:
-        try:
-            return list(search.items())
-        except APIError as e:
-            if hasattr(e, "status_code") and (e.status_code == 429):  # rate limit exceeded
-                query_ctr += 1
-                sleep_time = random.randint(query_ctr, 10 + query_ctr * 5)
+    return list(search.items())
 
-                logger.info(f"CDSE query rate limit exceeded, retrying after {sleep_time} seconds.")
-                time.sleep(sleep_time)
-            else:
-                raise
 
-    raise DartsAcquisitionError(f"CDSE request failed after {query_ctr} tries")
+@_query_controlled
+def _cdse_open_catalog_controlled():
+    return Client.open("https://stac.dataspace.copernicus.eu/v1/")
 
 
 class CDSEMosaicStoreManager(StoreManager[Item]):
@@ -146,7 +155,7 @@ class CDSEMosaicStoreManager(StoreManager[Item]):
         s2id = s2item.id if isinstance(s2item, Item) else s2item
 
         if isinstance(s2item, str):
-            catalog = Client.open("https://stac.dataspace.copernicus.eu/v1/")
+            catalog = _cdse_open_catalog_controlled()
             search = catalog.search(
                 collections=["sentinel-2-global-mosaics"],
                 ids=[s2id],
@@ -483,7 +492,7 @@ def search_cdse_s2_mosaic(
         dict[str, Item]: A dictionary of found Sentinel-2 items as values and the s2id as keys.
 
     """
-    catalog = Client.open("https://stac.dataspace.copernicus.eu/v1/")
+    catalog = _cdse_open_catalog_controlled()
 
     if tiles is not None and intersects is not None:
         logger.warning("Both tile and intersects provided. Ignoring intersects parameter.")
@@ -507,7 +516,7 @@ def search_cdse_s2_mosaic(
                     filter=cql2_filter,
                 )
 
-                found_items.update(_cdse_query_controlled(search))
+                found_items.update(_cdse_search_controlled(search))
 
     else:
         search = catalog.search(
@@ -515,7 +524,7 @@ def search_cdse_s2_mosaic(
             intersects=intersects,
             filter=cql2_filter,
         )
-        found_items = list(search.items())
+        found_items = _cdse_search_controlled(search)
 
     if len(found_items) == 0:
         logger.debug(
@@ -610,12 +619,12 @@ def get_aoi_from_cdse_s2_mosaic_ids(
         ValueError: If no Sentinel-2 items are found for the given scene IDs.
 
     """
-    catalog = Client.open("https://stac.dataspace.copernicus.eu/v1/")
+    catalog = _cdse_open_catalog_controlled()
     search = catalog.search(
         collections=["sentinel-2-global-mosaics"],
         ids=mosaic_ids,
     )
-    items = list(search.items())
+    items = _cdse_search_controlled(search)
     if not items:
         raise ValueError("No Sentinel-2 items found for the given mosaic IDs.")
     gdf = gpd.GeoDataFrame.from_features(
