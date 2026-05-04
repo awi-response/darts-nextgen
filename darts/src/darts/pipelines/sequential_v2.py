@@ -405,6 +405,8 @@ class _BasePipeline(ABC):
             SystemError: If a system error occurs.
 
         """
+        import geopandas as gpd
+
         assert optical or aux, "Nothing to prepare. Please set optical and/or aux to True."
 
         # ? We only want to download stuff - no need for using the GPU here
@@ -441,7 +443,7 @@ class _BasePipeline(ABC):
                         arcticdem_resolution = self._arcticdem_resolution()
                         buffer = ceil(self.tpi_outer_radius / arcticdem_resolution * sqrt(2))
                         download_arcticdem(
-                            aoi.to_crs("epsg:3413").buffer(buffer),
+                            gpd.GeoDataFrame(geometry=aoi.to_crs("epsg:3413").buffer(buffer)),
                             self.arcticdem_dir,
                             resolution=self._arcticdem_resolution(),
                         )
