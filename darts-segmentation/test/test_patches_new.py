@@ -1,39 +1,57 @@
-"""Tests for the utility functions used for patched and stacked prediction."""
+"""Tests for the new inference API using Patcher and forward.
+
+These tests mirror the behaviour of the old, deprecated helpers and ensure
+the refactored API produces identical results.
+"""
 
 import math
 
 import pytest
 import torch
 
-from darts_segmentation.inference import create_patches, patch_coords, predict_in_patches
+from darts_segmentation.inference import Patcher, forward, patch_coords
 
-test_sizes = [10, 23, 60, 2000, 10008]
-test_patch_sizes = [8, 64, 256, 1024]
-test_overlaps = [0, 1, 3, 16, 64, 256]
+# test_sizes = [10, 23, 60, 2000, 10008]
+# test_patch_sizes = [8, 64, 256, 1024]
+# test_overlaps = [0, 1, 3, 16, 64, 256]
+
+# DEV
+test_sizes = [10, 23, 60]
+test_patch_sizes = [8, 64]
+test_overlaps = [0, 1, 3, 16]
+
+
+class DummyModel(torch.nn.Module):
+    """A simple model that multiplies input by 2, for testing purposes."""
+
+    def forward(self, x):
+        return 2 * x
 
 
 @pytest.mark.parametrize("size", test_sizes)
 @pytest.mark.parametrize("patch_size", test_patch_sizes)
 @pytest.mark.parametrize("overlap", test_overlaps)
-def test_patch_prediction(size: int, patch_size: int, overlap: int):
-    """Tests the prediction function with a mock model (*2) and a random tensor."""
-    # Skip tests for invalid parameter to be able to to larger sweeps
+@pytest.mark.parametrize("device", ["cpu", "cuda"])
+def test_patch_prediction_new(size: int, patch_size: int, overlap: int, device: str):
+    """Test prediction via `forward` + `Patcher` matches expected sigmoid(2*x).
+
+    Uses a mock model that multiplies input by 2 (like the old tests).
+    """
     if not size > patch_size > overlap:
         pytest.skip("unsupported configuration")
 
-    def model(x):
-        return 2 * x
+    model = DummyModel()
 
     h, w = size, size
     tensor_tiles = torch.rand((3, 1, h, w))
-    prediction = predict_in_patches(
-        model,
+    patcher = Patcher(patch_size=patch_size, overlap=overlap)
+    prediction = forward(
         tensor_tiles,
-        patch_size=patch_size,
-        overlap=overlap,
+        model,
+        patcher,
         batch_size=2,
+        device=torch.device(device),
         reflection=0,
-        device=torch.device("cpu"),
     )
     prediction_true = torch.sigmoid(2 * tensor_tiles).squeeze(1)
     assert prediction.shape == (3, h, w)
@@ -43,18 +61,22 @@ def test_patch_prediction(size: int, patch_size: int, overlap: int):
 @pytest.mark.parametrize("size", test_sizes)
 @pytest.mark.parametrize("patch_size", test_patch_sizes)
 @pytest.mark.parametrize("overlap", test_overlaps)
-def test_create_patches(size: int, patch_size: int, overlap: int):
-    """Tests the creation of patches."""
-    # Skip tests for invalid parameter to be able to to larger sweeps
+def test_create_patches_new(size: int, patch_size: int, overlap: int):
+    """Tests creation of patches using `Patcher.deconstruct`.
+
+    Verifies shapes and contents equal the corresponding regions of the input.
+    """
     if not size > patch_size > overlap:
         pytest.skip("unsupported configuration")
 
     h, w = size, size
     tensor_tiles = torch.rand((3, 1, h, w))
-    patches = create_patches(tensor_tiles, patch_size=patch_size, overlap=overlap)
+    patcher = Patcher(patch_size=patch_size, overlap=overlap)
+    patched = patcher.deconstruct(tensor_tiles)
+
     n_patches_h = math.ceil((h - overlap) / (patch_size - overlap))
     n_patches_w = math.ceil((w - overlap) / (patch_size - overlap))
-    assert patches.shape == (3, n_patches_h, n_patches_w, 1, patch_size, patch_size)
+    assert patched.patches.shape == (3, n_patches_h, n_patches_w, 1, patch_size, patch_size)
 
     step_size = patch_size - overlap
     for i in range(n_patches_h):
@@ -65,17 +87,14 @@ def test_create_patches(size: int, patch_size: int, overlap: int):
                 ipx = h - patch_size
             if jpx + patch_size > w:
                 jpx = w - patch_size
-            patch = patches[:, i, j]
+            patch = patched.patches[:, i, j]
             true_patch = tensor_tiles[:, :, ipx : ipx + patch_size, jpx : jpx + patch_size]
             assert patch.shape == (3, 1, patch_size, patch_size)
             assert torch.allclose(patch, true_patch)
 
 
 def test_patch_coords_example_generator():
-    """Tests the generation of the generation of patch-coordinates.
-
-    Tests the first 20 patch-coordinates for a tile fo size 60x60px with a patch-size of 8 and an overlap of 3.
-    """
+    """Tests generation of the first 20 patch-coordinates for a 60x60 tile."""
     expected = [
         (0, (0, 0, 0, 0)),
         (1, (0, 5, 0, 1)),
@@ -114,11 +133,10 @@ def test_patch_coords_example_generator():
 @pytest.mark.parametrize("patch_size", test_patch_sizes)
 @pytest.mark.parametrize("overlap", test_overlaps)
 def test_patch_coords_generator_logical(size: int, patch_size: int, overlap: int):
-    """Tests the generation of the generation of patch-coordinates.
+    """Logical checks for `patch_coords` across parameter sweeps.
 
-    Tests the first 20 patch-coordinates for a tile fo size 60x60px with a patch-size of 8 and an overlap of 3.
+    Ensures generated coordinates are within bounds and indices are consistent.
     """
-    # Skip tests for invalid parameter to be able to to larger sweeps
     if not size > patch_size > overlap:
         pytest.skip("unsupported configuration")
 

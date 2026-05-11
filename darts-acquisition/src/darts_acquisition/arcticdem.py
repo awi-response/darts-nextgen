@@ -29,13 +29,13 @@ def _validate_and_get_accessor(
             assert "2m" in data_dir.stem and "32m" not in data_dir.stem, (
                 f"Data directory {data_dir} must have a '2m' in the name!"
             )
-            accessor = smart_geocubes.ArcticDEM2m(data_dir, backend="simple")
+            accessor = smart_geocubes.ArcticDEM2m(data_dir, backend="threaded")
         case 10:
             assert "10m" in data_dir.stem, f"Data directory {data_dir} must have a '10m' in the name!"
-            accessor = smart_geocubes.ArcticDEM10m(data_dir, backend="simple")
+            accessor = smart_geocubes.ArcticDEM10m(data_dir, backend="threaded")
         case 32:
             assert "32m" in data_dir.stem, f"Data directory {data_dir} must have a '32m' in the name!"
-            accessor = smart_geocubes.ArcticDEM32m(data_dir, backend="simple")
+            accessor = smart_geocubes.ArcticDEM32m(data_dir, backend="threaded")
         case _:
             raise ValueError(f"Resolution {resolution} not supported, only 2m, 10m and 32m are supported")
     accessor.assert_created()
