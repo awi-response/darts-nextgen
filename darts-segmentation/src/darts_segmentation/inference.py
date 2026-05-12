@@ -282,6 +282,36 @@ def _forward_streaming(patches: torch.Tensor, model: nn.Module, batch_size: int,
     return probability_patches
 
 
+def _zoom_hotfix(probability_patches: torch.Tensor, zoom_factor: int) -> torch.Tensor:
+    assert probability_patches.ndim == 3, (
+        f"Expects probability_patches to have shape (N, patch_size, patch_size), got {probability_patches.shape}"
+    )
+    if zoom_factor == 0:
+        return probability_patches
+    ps = probability_patches.shape[1]
+    nps = ps + 2 * zoom_factor
+    probability_patches = torch.nn.functional.interpolate(
+        probability_patches.unsqueeze(1), size=(nps, nps), mode="bilinear", align_corners=False
+    )
+    print(f"|-> {probability_patches.shape=}, {ps=}, {nps=}")
+    # Zoom in (upsampling -> cropping)
+    if zoom_factor > 0:
+        # Crop the borders
+        probability_patches = probability_patches[:, :, zoom_factor:-zoom_factor, zoom_factor:-zoom_factor].squeeze(1)
+    # -> Zoom out (downsampling -> padding)
+    else:
+        # Pad with zeros
+        p = -zoom_factor
+        probability_patches = torch.nn.functional.pad(
+            probability_patches, (p, p, p, p), mode="constant", value=0
+        ).squeeze(1)
+    print(f"|-> {probability_patches.shape=}")
+    assert (probability_patches.shape[1] == ps) and (probability_patches.shape[2] == ps), (
+        f"After zoom hotfix, expected patch size {ps}, got {probability_patches.shape[1]}"
+    )
+    return probability_patches
+
+
 @torch.no_grad()
 def forward(
     tensor_tiles: torch.Tensor,
@@ -290,6 +320,7 @@ def forward(
     batch_size: int,
     device: torch.device,
     reflection: int = 0,
+    zoom_factor: int = 0,
 ) -> torch.Tensor:
     """Predict segmentation probabilities for a batch of tiles.
 
@@ -299,7 +330,10 @@ def forward(
         patcher (Patcher): Patcher instance used for patchify/reconstruct.
         batch_size (int): Inference batch size for patches (not tile batch size).
         device (torch.device): Device for model inference.
-        reflection (int): Reflection padding applied on all sides before patching.
+        reflection (int, optional): Reflection padding applied on all sides before patching. Defaults to 0.
+        zoom_factor (int, optional): Optional zoom factor. It is applied after the inference, before the reconstruction.
+            Workaround for models which do bilinear upsampling in the segmentation head, which causes pixel-offsets.
+            Defaults to 0.
 
     Returns:
         torch.Tensor: Predicted probabilities with shape (BS, H, W).
@@ -326,6 +360,9 @@ def forward(
         probability_patches = _forward_streaming(patches, model, batch_size, device)
     else:
         probability_patches = _forward_on_device(patches, model, batch_size, device)
+
+    # Hotfix for Pixel-Bug
+    probability_patches = _zoom_hotfix(probability_patches, zoom_factor)
 
     # Reshape the probability patches back to (BS, N_h, N_w, patch_size, patch_size)
     output_shape = (patched_tile.bs, patched_tile.nh, patched_tile.nw, patcher.patch_size, patcher.patch_size)

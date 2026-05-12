@@ -171,7 +171,9 @@ class SMPSegmenter:
         printer=logger.debug,
         print_kwargs=["batch_size", "reflection"],
     )
-    def segment_tile(self, tile: xr.Dataset, batch_size: int = 8, reflection: int = 0) -> xr.Dataset:
+    def segment_tile(
+        self, tile: xr.Dataset, batch_size: int = 8, reflection: int = 0, zoom_factor: int = 0
+    ) -> xr.Dataset:
         """Run semantic segmentation inference on a single tile.
 
         This method performs patch-based inference with optional overlap and reflection padding
@@ -186,6 +188,10 @@ class SMPSegmenter:
                 values use more GPU memory but may be faster. Defaults to 8.
             reflection (int, optional): Reflection padding applied to tile edges in pixels.
                 Reduces edge effects. Defaults to 0.
+            zoom_factor (int, optional): Optional zoom factor.
+                It is applied after the inference, before the reconstruction.
+                Workaround for models which do bilinear upsampling in the segmentation head, which causes pixel-offsets.
+                Defaults to 0.
 
         Returns:
             xr.Dataset: Input tile augmented with a new data variable:
@@ -237,6 +243,7 @@ class SMPSegmenter:
             batch_size=batch_size,
             device=self.device,
             reflection=reflection,
+            zoom_factor=zoom_factor,
         ).squeeze(0)
 
         # Highly sophisticated DL-based predictor

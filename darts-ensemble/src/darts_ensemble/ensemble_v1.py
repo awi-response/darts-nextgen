@@ -115,7 +115,7 @@ class EnsembleV1:
     @stopwatch.f(
         "Ensemble inference",
         printer=logger.debug,
-        print_kwargs=["patch_size", "overlap", "batch_size", "reflection", "keep_inputs"],
+        print_kwargs=["batch_size", "reflection", "keep_inputs"],
     )
     def segment_tile(
         self,
@@ -123,6 +123,7 @@ class EnsembleV1:
         batch_size: int = 8,
         reflection: int = 0,
         keep_inputs: bool = False,
+        zoom_factor: int = 0,
     ) -> xr.Dataset:
         """Run ensemble inference on a single tile by averaging multiple model predictions.
 
@@ -138,6 +139,10 @@ class EnsembleV1:
                 Defaults to 0.
             keep_inputs (bool, optional): If True, preserves individual model predictions as
                 separate variables (e.g., "probabilities-with_tcvis"). Defaults to False.
+            zoom_factor (int, optional): Optional zoom factor.
+                It is applied after the inference, before the reconstruction.
+                Workaround for models which do bilinear upsampling in the segmentation head, which causes pixel-offsets.
+                Defaults to 0.
 
         Returns:
             xr.Dataset: Input tile augmented with:
@@ -175,9 +180,12 @@ class EnsembleV1:
         """
         probabilities = {}
         for model_name, model in self.models.items():
-            probabilities[model_name] = model.segment_tile(tile, batch_size=batch_size, reflection=reflection)[
-                "probabilities"
-            ]  # .copy()
+            probabilities[model_name] = model.segment_tile(
+                tile,
+                batch_size=batch_size,
+                reflection=reflection,
+                zoom_factor=zoom_factor,
+            )["probabilities"]  # .copy()
 
         # calculate the mean
         tile["probabilities"] = xr.concat(probabilities.values(), dim="model_probs").mean(dim="model_probs")
@@ -194,6 +202,7 @@ class EnsembleV1:
         batch_size: int = 8,
         reflection: int = 0,
         keep_inputs: bool = False,
+        zoom_factor: int = 0,
     ) -> list[xr.Dataset]:
         """Run inference on a list of tiles.
 
@@ -203,6 +212,10 @@ class EnsembleV1:
                 Tensor will be sliced into patches and these again will be infered in batches. Defaults to 8.
             reflection (int): Reflection-Padding which will be applied to the edges of the tensor. Defaults to 0.
             keep_inputs (bool, optional): Whether to keep the input probabilities in the output. Defaults to False.
+            zoom_factor (int, optional): Optional zoom factor.
+                It is applied after the inference, before the reconstruction.
+                Workaround for models which do bilinear upsampling in the segmentation head, which causes pixel-offsets.
+                Defaults to 0.
 
         Returns:
             A list of input tiles augmented by a predicted `probabilities` layer with type float32 and range [0, 1].
@@ -214,6 +227,7 @@ class EnsembleV1:
                 batch_size=batch_size,
                 reflection=reflection,
                 keep_inputs=keep_inputs,
+                zoom_factor=zoom_factor,
             )
             for tile in tiles
         ]
@@ -225,6 +239,7 @@ class EnsembleV1:
         batch_size: int = 8,
         reflection: int = 0,
         keep_inputs: bool = False,
+        zoom_factor: int = 0,
     ) -> xr.Dataset: ...
     @overload
     def __call__(
@@ -233,6 +248,7 @@ class EnsembleV1:
         batch_size: int = 8,
         reflection: int = 0,
         keep_inputs: bool = False,
+        zoom_factor: int = 0,
     ) -> list[xr.Dataset]: ...
     def __call__(
         self,
@@ -240,6 +256,7 @@ class EnsembleV1:
         batch_size: int = 8,
         reflection: int = 0,
         keep_inputs: bool = False,
+        zoom_factor: int = 0,
     ) -> xr.Dataset | list[xr.Dataset]:
         """Run the ensemble on the given tile.
 
@@ -249,6 +266,10 @@ class EnsembleV1:
                 Tensor will be sliced into patches and these again will be infered in batches. Defaults to 8.
             reflection (int): Reflection-Padding which will be applied to the edges of the tensor. Defaults to 0.
             keep_inputs (bool, optional): Whether to keep the input probabilities in the output. Defaults to False.
+            zoom_factor (int, optional): Optional zoom factor.
+                It is applied after the inference, before the reconstruction.
+                Workaround for models which do bilinear upsampling in the segmentation head, which causes pixel-offsets.
+                Defaults to 0.
 
         Returns:
             xr.Dataset: Output tile with the ensemble applied.
@@ -263,6 +284,7 @@ class EnsembleV1:
                 batch_size=batch_size,
                 reflection=reflection,
                 keep_inputs=keep_inputs,
+                zoom_factor=zoom_factor,
             )
         elif isinstance(input, list):
             return self.segment_tile_batched(
@@ -270,6 +292,7 @@ class EnsembleV1:
                 batch_size=batch_size,
                 reflection=reflection,
                 keep_inputs=keep_inputs,
+                zoom_factor=zoom_factor,
             )
         else:
             raise ValueError("Input must be an xr.Dataset or a list of xr.Dataset.")
