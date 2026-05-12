@@ -366,7 +366,9 @@ class _BasePipeline(ABC):
         if len(self.model_files) == 1:
             self.write_model_outputs = False
         models = {model_file.stem: model_file for model_file in self.model_files}
-        ensemble = EnsembleV1(models, device=torch.device(self.device))
+        ensemble = EnsembleV1(
+            models, device=torch.device(self.device), patch_size=self.patch_size, overlap=self.overlap
+        )
         return ensemble
 
     def _check_aux_needs(self, ensemble: "EnsembleV1") -> tuple[bool, bool]:

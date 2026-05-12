@@ -2,6 +2,7 @@
 
 import logging
 from pathlib import Path
+from typing import overload
 
 import torch
 import xarray as xr
@@ -69,6 +70,8 @@ class EnsembleV1:
         self,
         model_dict,
         device: torch.device = DEFAULT_DEVICE,
+        patch_size: int = 1024,
+        overlap: int = 16,
     ):
         """Initialize the ensemble with multiple model checkpoints.
 
@@ -78,6 +81,9 @@ class EnsembleV1:
                 Values are paths to model checkpoint files.
             device (torch.device, optional): Device to load all models on.
                 Defaults to CUDA if available, else CPU.
+            patch_size (int, optional): Size of square patches for inference in pixels.
+                Defaults to 1024.
+            overlap (int, optional): Overlap between adjacent patches in pixels. Defaults to 16.
 
         Note:
             All models are loaded on the same device. For multi-GPU ensembles, instantiate
@@ -89,7 +95,9 @@ class EnsembleV1:
             "Loading models:\n"
             + "\n".join([f" - {k.capitalize()} model: {v.resolve()}" for k, v in model_paths.items()])
         )
-        self.models = {k: SMPSegmenter(v, device=device) for k, v in model_paths.items()}
+        self.models = {
+            k: SMPSegmenter(v, device=device, patch_size=patch_size, overlap=overlap) for k, v in model_paths.items()
+        }
 
     @property
     def model_names(self) -> list[str]:
@@ -112,8 +120,6 @@ class EnsembleV1:
     def segment_tile(
         self,
         tile: xr.Dataset,
-        patch_size: int = 1024,
-        overlap: int = 16,
         batch_size: int = 8,
         reflection: int = 0,
         keep_inputs: bool = False,
@@ -126,9 +132,6 @@ class EnsembleV1:
         Args:
             tile (xr.Dataset): Input tile containing preprocessed data. Must include all bands
                 required by any model in the ensemble (union of all `required_bands`).
-            patch_size (int, optional): Size of square patches for inference in pixels.
-                Defaults to 1024.
-            overlap (int, optional): Overlap between adjacent patches in pixels. Defaults to 16.
             batch_size (int, optional): Number of patches to process simultaneously per model.
                 Defaults to 8.
             reflection (int, optional): Reflection padding applied to tile edges in pixels.
@@ -172,9 +175,9 @@ class EnsembleV1:
         """
         probabilities = {}
         for model_name, model in self.models.items():
-            probabilities[model_name] = model.segment_tile(
-                tile, patch_size=patch_size, overlap=overlap, batch_size=batch_size, reflection=reflection
-            )["probabilities"].copy()
+            probabilities[model_name] = model.segment_tile(tile, batch_size=batch_size, reflection=reflection)[
+                "probabilities"
+            ]  # .copy()
 
         # calculate the mean
         tile["probabilities"] = xr.concat(probabilities.values(), dim="model_probs").mean(dim="model_probs")
@@ -188,8 +191,6 @@ class EnsembleV1:
     def segment_tile_batched(
         self,
         tiles: list[xr.Dataset],
-        patch_size: int = 1024,
-        overlap: int = 16,
         batch_size: int = 8,
         reflection: int = 0,
         keep_inputs: bool = False,
@@ -198,8 +199,6 @@ class EnsembleV1:
 
         Args:
             tiles: The input tiles, containing preprocessed, harmonized data.
-            patch_size (int): The size of the patches. Defaults to 1024.
-            overlap (int): The size of the overlap. Defaults to 16.
             batch_size (int): The batch size for the prediction, NOT the batch_size of input tiles.
                 Tensor will be sliced into patches and these again will be infered in batches. Defaults to 8.
             reflection (int): Reflection-Padding which will be applied to the edges of the tensor. Defaults to 0.
@@ -212,8 +211,6 @@ class EnsembleV1:
         return [
             self.segment_tile(
                 tile,
-                patch_size=patch_size,
-                overlap=overlap,
                 batch_size=batch_size,
                 reflection=reflection,
                 keep_inputs=keep_inputs,
@@ -221,21 +218,33 @@ class EnsembleV1:
             for tile in tiles
         ]
 
+    @overload
     def __call__(
         self,
-        input: xr.Dataset | list[xr.Dataset],
-        patch_size: int = 1024,
-        overlap: int = 16,
+        input: xr.Dataset,
         batch_size: int = 8,
         reflection: int = 0,
         keep_inputs: bool = False,
-    ) -> xr.Dataset:
+    ) -> xr.Dataset: ...
+    @overload
+    def __call__(
+        self,
+        input: list[xr.Dataset],
+        batch_size: int = 8,
+        reflection: int = 0,
+        keep_inputs: bool = False,
+    ) -> list[xr.Dataset]: ...
+    def __call__(
+        self,
+        input: xr.Dataset | list[xr.Dataset],
+        batch_size: int = 8,
+        reflection: int = 0,
+        keep_inputs: bool = False,
+    ) -> xr.Dataset | list[xr.Dataset]:
         """Run the ensemble on the given tile.
 
         Args:
             input (xr.Dataset | list[xr.Dataset]): A single tile or a list of tiles.
-            patch_size (int): The size of the patches. Defaults to 1024.
-            overlap (int): The size of the overlap. Defaults to 16.
             batch_size (int): The batch size for the prediction, NOT the batch_size of input tiles.
                 Tensor will be sliced into patches and these again will be infered in batches. Defaults to 8.
             reflection (int): Reflection-Padding which will be applied to the edges of the tensor. Defaults to 0.
@@ -251,8 +260,6 @@ class EnsembleV1:
         if isinstance(input, xr.Dataset):
             return self.segment_tile(
                 input,
-                patch_size=patch_size,
-                overlap=overlap,
                 batch_size=batch_size,
                 reflection=reflection,
                 keep_inputs=keep_inputs,
@@ -260,8 +267,6 @@ class EnsembleV1:
         elif isinstance(input, list):
             return self.segment_tile_batched(
                 input,
-                patch_size=patch_size,
-                overlap=overlap,
                 batch_size=batch_size,
                 reflection=reflection,
                 keep_inputs=keep_inputs,

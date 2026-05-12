@@ -12,7 +12,7 @@ from darts_utils.bands import manager
 from darts_utils.cuda import free_torch
 from stopuhr import stopwatch
 
-from darts_segmentation.inference import predict_in_patches
+from darts_segmentation.inference import Patcher, forward
 
 logger = logging.getLogger(__name__.replace("darts_", "darts."))
 
@@ -25,36 +25,36 @@ class SMPSegmenterConfig(TypedDict):
     model: dict[str, Any]
     bands: list[str]
 
-    @classmethod
-    def from_ckpt(cls, ckpt: dict[str, Any]) -> "SMPSegmenterConfig":
-        """Load and validate the config from a checkpoint for the segmentor.
 
-        Args:
-            ckpt: The checkpoint to load.
+def ckpt_to_config(ckpt: dict[str, Any]) -> SMPSegmenterConfig:
+    """Load and validate the config from a checkpoint for the segmentor.
 
-        Returns:
-            The configuration.
+    Args:
+        ckpt: The checkpoint to load.
 
-        """
-        # Legacy version: config and directly in ckpt
-        if "config" in ckpt:
-            config = ckpt["config"]
-            # Handling legacy case that the config contains the old keys
-            if "input_combination" in config and "norm_factors" in config:
-                # Check if all input_combination features are in norm_factors
-                config["bands"] = config["input_combination"]
-                config.pop("norm_factors")
-                config.pop("input_combination")
-            # Another legacy case uses a deprecated "Bands" class, which is pickled into the config as dict
-            if isinstance(config["bands"], dict):
-                config["bands"] = config["bands"]["bands"]
-        # New version: load directly from lightning checkpoint
-        else:
-            config = ckpt["hyper_parameters"]["config"]
+    Returns:
+        The configuration.
 
-        assert "model" in config, "Model config is missing!"
-        assert "bands" in config, "Bands config is missing!"
-        return config
+    """
+    # Legacy version: config and directly in ckpt
+    if "config" in ckpt:
+        config = ckpt["config"]
+        # Handling legacy case that the config contains the old keys
+        if "input_combination" in config and "norm_factors" in config:
+            # Check if all input_combination features are in norm_factors
+            config["bands"] = config["input_combination"]
+            config.pop("norm_factors")
+            config.pop("input_combination")
+        # Another legacy case uses a deprecated "Bands" class, which is pickled into the config as dict
+        if isinstance(config["bands"], dict):
+            config["bands"] = config["bands"]["bands"]
+    # New version: load directly from lightning checkpoint
+    else:
+        config = ckpt["hyper_parameters"]["config"]
+
+    assert "model" in config, "Model config is missing!"
+    assert "bands" in config, "Bands config is missing!"
+    return config
 
 
 class SMPSegmenter:
@@ -110,7 +110,13 @@ class SMPSegmenter:
     model: nn.Module
     device: torch.device
 
-    def __init__(self, model_checkpoint: Path | str, device: torch.device = DEFAULT_DEVICE):
+    def __init__(
+        self,
+        model_checkpoint: Path | str,
+        device: torch.device = DEFAULT_DEVICE,
+        patch_size: int = 1024,
+        overlap: int = 16,
+    ):
         """Initialize the segmenter with a trained model checkpoint.
 
         Args:
@@ -118,6 +124,10 @@ class SMPSegmenter:
                 Supports both PyTorch Lightning checkpoints and legacy formats.
             device (torch.device, optional): Device to load the model on.
                 Defaults to CUDA if available, else CPU.
+            patch_size (int, optional): Size of square patches for inference in pixels.
+                Larger patches use more memory but may be faster. Defaults to 1024.
+            overlap (int, optional): Overlap between adjacent patches in pixels. Helps reduce
+                edge artifacts. Defaults to 16.
 
         Note:
             The checkpoint must contain:
@@ -131,7 +141,7 @@ class SMPSegmenter:
             model_checkpoint = Path(model_checkpoint)
         self.device = device
         ckpt = torch.load(model_checkpoint, map_location=self.device, weights_only=False)
-        self.config = SMPSegmenterConfig.from_ckpt(ckpt)
+        self.config = ckpt_to_config(ckpt)
         # Overwrite the encoder weights with None, because we load our own
         self.config["model"] |= {"encoder_weights": None}
         self.model = smp.create_model(**self.config["model"])
@@ -149,6 +159,8 @@ class SMPSegmenter:
 
         logger.debug(f"Successfully loaded model from {model_checkpoint.resolve()} with inputs: {self.config['bands']}")
 
+        self.patcher = Patcher(patch_size=patch_size, overlap=overlap)
+
     @property
     def required_bands(self) -> set[str]:
         """The bands required by this model."""
@@ -157,11 +169,9 @@ class SMPSegmenter:
     @stopwatch.f(
         "Segmenting tile",
         printer=logger.debug,
-        print_kwargs=["patch_size", "overlap", "batch_size", "reflection"],
+        print_kwargs=["batch_size", "reflection"],
     )
-    def segment_tile(
-        self, tile: xr.Dataset, patch_size: int = 1024, overlap: int = 16, batch_size: int = 8, reflection: int = 0
-    ) -> xr.Dataset:
+    def segment_tile(self, tile: xr.Dataset, batch_size: int = 8, reflection: int = 0) -> xr.Dataset:
         """Run semantic segmentation inference on a single tile.
 
         This method performs patch-based inference with optional overlap and reflection padding
@@ -172,10 +182,6 @@ class SMPSegmenter:
             tile (xr.Dataset): Input tile containing preprocessed data. Must include all bands
                 specified in `self.required_bands`. Variables should be float32 reflectance
                 or normalized feature values.
-            patch_size (int, optional): Size of square patches for inference in pixels.
-                Larger patches use more memory but may be faster. Defaults to 1024.
-            overlap (int, optional): Overlap between adjacent patches in pixels. Helps reduce
-                edge artifacts. Defaults to 16.
             batch_size (int, optional): Number of patches to process simultaneously. Higher
                 values use more GPU memory but may be faster. Defaults to 8.
             reflection (int, optional): Reflection padding applied to tile edges in pixels.
@@ -216,7 +222,7 @@ class SMPSegmenter:
 
         """
         # Convert the tile to a tensor
-        tile = tile[self.config["bands"]].transpose("y", "x")
+        tile = tile[self.config["bands"]].transpose("y", "x")  # ty:ignore[invalid-assignment]
         tile = manager.normalize(tile)
         # ? The heavy operation is .to_dataarray()
         tensor_tile = torch.as_tensor(tile.to_dataarray().data)
@@ -224,8 +230,13 @@ class SMPSegmenter:
         # Create a batch dimension, because predict expects it
         tensor_tile = tensor_tile.unsqueeze(0)
 
-        probabilities = predict_in_patches(
-            self.model, tensor_tile, patch_size, overlap, batch_size, reflection, self.device
+        probabilities = forward(
+            tensor_tile,
+            self.model,
+            self.patcher,
+            batch_size=batch_size,
+            device=self.device,
+            reflection=reflection,
         ).squeeze(0)
 
         # Highly sophisticated DL-based predictor
@@ -265,10 +276,8 @@ class SMPSegmenter:
 
         """
         if isinstance(input, xr.Dataset):
-            return self.segment_tile(
-                input, patch_size=patch_size, overlap=overlap, batch_size=batch_size, reflection=reflection
-            )
+            return self.segment_tile(input, batch_size=batch_size, reflection=reflection)
         elif isinstance(input, list):
-            return NotImplementedError("Currently passing multiple datasets at once is not supported.")
+            raise NotImplementedError("Currently passing multiple datasets at once is not supported.")
         else:
             raise ValueError(f"Expected xr.Dataset or list of xr.Dataset, got {type(input)}")

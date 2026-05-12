@@ -1,4 +1,8 @@
-"""Shared utilities for the inference modules."""
+"""Inference utilities for patch-based segmentation.
+
+Provides patch extraction, batched model inference (including CUDA streaming),
+and reconstruction with soft-overlap weighting.
+"""
 
 import logging
 import math
@@ -17,7 +21,7 @@ logger = logging.getLogger(__name__.replace("darts_", "darts."))
 
 @dataclass
 class PatchCoordinate:
-    """Class to hold the coordinates of a patch."""
+    """Coordinates and patch grid indices for a single patch."""
 
     y: int
     """Y coordinate in the original image."""
@@ -31,7 +35,7 @@ class PatchCoordinate:
 
 @dataclass
 class PatchedTile:
-    """Class to hold the dimensions of the patched tile and the patches itself."""
+    """Patched view of a tile with metadata and reconstruction weights."""
 
     bs: int
     """Batch size of the input tensor."""
@@ -60,15 +64,15 @@ class PatchedTile:
 
 # TODO: Validate against dtypes
 class Patcher:
-    """Class to hold the parameters for patching and prediction."""
+    """Patch extraction and reconstruction utilities."""
 
     @torch.no_grad()
     def __init__(self, patch_size: int, overlap: int):
         """Initialize the patcher.
 
         Args:
-            patch_size (int): The size of the patches.
-            overlap (int): The size of the overlap.
+            patch_size (int): Patch height/width in pixels.
+            overlap (int): Overlap between adjacent patches in pixels.
 
         """
         assert patch_size > overlap, f"patch_size must be larger than overlap, got {patch_size=} and {overlap=}"
@@ -86,15 +90,16 @@ class Patcher:
         self.soft_margin = margin_ramp.reshape(1, 1, self.patch_size) * margin_ramp.reshape(1, self.patch_size, 1)
 
     @torch.no_grad()
-    def deconstruct(self, tensor_tiles: torch.Tensor) -> PatchedTile:
-        """Create patches from a tensor.
+    def patchify(self, tensor_tiles: torch.Tensor) -> PatchedTile:
+        """Create patches and weights from a batch of tiles.
 
         Args:
-            tensor_tiles (torch.Tensor): The input tensor. Shape: (BS, C, H, W).
-                H and W must be larger than patcher.patch_size and patcher.overlap.
+            tensor_tiles (torch.Tensor): Input tensor with shape (BS, C, H, W).
+                H and W must be larger than `patch_size`.
 
         Returns:
-            PatchedTile: The patched tile containing the dimensions and the patches itself.
+            PatchedTile: Metadata, patches with shape (BS, N_h, N_w, C, P, P),
+                and soft-overlap weights with shape (BS, H, W).
 
         """
         assert tensor_tiles.dim() == 4, f"Expects tensor_tiles to has shape (BS, C, H, W), got {tensor_tiles.shape}"
@@ -137,14 +142,15 @@ class Patcher:
 
     @torch.no_grad()
     def reconstruct(self, probability_patches: torch.Tensor, patched_tile: PatchedTile) -> torch.Tensor:
-        """Reconstruct the image from the patches.
+        """Reconstruct a full image from patch probabilities.
 
         Args:
-            probability_patches (torch.Tensor): The predicted patches. Shape: (BS, N_h, N_w, patch_size, patch_size).
-            patched_tile (PatchedTile): The patched tile containing the dimensions and the patches itself.
+            probability_patches (torch.Tensor): Patch probabilities with shape
+                (BS, N_h, N_w, P, P).
+            patched_tile (PatchedTile): Patch metadata and weights from `patchify`.
 
         Returns:
-            torch.Tensor: The reconstructed image. Shape: (BS, H, W).
+            torch.Tensor: Reconstructed probabilities with shape (BS, H, W).
 
         """
         if self.soft_margin.device != probability_patches.device:
@@ -167,6 +173,18 @@ class _BatchWithSlice(NamedTuple):
 
 @torch.no_grad()
 def _gen_batches(patches: torch.Tensor, batch_size: int) -> Generator[_BatchWithSlice]:
+    """Yield non-NaN batches and their output slices.
+
+    NaN-only batches are skipped. Mixed-NaN batches are zero-filled in a copy.
+
+    Args:
+        patches (torch.Tensor): The input patches. Shape: (N, C, patch_size, patch_size).
+        batch_size (int): The batch size for inference.
+
+    Yields:
+        _BatchWithSlice: A named tuple containing the batch tensor and its corresponding slice in the output.
+
+    """
     # Infer logits with model and turn into probabilities with sigmoid in a batched manner
     # Split the stack of patches into batches
     # (BS * N_h * N_w, C, patch_size, patch_size) -> tuple of n=batch_size [C, patch_size, patch_size]
@@ -191,6 +209,7 @@ def _gen_batches(patches: torch.Tensor, batch_size: int) -> Generator[_BatchWith
 
 @torch.no_grad()
 def _forward(patches: torch.Tensor, model: nn.Module, batch_size: int) -> torch.Tensor:
+    """Run inference on patches already on the model device."""
     # ?: This function assumes that the patches are already on the correct device.
     # This reduces the overhead of moving the patches to the device in batches,
     # but it also means that the caller needs to handle the device management.
@@ -206,6 +225,7 @@ def _forward(patches: torch.Tensor, model: nn.Module, batch_size: int) -> torch.
 
 @torch.no_grad()
 def _forward_on_device(patches: torch.Tensor, model: nn.Module, batch_size: int, device: torch.device) -> torch.Tensor:
+    """Run inference with explicit device transfers per batch."""
     # ?: This is the original implementation of our inference function
     # It can handle different devices for the patches and the model,
     # which results in a lot of device transferse and overheads
@@ -224,6 +244,7 @@ def _forward_on_device(patches: torch.Tensor, model: nn.Module, batch_size: int,
 
 @torch.no_grad()
 def _forward_streaming(patches: torch.Tensor, model: nn.Module, batch_size: int, device: torch.device) -> torch.Tensor:
+    """Run CUDA streaming inference with pinned host memory."""
     assert device.type == "cuda", "Streaming inference is only implemented for CUDA devices"
     assert patches.ndim == 4, f"Expects patches to have shape (N, C, patch_size, patch_size), got {patches.shape}"
 
@@ -270,19 +291,18 @@ def forward(
     device: torch.device,
     reflection: int = 0,
 ) -> torch.Tensor:
-    """Predict on a tensor.
+    """Predict segmentation probabilities for a batch of tiles.
 
     Args:
-        tensor_tiles (torch.Tensor): The input tensor. Shape: (BS, C, H, W).
-        model (nn.Module): The model to use for prediction.
-        patcher (Patcher): The patcher to use for patching and reconstructing the image.
-        batch_size (int): The batch size for the prediction, NOT the batch_size of input tiles.
-            Tensor will be sliced into patches and these again will be infered in batches.
-        device (torch.device): The device to use for the prediction.
-        reflection (int): Reflection-Padding which will be applied to the edges of the tensor.
+        tensor_tiles (torch.Tensor): Input tensor with shape (BS, C, H, W).
+        model (nn.Module): Model that outputs logits with shape (N, 1, P, P).
+        patcher (Patcher): Patcher instance used for patchify/reconstruct.
+        batch_size (int): Inference batch size for patches (not tile batch size).
+        device (torch.device): Device for model inference.
+        reflection (int): Reflection padding applied on all sides before patching.
 
     Returns:
-        torch.Tensor: The predicted tensor.
+        torch.Tensor: Predicted probabilities with shape (BS, H, W).
 
     """
     logger.debug(
@@ -291,7 +311,7 @@ def forward(
     )
     p = 1 + reflection
     tensor_tiles = torch.nn.functional.pad(tensor_tiles, (p, p, p, p), mode="reflect")
-    patched_tile = patcher.deconstruct(tensor_tiles)
+    patched_tile = patcher.patchify(tensor_tiles)
 
     # Flatten the patches so they fit to the model
     # (BS, N_h, N_w, C, patch_size, patch_size) -> (BS * N_h * N_w, C, patch_size, patch_size)
@@ -317,14 +337,15 @@ def forward(
     return predictions
 
 
+@deprecated("This function is not used anymore and will be removed in the future. Use the Patcher class instead.")
 def patch_coords(h: int, w: int, patch_size: int, overlap: int) -> Generator[tuple[int, int, int, int], None, None]:
-    """Yield patch coordinates based on height, width, patch size and margin size.
+    """Yield patch coordinates based on size and overlap.
 
     Args:
         h (int): Height of the image.
         w (int): Width of the image.
         patch_size (int): Patch size.
-        overlap (int): Margin size.
+        overlap (int): Overlap size.
 
     Yields:
         tuple[int, int, int, int]: The patch coordinates y, x, patch_idx_y and patch_idx_x.
@@ -366,11 +387,12 @@ def create_patches(
         tensor_tiles (torch.Tensor): The input tensor. Shape: (BS, C, H, W).
         patch_size (int, optional): The size of the patches.
         overlap (int, optional): The size of the overlap.
-        return_coords (bool, optional): Whether to return the coordinates of the patches.
-            Can be used for debugging. Defaults to False.
+        return_coords (bool, optional): Whether to return patch coordinates.
+            Defaults to False.
 
     Returns:
-        torch.Tensor: The patches. Shape: (BS, N_h, N_w, C, patch_size, patch_size).
+        torch.Tensor: Patches with shape (BS, N_h, N_w, C, P, P).
+        torch.Tensor: When `return_coords` is True, coordinates with shape (N_h, N_w, 5).
 
     """
     logger.debug(
@@ -445,7 +467,7 @@ def predict_in_patches(
     device: torch.device,
     return_weights: bool = False,
 ) -> torch.Tensor | tuple[torch.Tensor, torch.Tensor]:
-    """Predict on a tensor.
+    """Predict on a tensor using the legacy patching pipeline.
 
     Args:
         model: The model to use for prediction.
@@ -453,13 +475,15 @@ def predict_in_patches(
         patch_size (int): The size of the patches.
         overlap (int): The size of the overlap.
         batch_size (int): The batch size for the prediction, NOT the batch_size of input tiles.
-            Tensor will be sliced into patches and these again will be infered in batches.
+            Tensor will be sliced into patches and these inferred in batches.
         reflection (int): Reflection-Padding which will be applied to the edges of the tensor.
         device (torch.device): The device to use for the prediction.
-        return_weights (bool, optional): Whether to return the weights. Can be used for debugging. Defaults to False.
+        return_weights (bool, optional): Whether to return weights for debugging.
+            Defaults to False.
 
     Returns:
-        The predicted tensor.
+        torch.Tensor: Predicted probabilities with shape (BS, H, W).
+        torch.Tensor: When `return_weights` is True, weights with shape (BS, H, W).
 
     """
     logger.debug(
