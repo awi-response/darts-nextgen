@@ -547,6 +547,10 @@ class _BasePipeline(ABC):
         self._validate()
         self._dump_config()
 
+        from numba import config
+
+        config.CUDA_PTX_VERSION = 89  # or 80, 75, etc.
+
         from darts.utils.cuda import debug_info
 
         debug_info()
@@ -636,8 +640,6 @@ class _BasePipeline(ABC):
                 with timer("Segmenting", log=False):
                     tile = ensemble.segment_tile(
                         tile,
-                        patch_size=self.patch_size,
-                        overlap=self.overlap,
                         batch_size=self.batch_size,
                         reflection=self.reflection,
                         keep_inputs=self.write_model_outputs,
