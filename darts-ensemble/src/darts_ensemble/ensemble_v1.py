@@ -2,6 +2,7 @@
 
 import logging
 from pathlib import Path
+from typing import overload
 
 import torch
 import xarray as xr
@@ -69,6 +70,8 @@ class EnsembleV1:
         self,
         model_dict,
         device: torch.device = DEFAULT_DEVICE,
+        patch_size: int = 1024,
+        overlap: int = 16,
     ):
         """Initialize the ensemble with multiple model checkpoints.
 
@@ -78,6 +81,9 @@ class EnsembleV1:
                 Values are paths to model checkpoint files.
             device (torch.device, optional): Device to load all models on.
                 Defaults to CUDA if available, else CPU.
+            patch_size (int, optional): Size of square patches for inference in pixels.
+                Defaults to 1024.
+            overlap (int, optional): Overlap between adjacent patches in pixels. Defaults to 16.
 
         Note:
             All models are loaded on the same device. For multi-GPU ensembles, instantiate
@@ -89,7 +95,9 @@ class EnsembleV1:
             "Loading models:\n"
             + "\n".join([f" - {k.capitalize()} model: {v.resolve()}" for k, v in model_paths.items()])
         )
-        self.models = {k: SMPSegmenter(v, device=device) for k, v in model_paths.items()}
+        self.models = {
+            k: SMPSegmenter(v, device=device, patch_size=patch_size, overlap=overlap) for k, v in model_paths.items()
+        }
 
     @property
     def model_names(self) -> list[str]:
@@ -107,16 +115,15 @@ class EnsembleV1:
     @stopwatch.f(
         "Ensemble inference",
         printer=logger.debug,
-        print_kwargs=["patch_size", "overlap", "batch_size", "reflection", "keep_inputs"],
+        print_kwargs=["batch_size", "reflection", "keep_inputs"],
     )
     def segment_tile(
         self,
         tile: xr.Dataset,
-        patch_size: int = 1024,
-        overlap: int = 16,
         batch_size: int = 8,
         reflection: int = 0,
         keep_inputs: bool = False,
+        zoom_factor: int = 0,
     ) -> xr.Dataset:
         """Run ensemble inference on a single tile by averaging multiple model predictions.
 
@@ -126,15 +133,16 @@ class EnsembleV1:
         Args:
             tile (xr.Dataset): Input tile containing preprocessed data. Must include all bands
                 required by any model in the ensemble (union of all `required_bands`).
-            patch_size (int, optional): Size of square patches for inference in pixels.
-                Defaults to 1024.
-            overlap (int, optional): Overlap between adjacent patches in pixels. Defaults to 16.
             batch_size (int, optional): Number of patches to process simultaneously per model.
                 Defaults to 8.
             reflection (int, optional): Reflection padding applied to tile edges in pixels.
                 Defaults to 0.
             keep_inputs (bool, optional): If True, preserves individual model predictions as
                 separate variables (e.g., "probabilities-with_tcvis"). Defaults to False.
+            zoom_factor (int, optional): Optional zoom factor.
+                It is applied after the inference, before the reconstruction.
+                Workaround for models which do bilinear upsampling in the segmentation head, which causes pixel-offsets.
+                Defaults to 0.
 
         Returns:
             xr.Dataset: Input tile augmented with:
@@ -173,8 +181,11 @@ class EnsembleV1:
         probabilities = {}
         for model_name, model in self.models.items():
             probabilities[model_name] = model.segment_tile(
-                tile, patch_size=patch_size, overlap=overlap, batch_size=batch_size, reflection=reflection
-            )["probabilities"].copy()
+                tile,
+                batch_size=batch_size,
+                reflection=reflection,
+                zoom_factor=zoom_factor,
+            )["probabilities"]  # .copy()
 
         # calculate the mean
         tile["probabilities"] = xr.concat(probabilities.values(), dim="model_probs").mean(dim="model_probs")
@@ -188,22 +199,23 @@ class EnsembleV1:
     def segment_tile_batched(
         self,
         tiles: list[xr.Dataset],
-        patch_size: int = 1024,
-        overlap: int = 16,
         batch_size: int = 8,
         reflection: int = 0,
         keep_inputs: bool = False,
+        zoom_factor: int = 0,
     ) -> list[xr.Dataset]:
         """Run inference on a list of tiles.
 
         Args:
             tiles: The input tiles, containing preprocessed, harmonized data.
-            patch_size (int): The size of the patches. Defaults to 1024.
-            overlap (int): The size of the overlap. Defaults to 16.
             batch_size (int): The batch size for the prediction, NOT the batch_size of input tiles.
                 Tensor will be sliced into patches and these again will be infered in batches. Defaults to 8.
             reflection (int): Reflection-Padding which will be applied to the edges of the tensor. Defaults to 0.
             keep_inputs (bool, optional): Whether to keep the input probabilities in the output. Defaults to False.
+            zoom_factor (int, optional): Optional zoom factor.
+                It is applied after the inference, before the reconstruction.
+                Workaround for models which do bilinear upsampling in the segmentation head, which causes pixel-offsets.
+                Defaults to 0.
 
         Returns:
             A list of input tiles augmented by a predicted `probabilities` layer with type float32 and range [0, 1].
@@ -212,34 +224,52 @@ class EnsembleV1:
         return [
             self.segment_tile(
                 tile,
-                patch_size=patch_size,
-                overlap=overlap,
                 batch_size=batch_size,
                 reflection=reflection,
                 keep_inputs=keep_inputs,
+                zoom_factor=zoom_factor,
             )
             for tile in tiles
         ]
 
+    @overload
     def __call__(
         self,
-        input: xr.Dataset | list[xr.Dataset],
-        patch_size: int = 1024,
-        overlap: int = 16,
+        input: xr.Dataset,
         batch_size: int = 8,
         reflection: int = 0,
         keep_inputs: bool = False,
-    ) -> xr.Dataset:
+        zoom_factor: int = 0,
+    ) -> xr.Dataset: ...
+    @overload
+    def __call__(
+        self,
+        input: list[xr.Dataset],
+        batch_size: int = 8,
+        reflection: int = 0,
+        keep_inputs: bool = False,
+        zoom_factor: int = 0,
+    ) -> list[xr.Dataset]: ...
+    def __call__(
+        self,
+        input: xr.Dataset | list[xr.Dataset],
+        batch_size: int = 8,
+        reflection: int = 0,
+        keep_inputs: bool = False,
+        zoom_factor: int = 0,
+    ) -> xr.Dataset | list[xr.Dataset]:
         """Run the ensemble on the given tile.
 
         Args:
             input (xr.Dataset | list[xr.Dataset]): A single tile or a list of tiles.
-            patch_size (int): The size of the patches. Defaults to 1024.
-            overlap (int): The size of the overlap. Defaults to 16.
             batch_size (int): The batch size for the prediction, NOT the batch_size of input tiles.
                 Tensor will be sliced into patches and these again will be infered in batches. Defaults to 8.
             reflection (int): Reflection-Padding which will be applied to the edges of the tensor. Defaults to 0.
             keep_inputs (bool, optional): Whether to keep the input probabilities in the output. Defaults to False.
+            zoom_factor (int, optional): Optional zoom factor.
+                It is applied after the inference, before the reconstruction.
+                Workaround for models which do bilinear upsampling in the segmentation head, which causes pixel-offsets.
+                Defaults to 0.
 
         Returns:
             xr.Dataset: Output tile with the ensemble applied.
@@ -251,20 +281,18 @@ class EnsembleV1:
         if isinstance(input, xr.Dataset):
             return self.segment_tile(
                 input,
-                patch_size=patch_size,
-                overlap=overlap,
                 batch_size=batch_size,
                 reflection=reflection,
                 keep_inputs=keep_inputs,
+                zoom_factor=zoom_factor,
             )
         elif isinstance(input, list):
             return self.segment_tile_batched(
                 input,
-                patch_size=patch_size,
-                overlap=overlap,
                 batch_size=batch_size,
                 reflection=reflection,
                 keep_inputs=keep_inputs,
+                zoom_factor=zoom_factor,
             )
         else:
             raise ValueError("Input must be an xr.Dataset or a list of xr.Dataset.")

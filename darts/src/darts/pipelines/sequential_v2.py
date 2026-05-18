@@ -125,6 +125,10 @@ class _BasePipeline(ABC):
         overlap (int): Overlap between patches during inference. Defaults to 256.
         batch_size (int): Batch size for inference. Defaults to 8.
         reflection (int): Reflection padding for inference. Defaults to 0.
+        zoom_factor (int, optional): Optional zoom factor.
+            It is applied after the inference, before the reconstruction.
+            Workaround for models which do bilinear upsampling in the segmentation head, which causes pixel-offsets.
+            Defaults to 0.
         binarization_threshold (float): Threshold for binarizing probabilities. Defaults to 0.5.
         mask_erosion_size (int): Size of disk for mask erosion and inner edge cropping. Defaults to 10.
         edge_erosion_size (int | None): Size for outer edge cropping.
@@ -162,6 +166,7 @@ class _BasePipeline(ABC):
     overlap: int = 256
     batch_size: int = 8
     reflection: int = 0
+    zoom_factor: int = 0
     binarization_threshold: float = 0.5
     mask_erosion_size: int = 10
     edge_erosion_size: int | None = None
@@ -395,7 +400,9 @@ class _BasePipeline(ABC):
         if len(self.model_files) == 1:
             self.write_model_outputs = False
         models = {model_file.stem: model_file for model_file in self.model_files}
-        ensemble = EnsembleV1(models, device=torch.device(self.device))
+        ensemble = EnsembleV1(
+            models, device=torch.device(self.device), patch_size=self.patch_size, overlap=self.overlap
+        )
         return ensemble
 
     def _check_aux_needs(self, ensemble: "EnsembleV1") -> tuple[bool, bool]:
@@ -540,6 +547,10 @@ class _BasePipeline(ABC):
         self._validate()
         self._dump_config()
 
+        from numba import config
+
+        config.CUDA_PTX_VERSION = 89  # or 80, 75, etc.
+
         from darts.utils.cuda import debug_info
 
         debug_info()
@@ -629,11 +640,10 @@ class _BasePipeline(ABC):
                 with timer("Segmenting", log=False):
                     tile = ensemble.segment_tile(
                         tile,
-                        patch_size=self.patch_size,
-                        overlap=self.overlap,
                         batch_size=self.batch_size,
                         reflection=self.reflection,
                         keep_inputs=self.write_model_outputs,
+                        zoom_factor=self.zoom_factor,
                     )
 
                 with timer("Postprocessing", log=False):

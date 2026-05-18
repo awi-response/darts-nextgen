@@ -7,9 +7,9 @@ import torch
 
 from darts_segmentation.inference import create_patches, patch_coords, predict_in_patches
 
-test_sizes = [10, 23, 60, 2000]
-test_patch_sizes = [8, 64, 1024]
-test_overlaps = [0, 1, 3, 16, 64]
+test_sizes = [10, 23, 60, 2000, 10008]
+test_patch_sizes = [8, 64, 256, 1024]
+test_overlaps = [0, 1, 3, 16, 64, 256]
 
 
 @pytest.mark.parametrize("size", test_sizes)

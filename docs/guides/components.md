@@ -13,9 +13,6 @@ hide:
 There are many different components implemented, all within the different `darts packages`.
 Here is an overview over the currently implemented components and their hardware requirements / bounds.
 
-Note: the following table was generated from the public re-exports in each package's `__init__.py`.
-I inferred resource requirements conservatively from each component's role (data acquisition -> network/disk; preprocessing/postprocessing/metrics -> CPU/disk; training/ensembling -> heavy compute and often GPU). Where unclear I made reasonable assumptions and marked them in the table. If you want tighter/verified bounds I can inspect individual implementations and tests to refine the entries.
-
 | Component                                                    | Stateful? and why?                               | Network [^1]             | Disk [^2]                | Compute [^3]       | GPU [^4]           |
 | ------------------------------------------------------------ | ------------------------------------------------ | ------------------------ | ------------------------ | ------------------ | ------------------ |
 | **Acquisition**                                              |                                                  |                          |                          |                    |                    |
