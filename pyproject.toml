@@ -59,6 +59,7 @@ dependencies = [
     "darts-segmentation",
     "darts-superresolution",
     "darts-utils",
+    "h5py>=3.16.0",
 ]
 readme = "README.md"
 requires-python = "== 3.13.*"
