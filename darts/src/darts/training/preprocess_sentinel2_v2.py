@@ -134,6 +134,9 @@ def preprocess_s2_train_data(  # noqa: C901
     device: Literal["cuda", "cpu", "auto"] | int | None = None,
     ee_project: str | None = None,
     ee_use_highvolume: bool = True,
+    tcvis_year: Literal[2019, 2020, 2022, 2024, "auto"] = "auto",
+    tcvis_lag: int = 0,
+    arcticdem_resolution: Literal[2, 10, 32] = None,
     matching_day_range: int = 7,
     matching_max_cloud_cover: int = 10,
     matching_min_intersects: float = 0.7,
@@ -261,7 +264,8 @@ def preprocess_s2_train_data(  # noqa: C901
 
     paths.set_defaults(default_dirs)
     train_data_dir = train_data_dir or paths.train_data_dir("sentinel2_v2_rts", patch_size)
-    arcticdem_dir = arcticdem_dir or paths.arcticdem(10)
+    arcticdem_resolution = arcticdem_resolution or 10
+    arcticdem_dir = arcticdem_dir or paths.arcticdem(arcticdem_resolution)
     tcvis_dir = tcvis_dir or paths.tcvis()
     admin_dir = admin_dir or paths.admin_boundaries()
     raw_data_store = raw_data_store or paths.sentinel2_raw_data("cdse")
@@ -321,10 +325,19 @@ def preprocess_s2_train_data(  # noqa: C901
 
     # Create the datacubes if they do not exist
     LoggingManager.apply_logging_handlers("smart_geocubes")
-    accessor = smart_geocubes.ArcticDEM10m(arcticdem_dir, backend="simple")
+
+    if arcticdem_resolution == 2:
+        accessor = smart_geocubes.ArcticDEM2m(arcticdem_dir)
+    elif arcticdem_resolution == 10:
+        accessor = smart_geocubes.ArcticDEM10m(arcticdem_dir)
+    else:
+        accessor = smart_geocubes.ArcticDEM32m(arcticdem_dir)
     if not accessor.created:
         accessor.create(overwrite=False)
-    create_tcvis_datacubes(years=list(range(2017, 2025)), data_dir=tcvis_dir)
+    if tcvis_year == "auto":
+        create_tcvis_datacubes(years=list(range(2017, 2025)), data_dir=tcvis_dir, lag=tcvis_lag)
+    else:
+        create_tcvis_datacubes(years=[tcvis_year], data_dir=tcvis_dir)
 
     labels = (gpd.read_file(labels_file) for labels_file in labels_dir.glob("*/TrainingLabel*.gpkg"))
     labels = gpd.GeoDataFrame(pd.concat(labels, ignore_index=True))
@@ -446,12 +459,16 @@ def preprocess_s2_train_data(  # noqa: C901
                 s2ds["quality_data_mask"] = s2ds["quality_data_mask"].fillna(0.0).astype("uint8")
 
                 # Preprocess as usual
-                arctidem_res = 10
-                arcticdem_buffer = ceil(tpi_outer_radius / arctidem_res * sqrt(2))
+                arcticdem_buffer = ceil(tpi_outer_radius / arcticdem_resolution * sqrt(2))
                 arcticdem = load_arcticdem(
-                    s2ds.odc.geobox, arcticdem_dir, resolution=arctidem_res, buffer=arcticdem_buffer
+                    s2ds.odc.geobox, arcticdem_dir, resolution=arcticdem_resolution, buffer=arcticdem_buffer
                 )
-                tcvis = load_tcvis(s2ds.odc.geobox, year, tcvis_dir)
+                tcvis = load_tcvis(
+                    s2ds.odc.geobox,
+                    year if tcvis_year == "auto" else tcvis_year,
+                    tcvis_dir,
+                    lag=tcvis_lag if tcvis_year == "auto" else 0,
+                )
 
                 s2ds: xr.Dataset = preprocess_v2(
                     s2ds,
@@ -524,6 +541,9 @@ def preprocess_s2_train_data(  # noqa: C901
             "tcvis_dir": tcvis_dir,
             "ee_project": ee_project,
             "ee_use_highvolume": ee_use_highvolume,
+            "tcvis_year": tcvis_year,
+            "tcvis_lag": tcvis_lag,
+            "arcticdem_resolution": arcticdem_resolution,
             "tpi_outer_radius": tpi_outer_radius,
             "tpi_inner_radius": tpi_inner_radius,
         }
