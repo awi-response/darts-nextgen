@@ -70,7 +70,7 @@ def preprocess_planet_train_data(  # noqa: C901
     ee_use_highvolume: bool = True,
     tcvis_year: Literal[2019, 2020, 2022, 2024, "auto"] = "auto",
     tcvis_lag: int = 0,
-    arcticdem_resolution: Literal[2, 10, 32] = None,
+    arcticdem_resolution: Literal[2, 10, 32] | None = None,
     tpi_outer_radius: int = 100,
     tpi_inner_radius: int = 0,
     patch_size: int = 1024,
@@ -148,6 +148,17 @@ def preprocess_planet_train_data(  # noqa: C901
         ee_project (str, optional): The Earth Engine project ID or number to use. May be omitted if
             project is defined within persistent API credentials obtained via `earthengine authenticate`.
         ee_use_highvolume (bool, optional): Whether to use the high volume server (https://earthengine-highvolume.googleapis.com).
+            Defaults to True.
+        tcvis_year (Literal[2019, 2020, 2022, 2024, "auto"], optional): The year of the TCVis data to use.
+            If "auto", will use the year corresponding to the Planet scene.
+            Defaults to "auto".
+        tcvis_lag (int, optional): The lag in months to apply when selecting the TCVis data.
+            Is only applied if tcvis_year is "auto". For example, a lag of 1 means that for a Planet scene from
+            June 2019, the TCVis data from May 2019 will be used.
+            Defaults to 0.
+        arcticdem_resolution (Literal[2, 10, 32], optional): The resolution of the ArcticDEM data to use.
+            If None, will use 2m resolution.
+            Defaults to None.
         tpi_outer_radius (int, optional): The outer radius of the annulus kernel for the tpi calculation
             in m. Defaults to 100m.
         tpi_inner_radius (int, optional): The inner radius of the annulus kernel for the tpi calculation

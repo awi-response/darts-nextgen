@@ -126,12 +126,20 @@ def load_arcticdem(
 
     # Change dtype of the datamask to uint8 for later reproject_match
     arcticdem["arcticdem_data_mask"] = arcticdem.datamask.astype("uint8")
+    del arcticdem["datamask"]
+
+    # Ensure right attributes
+    arcticdem["arcticdem_data_mask"].attrs["data_source"] = "ArcticDEM"
+    del arcticdem["arcticdem_data_mask"].attrs["source"]
 
     # Clip values to -100, 3000 range (see docs about bands)
     arcticdem["dem"] = arcticdem["dem"].clip(-100, 3000)
 
     # Change dtype of arcticdem to float32 to save memory (original is float64)
     arcticdem["dem"] = arcticdem["dem"].astype("float32")
+
+    # Remove encoding attributes
+    del arcticdem["dem"].attrs["_FillValue"]
 
     return arcticdem
 
