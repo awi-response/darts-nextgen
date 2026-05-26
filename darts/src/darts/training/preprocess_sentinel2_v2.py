@@ -136,7 +136,7 @@ def preprocess_s2_train_data(  # noqa: C901
     ee_use_highvolume: bool = True,
     tcvis_year: Literal[2019, 2020, 2022, 2024, "auto"] = "auto",
     tcvis_lag: int = 0,
-    arcticdem_resolution: Literal[2, 10, 32] = None,
+    arcticdem_resolution: Literal[2, 10, 32] | None = None,
     matching_day_range: int = 7,
     matching_max_cloud_cover: int = 10,
     matching_min_intersects: float = 0.7,
@@ -240,6 +240,16 @@ def preprocess_s2_train_data(  # noqa: C901
             project is defined within persistent API credentials obtained via `earthengine authenticate`.
         ee_use_highvolume (bool, optional): Whether to use the high volume server (https://earthengine-highvolume.googleapis.com).
             Defaults to True.
+        tcvis_year (Literal[2019, 2020, 2022, 2024, "auto"], optional): The year of the TCVis data to use.
+            If "auto", will use the year corresponding to the Planet scene.
+            Defaults to "auto".
+        tcvis_lag (int, optional): The lag in months to apply when selecting the TCVis data.
+            Is only applied if tcvis_year is "auto". For example, a lag of 1 means that for a Planet scene from
+            June 2019, the TCVis data from May 2019 will be used.
+            Defaults to 0.
+        arcticdem_resolution (Literal[2, 10, 32], optional): The resolution of the ArcticDEM data to use.
+            If None, will use 2m resolution.
+            Defaults to None.
         matching_day_range (int, optional): The day range to use for matching S2 scenes to Planet footprints.
             Defaults to 7.
         matching_max_cloud_cover (int, optional): The maximum cloud cover percentage to use for matching S2 scenes
