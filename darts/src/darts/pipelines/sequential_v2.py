@@ -635,6 +635,7 @@ class _BasePipeline(ABC):
                     "60WWB",
                     "60WWC",
                     "60WWD",
+                    "60WWE",
                     "60WWS",
                     "60WWT",
                     "60WWU",
