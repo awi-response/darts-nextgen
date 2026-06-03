@@ -557,6 +557,7 @@ class _BasePipeline(ABC):
 
         import pandas as pd
         from darts_acquisition import load_arcticdem, load_tcvis
+        from darts_acquisition.tcvis import load_tcvis_antimeridian
         from darts_export import export_tile, missing_outputs
         from darts_postprocessing import prepare_export
         from darts_preprocessing import preprocess_v2
@@ -585,6 +586,7 @@ class _BasePipeline(ABC):
         results = []
         for i, (tilekey, outpath) in enumerate(tileinfo):
             tile_id = self._get_tile_id(tilekey)
+            logger.debug(f"Processing tile {tile_id=} ({tilekey=}) with output path {outpath}.")
             try:
                 if not self.overwrite:
                     mo = missing_outputs(outpath, bands=self.export_bands, ensemble_subsets=ensemble_subsets)
@@ -614,11 +616,61 @@ class _BasePipeline(ABC):
                 else:
                     arcticdem = None
 
-                if needs_tcvis:
+                # Catch TCVIS edge case
+                edge_case_tiles = [
+                    "01VCK",
+                    "01VCL",
+                    "01WCM",
+                    "01WCN",
+                    "01WCP",
+                    "01WCQ",
+                    "01WCR",
+                    "01WCS",
+                    "01WCT",
+                    "01WCU",
+                    "01WCV",
+                    "60VXQ",
+                    "60VXR",
+                    "60WWA",
+                    "60WWB",
+                    "60WWC",
+                    "60WWD",
+                    "60WWE",
+                    "60WWS",
+                    "60WWT",
+                    "60WWU",
+                    "60WWV",
+                ]
+                if tile_id.startswith("Sentinel-2_mosaic"):
+                    mgrs_tile_id = tile_id.split("_")[-3]
+                    szene_is_near_antimeridian = mgrs_tile_id in edge_case_tiles
+                    logger.debug(
+                        f"Tile {tile_id} is Sentinel-2 mosaic with {mgrs_tile_id=} -> {szene_is_near_antimeridian=}."
+                    )
+                elif tile_id.startswith(("S2C_MSIL2A", "S2B_MSIL2A", "S2A_MSIL2A")):
+                    mgrs_tile_id = tile_id.split("_")[-2].strip("T")
+                    szene_is_near_antimeridian = mgrs_tile_id in edge_case_tiles
+                    logger.debug(
+                        f"Tile {tile_id} is Sentinel-2 scene with {mgrs_tile_id=} -> {szene_is_near_antimeridian=}."
+                    )
+                else:
+                    szene_is_near_antimeridian = False
+                if needs_tcvis and not szene_is_near_antimeridian:
                     with timer("Loading TCVis", log=False):
                         year = self.tcvis_year if self.tcvis_year != "auto" else self._tileyear(tilekey)
                         tcvis = load_tcvis(
                             tile.odc.geobox,
+                            year,
+                            self.tcvis_dir,
+                            offline=self.offline,
+                            lag=self.tcvis_lag if self.tcvis_year == "auto" else 0,
+                        )
+                elif needs_tcvis and szene_is_near_antimeridian:
+                    logger.warning(f"Tile {tile_id} is near the antimeridian, using specialized functions. ")
+                    with timer("Loading TCVis (antimeridian)", log=False):
+                        year = self.tcvis_year if self.tcvis_year != "auto" else self._tileyear(tilekey)
+                        tcvis = load_tcvis_antimeridian(
+                            mgrs_tile_id,
                             year,
                             self.tcvis_dir,
                             offline=self.offline,
@@ -1185,13 +1237,10 @@ class Sentinel2Pipeline(_BasePipeline):
         elif self.scene_id_file is not None:
             s2ids = json.loads(self.scene_id_file.read_text())
         elif self.tile_ids is not None:
-            from darts_acquisition import download_sentinel_2_grid
+            from darts_acquisition import open_sentinel_2_grid
 
             grid_dir = self.sentinel2_grid_dir or paths.sentinel2_grid()
-            grid_file = grid_dir.resolve() / "sentinel_2_index_shapefile.shp"
-            if not grid_file.exists():
-                download_sentinel_2_grid(grid_dir)
-            grid = gpd.read_file(grid_file).to_crs("EPSG:4326")
+            grid = open_sentinel_2_grid(grid_dir)
             return grid[grid["Name"].isin(self.tile_ids)]
         elif self.aoi_file is not None:
             return gpd.read_file(self.aoi_file).to_crs("EPSG:4326")
@@ -1313,6 +1362,16 @@ class Sentinel2Pipeline(_BasePipeline):
                 )
                 pipeline.prep_data_scene_id_file.unlink()
         pipeline.prepare_data(optical=optical, aux=aux, force=force)
+
+        # ! TODO: This does not yet cover other szene selection methods
+        # ! TODO: This does not yet cover other time selection methods
+        if pipeline.tile_ids is not None:
+            from darts_acquisition.tcvis import download_tcvis_antimeridian
+
+            logger.info("Preparing also the TCVIS antimeridian case")
+            years_for_tcvis = pipeline.tcvis_year if pipeline.tcvis_year != "auto" else pipeline.years
+            assert years_for_tcvis is not None, "Years must be specified for TCVis download when using tile_ids."
+            download_tcvis_antimeridian(pipeline.tile_ids, years_for_tcvis, pipeline.tcvis_dir)  # ty:ignore[invalid-argument-type]
 
     @staticmethod
     def cli(*, pipeline: "Sentinel2Pipeline"):

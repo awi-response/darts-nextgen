@@ -60,6 +60,7 @@ dependencies = [
     "darts-superresolution",
     "darts-utils",
     "h5py>=3.16.0",
+    "geedim>=2.0.0",
 ]
 readme = "README.md"
 requires-python = "== 3.13.*"
@@ -292,7 +293,7 @@ select = ["F", "E", "W", "C", "I", "N", "D", "UP", "FLY", "NPY", "FURB", "DOC", 
 extend-ignore-names = ["test_*"]
 
 [tool.ruff.lint.pyflakes]
-allowed-unused-imports = ["hvplot.pandas", "hvplot.xarray", "rioxarray", "odc.geo.xr", "cupy_xarray"]
+allowed-unused-imports = ["hvplot.pandas", "hvplot.xarray", "rioxarray", "odc.geo.xr", "cupy_xarray", "geedim"]
 
 [tool.ruff.lint.pydoclint]
 # Skip docstrings which fit on a single line.

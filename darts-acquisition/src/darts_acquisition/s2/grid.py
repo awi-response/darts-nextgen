@@ -5,6 +5,7 @@ import logging
 import zipfile
 from pathlib import Path
 
+import geopandas as gpd
 import requests
 from stopuhr import stopwatch
 
@@ -48,3 +49,21 @@ def download_sentinel_2_grid(grid_dir: Path):
     grid_url = "https://github.com/justinelliotmeyers/Sentinel-2-Shapefile-Index/archive/refs/heads/master.zip"
     logger.debug(f"Downloading {grid_url} to {grid_dir.resolve()}")
     _download_zip(grid_url, grid_dir)
+
+
+def open_sentinel_2_grid(grid_dir: Path) -> gpd.GeoDataFrame:
+    """Open the Sentinel 2 grid as a GeoDataFrame.
+
+    If the grid files do not exist, they will be downloaded.
+
+    Args:
+        grid_dir (Path): The path to the grid.
+
+    Returns:
+        gpd.GeoDataFrame: The Sentinel 2 grid as a GeoDataFrame in EPSG:4326 CRS.
+
+    """
+    grid_file = grid_dir.resolve() / "sentinel_2_index_shapefile.shp"
+    if not grid_file.exists():
+        download_sentinel_2_grid(grid_dir)
+    return gpd.read_file(grid_file).to_crs("EPSG:4326")

@@ -1,6 +1,7 @@
 """Landsat Trends related Data Loading. Should be used temporary and maybe moved to the acquisition package."""
 
 import logging
+from itertools import product
 from pathlib import Path
 from typing import Literal
 
@@ -8,6 +9,7 @@ import geopandas as gpd
 import odc.geo.crs
 import smart_geocubes
 import xarray as xr
+from darts_utils.tilecache import XarrayCacheManager
 from odc.geo.geobox import GeoBox
 from stopuhr import stopwatch
 
@@ -46,18 +48,33 @@ def _get_accessor_from_year(
     data_dir_year = data_dir / f"TCTrend{tcvis_year}.icechunk"
     match tcvis_year:
         case 2019:
-            accessor = smart_geocubes.TCTrend2019(data_dir_year, create_icechunk_storage=False, backend="threaded")
+            accessor = smart_geocubes.TCTrend2019(data_dir_year, create_icechunk_storage=False, backend="simple")
         case 2020:
-            accessor = smart_geocubes.TCTrend2020(data_dir_year, create_icechunk_storage=False, backend="threaded")
+            accessor = smart_geocubes.TCTrend2020(data_dir_year, create_icechunk_storage=False, backend="simple")
         case 2022:
-            accessor = smart_geocubes.TCTrend2022(data_dir_year, create_icechunk_storage=False, backend="threaded")
+            accessor = smart_geocubes.TCTrend2022(data_dir_year, create_icechunk_storage=False, backend="simple")
         case 2024:
-            accessor = smart_geocubes.TCTrend2024(data_dir_year, create_icechunk_storage=False, backend="threaded")
+            accessor = smart_geocubes.TCTrend2024(data_dir_year, create_icechunk_storage=False, backend="simple")
 
     # We want to assume that the datacube is already created to be save in a multi-process environment
     accessor.assert_created()
 
     return accessor
+
+
+def _get_collection_from_year(year: int, lag: int) -> str:
+    tcvis_year = _sat_to_tcvis_year_lagged(year, lag)
+    logger.debug(f"Using TCTrend{tcvis_year} for {year=}")
+    match tcvis_year:
+        case 2019:
+            collection = smart_geocubes.TCTrend2019.collection
+        case 2020:
+            collection = smart_geocubes.TCTrend2020.collection
+        case 2022:
+            collection = smart_geocubes.TCTrend2022.collection
+        case 2024:
+            collection = smart_geocubes.TCTrend2024.collection
+    return collection
 
 
 def create_tcvis_datacubes(years: list[int], data_dir: Path | str, lag: int = 0) -> None:
@@ -100,13 +117,13 @@ def create_tcvis_datacubes(years: list[int], data_dir: Path | str, lag: int = 0)
         data_dir_year = data_dir / f"TCTrend{tcvis_year}.icechunk"
         match tcvis_year:
             case 2019:
-                accessor = smart_geocubes.TCTrend2019(data_dir_year, backend="threaded")
+                accessor = smart_geocubes.TCTrend2019(data_dir_year, backend="simple")
             case 2020:
-                accessor = smart_geocubes.TCTrend2020(data_dir_year, backend="threaded")
+                accessor = smart_geocubes.TCTrend2020(data_dir_year, backend="simple")
             case 2022:
-                accessor = smart_geocubes.TCTrend2022(data_dir_year, backend="threaded")
+                accessor = smart_geocubes.TCTrend2022(data_dir_year, backend="simple")
             case 2024:
-                accessor = smart_geocubes.TCTrend2024(data_dir_year, backend="threaded")
+                accessor = smart_geocubes.TCTrend2024(data_dir_year, backend="simple")
 
         if not accessor.created:
             accessor.create(overwrite=False)
@@ -198,7 +215,6 @@ def load_tcvis(
 
     """
     accessor = _get_accessor_from_year(year, lag, data_dir)
-
     assert isinstance(accessor.extent.crs, odc.geo.crs.CRS), "Accessor geobox CRS must be a valid ODC CRS"
 
     if not offline:
@@ -303,3 +319,111 @@ def download_tcvis(
             accessor.procedural_download(aoi, None)
         case _:
             raise ValueError(f"Invalid year parameter: {year=}. Must be an int, None or 'all'.")
+
+
+# === Antimeridian fix ===
+def _download_tcvis_antimeridian(mgrs: str, year: int, grid_dir: Path, lag: int = 0) -> xr.Dataset:
+    import ee
+    import geedim
+    import odc.geo.xr
+
+    from darts_acquisition.s2.grid import open_sentinel_2_grid
+
+    utm_zone = int(mgrs[:2])
+    crs = f"EPSG:{32600 + utm_zone}"
+    mgrs_grid = open_sentinel_2_grid(grid_dir)
+    mgrs_grid = mgrs_grid.to_crs(crs)
+    mgrs_grid = mgrs_grid[mgrs_grid["Name"] == mgrs]
+    if mgrs_grid.empty:
+        raise ValueError(f"No geometry found for MGRS tile {mgrs} in grid directory {grid_dir}.")
+    geom = ee.Geometry.Rectangle(mgrs_grid[mgrs_grid["Name"] == mgrs].total_bounds.tolist(), proj=crs, evenOdd=False)
+    collection = _get_collection_from_year(year, lag)
+    ee_col = ee.ImageCollection(collection).mosaic()
+    ee_export = ee_col.gd.prepareForExport(region=geom, scale=30.0, dtype="uint8", crs=crs)  # ty:ignore[unresolved-attribute]
+    tcvis = ee_export.gd.toXarray(max_tile_size=24).to_dataset(dim="band")
+    tcvis = tcvis.odc.assign_crs(crs)
+
+    # Rename to follow our conventions
+    tcvis = tcvis.rename_vars(
+        {
+            "TCB_slope": "tc_brightness",
+            "TCG_slope": "tc_greenness",
+            "TCW_slope": "tc_wetness",
+        }
+    )
+    return tcvis
+
+
+def load_tcvis_antimeridian(
+    mgrs: str,
+    year: int,
+    data_dir: Path | str,
+    lag: int = 0,
+    offline: bool = False,
+):
+    """Load antimeridian TCVIS data for a single MGRS tile.
+
+    Args:
+        mgrs (str): The MGRS tile name.
+        year (int): The year for which to load the TCVIS data.
+        data_dir (Path | str): Path to the local cache directory.
+        lag (int, optional): The lag in years to apply when mapping the input year to the TCVIS version.
+            Defaults to 0.
+        offline (bool, optional): If True, only load data already present in the cache.
+            If False, missing data will be downloaded from Google Earth Engine.
+            Defaults to False.
+
+    Returns:
+        xr.Dataset: The requested TCVIS dataset.
+
+    Raises:
+        FileNotFoundError: If ``offline`` is True and the requested data is not in cache.
+
+    """
+    data_dir = Path(data_dir) if not isinstance(data_dir, Path) else data_dir
+
+    manager = XarrayCacheManager(data_dir / "antimeridian")
+
+    tcvis_year = _sat_to_tcvis_year_lagged(year, lag)
+    identifier = f"{mgrs}_TCVIS_{tcvis_year}"
+    if manager.exists(identifier):
+        logger.debug(f"TCVIS data for {mgrs} in year {year} with lag {lag} found in cache.")
+        return manager.load_from_cache(identifier)
+
+    if offline:
+        raise FileNotFoundError(f"TCVIS data for {mgrs} in year {year} with lag {lag} not found in cache.")
+
+    tcvis = _download_tcvis_antimeridian(mgrs, tcvis_year, data_dir / "antimeridian" / "mgrs_grid")
+    manager.save_to_cache(tcvis, identifier)
+    return tcvis
+
+
+def download_tcvis_antimeridian(
+    mgrs: list[str] | str,
+    year: list[int] | int,
+    data_dir: Path | str,
+    lag: int = 0,
+):
+    """Download antimeridian TCVIS data for one or more MGRS tiles and years.
+
+    Args:
+        mgrs (list[str] | str): One or more MGRS tile names.
+        year (list[int] | int): One or more years to download.
+        data_dir (Path | str): Path to the local cache directory.
+        lag (int, optional): The lag in years to apply when mapping the input year to the TCVIS version.
+            Defaults to 0.
+
+    """
+    data_dir = Path(data_dir) if not isinstance(data_dir, Path) else data_dir
+    mgrs = [mgrs] if isinstance(mgrs, str) else mgrs
+    years = [year] if isinstance(year, int) else year
+    tcvis_years = {_sat_to_tcvis_year_lagged(year, lag) for year in years}
+
+    manager = XarrayCacheManager(data_dir / "antimeridian")
+    for m, y in product(mgrs, tcvis_years):
+        identifier = f"{m}_TCVIS_{y}"
+        if manager.exists(identifier):
+            logger.debug(f"TCVIS data for {m} in year {y} with lag {lag} found in cache. Skipping download.")
+            continue
+        tcvis = _download_tcvis_antimeridian(m, y, data_dir / "antimeridian" / "mgrs_grid")
+        manager.save_to_cache(tcvis, identifier)
