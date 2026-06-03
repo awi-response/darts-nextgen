@@ -4,7 +4,7 @@ import os
 
 import core.logger as Logger
 import core.metrics as Metrics
-import data as Data
+from darts_superresolution.legacy import data_processing as Data
 import model as Model
 import numpy as np
 import torch

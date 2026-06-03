@@ -1,5 +1,6 @@
 """Patching methods for inference."""
 
+from fractions import Fraction
 import logging
 import torch
 import torch.nn.functional as F  # noqa: N812
@@ -16,7 +17,9 @@ def create_patches_from_tile(
     input_tensor: torch.Tensor, 
     stride: int, 
     input_patch_size: int, 
-    output_patch_size: int) -> torch.Tensor:
+    output_patch_size: int,
+    input_min_max: tuple[float, float] | None = (-1.0, 1.0),
+) -> torch.Tensor:
     """Generate patches from a tile.
 
     Args:
@@ -75,8 +78,12 @@ def create_patches_from_tile(
     
     logger.debug(f"Upsampled patches of shape {patches_up.shape}")
 
-    ## We use a simple transformation to bring the channels into the right range
-    [non_zero_patches_up] = transform_augment_tensor([nonzero_patches_up], split="val", min_max=(-1, 1))
+    ## We use a simple transformation to bring the channels into the configured range.
+    ## If input_min_max is None, keep values as-is (passthrough).
+    if input_min_max is None:
+        non_zero_patches_up = nonzero_patches_up
+    else:
+        [non_zero_patches_up] = transform_augment_tensor([nonzero_patches_up], split="val", min_max=input_min_max)
 
     logger.debug(f"Transformed patches of shape {non_zero_patches_up[0].shape}")
     
@@ -111,26 +118,42 @@ def create_tile_from_patches(
     _, C, _, _ = input_array.shape
     # We create an empty array to fill with the new patches
 
-    upsample_factor = output_patch_size / input_patch_size
-    output_stride = stride * upsample_factor
+    scale = Fraction(output_patch_size, input_patch_size)
+    output_stride_frac = Fraction(stride) * scale
 
-    if not is_integer(output_stride):
-        warnings.warn(
-            f"Invalid output stride: output_stride = {output_stride:.4f} is not an integer.\n"
-            f"Ensure output_patch_size / input_patch_size * stride is an integer."
+    if output_stride_frac.denominator != 1:
+        raise ValueError(
+            "Invalid output stride: output_patch_size / input_patch_size * stride "
+            f"must be integer, got {output_stride_frac}."
         )
-        breakpoint()
-    else:
-        output_stride = int(round(output_stride))
+
+    output_stride = output_stride_frac.numerator
 
     # === Create Output Tensor and Overlap Counters ===
-    height = (num_patches_y - 1) * output_stride + output_patch_size
-    width  = (num_patches_x - 1) * output_stride + output_patch_size
-    
+    if method == "crop":
+        # Keep overlap for inference context, but stitch only the non-overlapping
+        # center region of each output patch.
+        if output_stride > output_patch_size:
+            raise ValueError(
+                "'crop' stitching requires output_stride <= output_patch_size. "
+                f"Got output_stride={output_stride}, output_patch_size={output_patch_size}."
+            )
+
+        crop_top = (output_patch_size - output_stride) // 2
+        crop_left = (output_patch_size - output_stride) // 2
+        crop_h = output_stride
+        crop_w = output_stride
+
+        height = num_patches_y * output_stride
+        width = num_patches_x * output_stride
+    else:
+        height = (num_patches_y - 1) * output_stride + output_patch_size
+        width  = (num_patches_x - 1) * output_stride + output_patch_size
+
     output = np.zeros((1, channels, height, width), dtype=input_array.dtype)
     if method == "average":
         overlap_counter = np.zeros_like(output)
-    else:
+    elif method == "random":
         stack = np.zeros((1, C, height, width), dtype=input_array.dtype)
         pixel_stack = [[[] for _ in range(width)] for _ in range(height)]
 
@@ -145,13 +168,17 @@ def create_tile_from_patches(
                 output[:, :, top:top+output_patch_size, left:left+output_patch_size] += patch#torch.from_numpy(patch)
                 overlap_counter[:, :, top:top+output_patch_size, left:left+output_patch_size] += 1
 
+            elif method == "crop":
+                cropped = patch[:, crop_top:crop_top+crop_h, crop_left:crop_left+crop_w]
+                output[:, :, top:top+crop_h, left:left+crop_w] = cropped
+
             elif method == "random":
                 for y in range(output_patch_size):
                     for x in range(output_patch_size):
                         pixel_stack[top + y][left + x].append(patch[:,y,x])
 
             else:
-                raise ValueError(f"Unsupported method: {method}")
+                raise ValueError(f"Unsupported method: {method}. Use 'average', 'crop', or 'random'.")
             
             patch_idx += 1
 
