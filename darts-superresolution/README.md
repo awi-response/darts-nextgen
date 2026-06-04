@@ -6,6 +6,55 @@ In this package, we can plug in a superresolution model which transforms images 
 
 # Usage
 
+The `infer.py` entrypoint reads defaults from `src/darts_superresolution/config/config.py`, and you can override them with shell flags.
+
+Run with defaults:
+
+`cd darts-nextgen/darts-superresolution/src/darts_superresolution`
+
+`uv run ./infer.py`
+
+Run with overrides (example):
+
+`uv run ./infer.py --batch-size 12 --backend diffusion --use-ddim --diffusion-steps 30`
+
+Other common flags:
+
+`--model-checkpoint /path/to/model.ckpt`
+
+`--test-scene-dir /path/to/s2_scene_folder`
+
+`--output-path /path/to/output.tif`
+
+`--input-patch-size 120 --output-patch-size 384 --patch-stride 110`
+
+`--no-input-min-max` or `--input-min-max -1 1`
+
+`--diffusion-steps 30` (primary diffusion sampling step flag)
+
+Normalization note for new users:
+
+Set `inference_input_min_max` in `src/darts_superresolution/config/config.py` (`RuntimeConfig`) as the default source of truth.
+The same setting can be overridden per run with `--input-min-max` / `--no-input-min-max`.
+
+## Pipeline Integration (Near One-Liner)
+
+From another Python module in darts-nextgen, you can call inference directly:
+
+```python
+from darts_superresolution.infer import run_inference
+
+output_path = run_inference(
+	model_checkpoint="/path/to/model.ckpt",
+	test_scene_dir="/path/to/s2_scene",
+	output_path="/path/to/output.tif",
+	batch_size=12,
+	backend="diffusion",
+)
+```
+
+This keeps the orchestration code minimal while still allowing per-call overrides.
+
 ## Adding A New Backend Model
 
 Use this checklist when integrating a new superresolution model so it works like the existing `diffusion` and `consistency` backends.

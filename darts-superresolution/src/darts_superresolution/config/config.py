@@ -4,14 +4,12 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal
 
-from darts_superresolution.config.model_parameters import DEFAULT_INFERENCE_BATCH_SIZE
-
 
 @dataclass
 class InferencePaths:
     model_checkpoint: Path = Path(
-        "/p/scratch/hai_earth_04/lucas/Diffusion_Model/checkpoint/"
-        "DiffusionWeightedWavelets_bs16_1.5_2.0_2.0_1_cosine_750full_T0_1.6AMP_best_gen.pth"
+        "/p/scratch/hai_earth_04/lucas/Diffusion_Model/checkpoint/DiffusionWeightedWavelets_bs16_1.5_2.0_2.0_1_cosine_750full_T0_1.6AMP_best_gen.pth"
+        # "/p/scratch/hai_earth_04/lucas/Consistency_Model/checkpoint/consistency_wavelet_converted.ckpt"
     )
     test_scene_dir: Path = Path(
         "/p/scratch/hai_earth_04/lucas/sentinel2/20220826T200911_20220826T200905_T17XMJ/"
@@ -28,8 +26,12 @@ class PatchingConfig:
 
 @dataclass
 class DiffusionInferenceConfig:
-    use_ddim: bool = True
-    ddim_steps: int = 50
+    # Number of inference sampling steps for diffusion backend.
+    # When DDIM is enabled, this maps to DDIM steps.
+    diffusion_steps: int = 2000
+    use_ddim: bool = False
+    # Optional legacy alias; if set, it takes precedence over diffusion_steps.
+    ddim_steps: int | None = None
     ddim_eta: float = 0.0
 
 
@@ -43,7 +45,10 @@ class ConsistencyInferenceConfig:
 
 @dataclass
 class RuntimeConfig:
-    inference_batch_size: int = DEFAULT_INFERENCE_BATCH_SIZE
+    # Runtime-only inference batch size (single source of truth).
+    inference_batch_size: int = 12
+    # Single user-facing place to control value normalization before model inference.
+    # Passed from infer.py -> upscale.py -> util/patching.py.
     inference_input_min_max: tuple[float, float] | None = (-1.0, 1.0)
 
 

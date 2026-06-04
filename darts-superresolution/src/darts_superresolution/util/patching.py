@@ -5,9 +5,7 @@ import logging
 import torch
 import torch.nn.functional as F  # noqa: N812
 import numpy as np
-import tifffile
 import tqdm as tqdm
-import warnings
 from darts_superresolution.util.util import transform_augment_tensor
 
 logger = logging.getLogger(__name__)

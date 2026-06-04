@@ -1,6 +1,7 @@
 """AI Superresolution Upscaling of satellite imagery."""
 
 import logging
+import math
 import sys
 from pathlib import Path
 from typing import Any, Literal, TypedDict
@@ -9,9 +10,13 @@ import numpy as np
 import torch
 import xarray as xr
 
+try:
+    from tqdm.auto import tqdm
+except ModuleNotFoundError:  # pragma: no cover - optional dependency
+    tqdm = None
+
 from darts_superresolution.config.model_parameters import (
     ConsistencyConfig,
-    DEFAULT_INFERENCE_BATCH_SIZE,
     DEFAULT_MODEL_CONFIG,
     ModelConfig,
 )
@@ -52,7 +57,7 @@ class Sentinel2Upscaler:
         output_patch_size: int = 384,
         patch_stride: int = 120,
         inference_input_min_max: tuple[float, float] | None = (-1.0, 1.0),
-        inference_batch_size: int = DEFAULT_INFERENCE_BATCH_SIZE,
+        inference_batch_size: int = 24,
         diffusion_use_ddim: bool = False,
         diffusion_ddim_steps: int = 50,
         diffusion_ddim_eta: float = 0.0,
@@ -342,8 +347,22 @@ class Sentinel2Upscaler:
         output = []
         logger.debug("Non-zero upsampled batch count: %s", non_zero_upsampled_data.shape[0])
         logger.debug("Non-zero upsampled tensor shape: %s", non_zero_upsampled_data.shape)
+        total_patches = non_zero_upsampled_data.shape[0]
+        total_batches = math.ceil(total_patches / self.inference_batch_size) if total_patches > 0 else 0
+        batch_starts = range(0, total_patches, self.inference_batch_size)
+        if tqdm is not None:
+            batch_iterator = tqdm(
+                batch_starts,
+                total=total_batches,
+                desc="Inference",
+                unit="batch",
+                leave=False,
+                disable=total_batches <= 1,
+            )
+        else:
+            batch_iterator = batch_starts
 
-        for batch_index in range(0, non_zero_upsampled_data.shape[0], self.inference_batch_size):
+        for batch_index in batch_iterator:
             with torch.autocast(device_type=self.device.type, dtype=torch.float16, enabled=self.device.type == "cuda"):
                 if batch_index + self.inference_batch_size > non_zero_upsampled_data.shape[0]:
                     input_batch = non_zero_upsampled_data[batch_index:non_zero_upsampled_data.shape[0]]
