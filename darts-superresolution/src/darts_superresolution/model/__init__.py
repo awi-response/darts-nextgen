@@ -10,7 +10,7 @@ import logging
 import torch
 import torch.nn as nn
 
-from darts_superresolution.config.model_defaults import DEFAULT_MODEL_CONFIG, ModelConfig
+from darts_superresolution.config.model_parameters import DEFAULT_MODEL_CONFIG, ModelConfig
 from darts_superresolution.model import unet
 from darts_superresolution.model.diffusion import GaussianDiffusion as GaussianDiffusion
 

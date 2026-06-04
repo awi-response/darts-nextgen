@@ -18,7 +18,7 @@ import torch.nn.functional as F
 import tifffile
 from darts_superresolution.model import unet
 from darts_superresolution.model.diffusion import DWSR
-from darts_superresolution.config.configuration_inference import InferenceConfig as Config
+from darts_superresolution.config.model_parameters import ConsistencyConfig
 
 
 class ConsistencyWavelet(LightningModule):
@@ -26,7 +26,7 @@ class ConsistencyWavelet(LightningModule):
 
     def __init__(
         self,
-        config: Config,
+        config: Type[ConsistencyConfig],
         bins_min: int = 5,
         bins_max: int = 150,
         bins_rho: float = 7,

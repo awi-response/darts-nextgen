@@ -9,7 +9,7 @@ import numpy as np
 import torch
 import xarray as xr
 
-from darts_superresolution.config.model_defaults import (
+from darts_superresolution.config.model_parameters import (
     ConsistencyConfig,
     DEFAULT_INFERENCE_BATCH_SIZE,
     DEFAULT_MODEL_CONFIG,
@@ -117,7 +117,7 @@ class Sentinel2Upscaler:
     def _import_consistency_class(self):
         """Import consistency model lazily so diffusion-only installs still work."""
         try:
-            from darts_superresolution.model.model_consistency import ConsistencyWavelet as Consistency
+            from darts_superresolution.model.consistency import ConsistencyWavelet as Consistency
         except ModuleNotFoundError as exc:
             raise ModuleNotFoundError(
                 "Could not import consistency model modules. Set consistency_repo_root to the "
@@ -182,7 +182,10 @@ class Sentinel2Upscaler:
             weights_only=False,
         )
 
-        logger.info("Loaded original checkpoint format; consider converting with convert_checkpoint.py")
+        logger.info(
+            "Loaded original checkpoint format; consider converting with "
+            "src/darts_superresolution/util/convert_checkpoint.sh"
+        )
         return self._finalize_model(model)
 
     def _load_consistency_model(self, model_checkpoint: Path | str, consistency_repo_root: Path | str | None):
@@ -212,8 +215,8 @@ class Sentinel2Upscaler:
                 f"Original error: {exc}\n\n"
                 f"The checkpoint contains references to 'src.*' modules that don't exist in DARTS.\n"
                 f"Please convert it using:\n"
-                f"  cd consistency_model_distillation_for_sr3\n"
-                f"  python convert_checkpoint.py {checkpoint_path} {checkpoint_path}.converted.ckpt\n"
+                f"  ./src/darts_superresolution/util/convert_checkpoint.sh "
+                f"{checkpoint_path} {checkpoint_path}.converted.ckpt\n"
                 f"Then use the converted checkpoint."
             ) from exc
         except KeyError as exc:

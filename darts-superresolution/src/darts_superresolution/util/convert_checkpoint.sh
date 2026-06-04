@@ -6,7 +6,7 @@ set -e
 if [[ $# -lt 1 ]]; then
     cat << 'EOF'
 Usage:
-    ./convert_checkpoint.sh /path/to/original.ckpt [/path/to/output.ckpt]
+    ./src/darts_superresolution/util/convert_checkpoint.sh /path/to/original.ckpt [/path/to/output.ckpt]
 
 Converts a consistency model checkpoint from src.* module format to DARTS-compatible format.
 
@@ -14,10 +14,10 @@ This removes misleading pickle metadata so the checkpoint loads without module p
 
 Examples:
     # Convert with automatic output name
-    ./convert_checkpoint.sh /p/scratch/hai_earth_04/lucas/Consistency_Model/checkpoint/consistency_wavelet*.ckpt
+    ./src/darts_superresolution/util/convert_checkpoint.sh /p/scratch/hai_earth_04/lucas/Consistency_Model/checkpoint/consistency_wavelet*.ckpt
 
     # Convert to specific location
-    ./convert_checkpoint.sh original.ckpt ./consistency_wavelet_converted.ckpt
+    ./src/darts_superresolution/util/convert_checkpoint.sh original.ckpt ./consistency_wavelet_converted.ckpt
 
 EOF
     exit 1
@@ -36,7 +36,14 @@ echo "  Original: $ORIGINAL_CKPT"
 echo "  Output:   $OUTPUT_CKPT"
 
 # Run conversion from consistency repo
-CONSISTENCY_REPO="$(dirname "$(realpath "$0")")/../../consistency_model_distillation_for_sr3"
+SCRIPT_DIR="$(cd "$(dirname "$(realpath "$0")")" && pwd)"
+WORKTREE_ROOT="$(git -C "$SCRIPT_DIR" rev-parse --show-toplevel 2>/dev/null || true)"
+if [[ -z "$WORKTREE_ROOT" ]]; then
+    # Fallback: util -> darts_superresolution -> src -> darts-superresolution -> darts-nextgen
+    WORKTREE_ROOT="$(realpath "$SCRIPT_DIR/../../../../")"
+fi
+
+CONSISTENCY_REPO="$(realpath "$WORKTREE_ROOT/../consistency_model_distillation_for_sr3")"
 CONSISTENCY_PYTHON="$CONSISTENCY_REPO/CM/bin/python"
 
 if [[ ! -x "$CONSISTENCY_PYTHON" ]]; then
@@ -51,5 +58,5 @@ echo ""
 echo "✅ Conversion complete!"
 echo ""
 echo "Next steps:"
-echo "  1. Update superresolution_test.py to use: $OUTPUT_CKPT"
-echo "  2. Run the test: python superresolution_test.py"
+echo "  1. Update infer.py to use: $OUTPUT_CKPT"
+echo "  2. Run the test: python infer.py"

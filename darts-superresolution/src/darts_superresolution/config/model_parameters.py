@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from dataclasses import field, make_dataclass
-from typing import Any, TypedDict
+from dataclasses import dataclass, field
+from typing import TypedDict
 
 # Runtime inference defaults
 DEFAULT_INFERENCE_BATCH_SIZE = 24
@@ -71,29 +71,24 @@ DEFAULT_MODEL_CONFIG: ModelConfig = {
     "diffusion": {"image_size": 384, "channels": 4, "conditional": True},
 }
 
-
-def build_consistency_config_class():
-    """Build the lightweight config object expected by the consistency checkpoint loader."""
-    unet_config = {
+def _default_consistency_unet_config() -> dict[str, object]:
+    return {
         **DEFAULT_MODEL_CONFIG["unet"],
         "beta_schedule": DEFAULT_MODEL_CONFIG["beta_schedule"],
         "diffusion": DEFAULT_MODEL_CONFIG["diffusion"],
     }
 
-    return make_dataclass(
-        "ConsistencyConfig",
-        [
-            ("sample_dimension", tuple[int | None, int | None], field(default=(None, None))),
-            ("unet", dict[str, Any], field(default_factory=lambda: dict(unet_config))),
-            ("use_regularization", bool, field(default=False)),
-            ("data_std", float, field(default=0.5)),
-            ("time_min", float, field(default=0.002)),
-            ("time_max", float, field(default=80.0)),
-            ("clip_output", bool, field(default=False)),
-            ("in_channels", int, field(default=4)),
-            ("lr", float, field(default=1e-4)),
-        ],
-    )
 
+@dataclass
+class ConsistencyConfig:
+    """Lightweight config object expected by the consistency checkpoint loader."""
 
-ConsistencyConfig = build_consistency_config_class()
+    sample_dimension: tuple[int | None, int | None] = (None, None)
+    unet: dict[str, object] = field(default_factory=_default_consistency_unet_config)
+    use_regularization: bool = False
+    data_std: float = 0.5
+    time_min: float = 0.002
+    time_max: float = 80.0
+    clip_output: bool = False
+    in_channels: int = 4
+    lr: float = 1e-4
