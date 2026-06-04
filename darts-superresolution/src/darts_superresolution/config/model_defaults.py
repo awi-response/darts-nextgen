@@ -4,7 +4,7 @@ from dataclasses import field, make_dataclass
 from typing import Any, TypedDict
 
 # Runtime inference defaults
-DEFAULT_INFERENCE_BATCH_SIZE = 1
+DEFAULT_INFERENCE_BATCH_SIZE = 24
 
 
 class BetaScheduleTrain(TypedDict):
@@ -66,7 +66,7 @@ DEFAULT_MODEL_CONFIG: ModelConfig = {
     },
     "beta_schedule": {
         "train": {"schedule": "linear", "n_timestep": 2000, "linear_start": 1e-6, "linear_end": 1e-2},
-        "val": {"schedule": "linear", "n_timestep": 2000, "linear_start": 1e-6, "linear_end": 1e-2},
+        "val": {"schedule": "linear", "n_timestep": 200, "linear_start": 1e-6, "linear_end": 1e-2},
     },
     "diffusion": {"image_size": 384, "channels": 4, "conditional": True},
 }

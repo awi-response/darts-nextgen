@@ -11,8 +11,8 @@ import torch
 import torch.nn as nn
 
 from darts_superresolution.config.model_defaults import DEFAULT_MODEL_CONFIG, ModelConfig
-from darts_superresolution.model.wave_modules import unet
-from darts_superresolution.model.wave_modules.diffusion import GaussianDiffusion as GaussianDiffusion
+from darts_superresolution.model import unet
+from darts_superresolution.model.diffusion import GaussianDiffusion as GaussianDiffusion
 
 logger = logging.getLogger(__name__)
 
@@ -49,11 +49,3 @@ def define_net(model_opt: ModelConfig = DEFAULT_MODEL_CONFIG, distributed: bool 
         net = nn.DataParallel(net)
 
     return net
-
-
-def create_model(opt, device):
-    from model.model import DDPM as M
-
-    m = M(opt, device)
-    logger.info(f"Model [{m.__class__.__name__:s}] is created.")
-    return m

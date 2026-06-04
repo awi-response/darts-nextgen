@@ -15,8 +15,8 @@ from darts_superresolution.config.model_defaults import (
     DEFAULT_MODEL_CONFIG,
     ModelConfig,
 )
-from darts_superresolution.data_processing.patching import create_patches_from_tile
-from darts_superresolution.data_processing.util import wavelet_color_fix
+from darts_superresolution.util.patching import create_patches_from_tile
+from darts_superresolution.util.util import wavelet_color_fix
 from darts_superresolution.model import define_net
 
 logger = logging.getLogger(__name__)
@@ -53,6 +53,9 @@ class Sentinel2Upscaler:
         patch_stride: int = 120,
         inference_input_min_max: tuple[float, float] | None = (-1.0, 1.0),
         inference_batch_size: int = DEFAULT_INFERENCE_BATCH_SIZE,
+        diffusion_use_ddim: bool = False,
+        diffusion_ddim_steps: int = 50,
+        diffusion_ddim_eta: float = 0.0,
     ) -> None:
         """Initialize the Sentinel2Upscaler."""
         logger.debug("Loading model from %s", model_checkpoint)
@@ -66,6 +69,9 @@ class Sentinel2Upscaler:
         self.patch_stride = patch_stride
         self.inference_input_min_max = inference_input_min_max
         self.inference_batch_size = max(1, int(inference_batch_size))
+        self.diffusion_use_ddim = bool(diffusion_use_ddim)
+        self.diffusion_ddim_steps = max(1, int(diffusion_ddim_steps))
+        self.diffusion_ddim_eta = float(diffusion_ddim_eta)
         self.config = DEFAULT_MODEL_CONFIG
         logger.debug("Using backend: %s", self.backend)
 
@@ -277,7 +283,13 @@ class Sentinel2Upscaler:
     @torch.no_grad()
     def _infer_batch(self, input_batch: torch.Tensor) -> torch.Tensor:
         if self.backend == "diffusion":
-            return self.model.super_resolution(input_batch, continous=False)
+            return self.model.super_resolution(
+                input_batch,
+                continous=False,
+                use_ddim=self.diffusion_use_ddim,
+                ddim_steps=self.diffusion_ddim_steps,
+                ddim_eta=self.diffusion_ddim_eta,
+            )
 
         if self.consistency_ensemble_runs > 1:
             return self._infer_batch_consistency_wavelet_ensemble(input_batch)

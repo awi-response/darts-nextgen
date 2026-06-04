@@ -18,20 +18,23 @@ import tifffile
 import xarray as xr
 
 from darts_superresolution.config.model_defaults import DEFAULT_INFERENCE_BATCH_SIZE
-from upscale import Sentinel2Upscaler
-from darts_superresolution.data_processing.patching import create_tile_from_patches
+from darts_superresolution.util.upscale import Sentinel2Upscaler
+from darts_superresolution.util.patching import create_tile_from_patches
 
 logger = logging.getLogger(__name__)
 
 INPUT_PATCH_SIZE = 120
 OUTPUT_PATCH_SIZE = 384
-PATCH_STRIDE = 100
+PATCH_STRIDE = 110
 INFERENCE_BATCH_SIZE = DEFAULT_INFERENCE_BATCH_SIZE
-INFERENCE_INPUT_MIN_MAX = None#[-1.0, 1.0]
+INFERENCE_INPUT_MIN_MAX = [-1.0, 1.0]
+DIFFUSION_USE_DDIM = True
+DIFFUSION_DDIM_STEPS = 50
+DIFFUSION_DDIM_ETA = 0.0
 
 MODEL_PATH = Path(
-    # "/p/scratch/hai_earth_04/lucas/Diffusion_Model/checkpoint/DiffusionWeightedWavelets_bs16_1.5_2.0_2.0_1_cosine_750full_T0_1.6AMP_best_gen.pth"
-    "/p/scratch/hai_earth_04/lucas/Consistency_Model/checkpoint/consistency_wavelet_converted.ckpt"
+    "/p/scratch/hai_earth_04/lucas/Diffusion_Model/checkpoint/DiffusionWeightedWavelets_bs16_1.5_2.0_2.0_1_cosine_750full_T0_1.6AMP_best_gen.pth"
+    # "/p/scratch/hai_earth_04/lucas/Consistency_Model/checkpoint/consistency_wavelet_converted.ckpt"
 )
 TEST_IMG_PATH = Path(
     "/p/scratch/hai_earth_04/lucas/sentinel2/20220826T200911_20220826T200905_T17XMJ/"
@@ -101,12 +104,15 @@ def run_inference() -> Path:
 
     model = Sentinel2Upscaler(
         MODEL_PATH,
-        backend="consistency",
+        backend="diffusion",
         input_patch_size=INPUT_PATCH_SIZE,
         output_patch_size=OUTPUT_PATCH_SIZE,
         patch_stride=PATCH_STRIDE,
         inference_batch_size=INFERENCE_BATCH_SIZE,
         inference_input_min_max=INFERENCE_INPUT_MIN_MAX,
+        diffusion_use_ddim=DIFFUSION_USE_DDIM,
+        diffusion_ddim_steps=DIFFUSION_DDIM_STEPS,
+        diffusion_ddim_eta=DIFFUSION_DDIM_ETA,
     )
 
     upscaled_image = model.upscale_s2_to_planet(img)

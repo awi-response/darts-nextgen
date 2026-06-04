@@ -213,6 +213,7 @@ class GaussianDiffusion(nn.Module):
         model_mean, posterior_log_variance = self.q_posterior(x_start=x_recon, x_t=x, t=t)
         return model_mean, posterior_log_variance
 
+    # ===== ORIGINAL DDPM SAMPLING =====
     @torch.no_grad()
     def p_sample(self, x, t, clip_denoised=True, condition_x=None):
         model_mean, model_log_variance = self.p_mean_variance(
@@ -223,10 +224,9 @@ class GaussianDiffusion(nn.Module):
 
     @torch.no_grad()
     def p_sample_loop(self, x_in, continous=False, sample_inter=None):
+        """Original DDPM sampling loop - keeps all timesteps"""
         _, _, w, h = x_in.shape
-        # print("Pre-DWT shape: ", x_in.shape)
         x_in = self.apply_dwt(x_in)
-        # print("Post-DWT shape: ", x_in.shape)
         device = self.betas.device
         if sample_inter is None:
             sample_inter = 1 | (self.num_timesteps // 10)
@@ -244,13 +244,11 @@ class GaussianDiffusion(nn.Module):
         else:
             x = x_in
             shape = x.shape
-            # print("Shape: ", shape)
             img = torch.randn(shape, device=device)
             ret_img = x
             for i in tqdm(
                 reversed(range(0, self.num_timesteps)), desc="sampling loop time step", total=self.num_timesteps
             ):
-                # print("Image shape: ", img.shape)
                 img = self.p_sample(img, i, condition_x=x)
                 if i % sample_inter == 0:
                     ret_img = torch.cat([ret_img, img], dim=0)
@@ -261,11 +259,170 @@ class GaussianDiffusion(nn.Module):
                 result = torch.cat([result, self.apply_idwt((ret_img[i] + x_sr[0]).unsqueeze(0), w, h)], 0)
             return result
         else:
-            print("SR: ", x_sr.shape, "Ret_img: ", ret_img[-16:].shape)
+            # logger.debug("DDIM final reconstruction with x_sr=%s and ret_img=%s", x_sr.shape, ret_img.shape)
             result = self.apply_idwt((ret_img[-x_sr.shape[0]:] + x_sr), w, h)
-            # result = self.apply_idwt((ret_img[-1] + x_sr[0]).unsqueeze(0), w, h).squeeze(0)
             return result
+
+    # ===== NEW DDIM SAMPLING METHODS =====
+    @torch.no_grad()
+    def ddim_step(self, x, t, t_next, clip_denoised=True, condition_x=None, eta=0.0):
+        """
+        Perform one DDIM step from timestep t to timestep t_next.
+        
+        Args:
+            x: current noisy image
+            t: current timestep (0-based index)
+            t_next: next timestep (should be < t, -1 for final step)
+            clip_denoised: whether to clip predicted x_0
+            condition_x: conditioning input (for conditional generation)
+            eta: amount of stochasticity (0 = deterministic DDIM, 1 = DDPM)
+        """
+        batch_size = x.shape[0]
+        
+        # Handle noise level calculation to match your original implementation
+        if t < len(self.sqrt_alphas_cumprod_prev) - 1:
+            noise_level = torch.FloatTensor([self.sqrt_alphas_cumprod_prev[t + 1]]).repeat(batch_size, 1).to(x.device)
+        else:
+            # For the highest timestep, use the last available value
+            noise_level = torch.FloatTensor([self.sqrt_alphas_cumprod_prev[-1]]).repeat(batch_size, 1).to(x.device)
+        
+        # Predict noise using the denoising network
+        if condition_x is not None:
+            predicted_noise = self.denoise_fn(torch.cat([condition_x, x], dim=1), noise_level)
+        else:
+            predicted_noise = self.denoise_fn(x, noise_level)
+        
+        # Get alpha values for current and next timesteps
+        alpha_cumprod_t = self.alphas_cumprod[t]
+        alpha_cumprod_t_next = self.alphas_cumprod[t_next] if t_next >= 0 else torch.tensor(1.0).to(x.device)
+        
+        sqrt_alpha_cumprod_t = torch.sqrt(alpha_cumprod_t)
+        sqrt_one_minus_alpha_cumprod_t = torch.sqrt(1 - alpha_cumprod_t)
+        
+        # Predict original sample (x_0) - this should match your predict_start_from_noise method
+        pred_x0 = (x - sqrt_one_minus_alpha_cumprod_t * predicted_noise) / sqrt_alpha_cumprod_t
+        
+        if clip_denoised:
+            pred_x0 = pred_x0.clamp(-1.0, 1.0)
+        
+        # DDIM sampling equation
+        sqrt_alpha_cumprod_t_next = torch.sqrt(alpha_cumprod_t_next)
+        sqrt_one_minus_alpha_cumprod_t_next = torch.sqrt(1 - alpha_cumprod_t_next)
+        
+        # Deterministic direction
+        dir_xt = sqrt_one_minus_alpha_cumprod_t_next * predicted_noise
+        
+        # Compute x_{t_next}
+        x_next = sqrt_alpha_cumprod_t_next * pred_x0 + dir_xt
+        
+        # Add stochastic component if eta > 0 (makes it more like DDPM)
+        if eta > 0 and t_next >= 0:
+            sigma = eta * torch.sqrt((1 - alpha_cumprod_t_next) / (1 - alpha_cumprod_t)) * torch.sqrt(1 - alpha_cumprod_t / alpha_cumprod_t_next)
+            noise = torch.randn_like(x)
+            x_next = x_next + sigma * noise
             
+        return x_next
+
+    def make_ddim_timesteps(self, ddim_num_steps, ddim_discr_method="uniform"):
+        """
+        Create a subset of timesteps to use for DDIM sampling.
+        
+        Args:
+            ddim_num_steps: number of steps for DDIM sampling (e.g., 50 instead of 1000)
+            ddim_discr_method: how to choose timesteps ("uniform" or "quad")
+        """
+        if ddim_discr_method == 'uniform':
+            # Create uniform spacing, ensuring we include the last timestep
+            step_ratio = self.num_timesteps // ddim_num_steps
+            ddim_timesteps = np.arange(0, self.num_timesteps, step_ratio)
+            # Make sure we don't exceed num_timesteps-1
+            ddim_timesteps = ddim_timesteps[ddim_timesteps < self.num_timesteps]
+            # Ensure we end at the highest timestep
+            if ddim_timesteps[-1] != self.num_timesteps - 1:
+                ddim_timesteps = np.append(ddim_timesteps, self.num_timesteps - 1)
+        elif ddim_discr_method == 'quad':
+            ddim_timesteps = ((np.linspace(0, np.sqrt(self.num_timesteps * .8), ddim_num_steps)) ** 2).astype(int)
+            ddim_timesteps = np.clip(ddim_timesteps, 0, self.num_timesteps - 1)
+        else:
+            raise NotImplementedError(f'There is no ddim discretization method called "{ddim_discr_method}"')
+
+        return ddim_timesteps
+
+    @torch.no_grad()
+    def ddim_sample_loop(self, x_in, ddim_num_steps=50, ddim_eta=0.0, continous=False, sample_inter=None):
+        """
+        DDIM sampling loop - much faster than DDPM with fewer steps.
+        
+        Args:
+            x_in: input low-resolution image
+            ddim_num_steps: number of sampling steps (default: 50, much less than 1000 for DDPM)
+            ddim_eta: stochasticity (0.0 = deterministic, 1.0 = stochastic like DDPM)
+            continous: whether to return intermediate steps
+            sample_inter: interval for saving intermediate results
+        """
+        _, _, w, h = x_in.shape
+        x_in = self.apply_dwt(x_in)
+        device = self.betas.device
+        
+        # Create timestep schedule - start from highest noise and go down
+        timesteps = self.make_ddim_timesteps(ddim_num_steps, ddim_discr_method="uniform")
+        # Reverse for sampling (start from highest timestep)
+        timesteps = timesteps[::-1]  
+        
+        if sample_inter is None:
+            sample_inter = max(1, len(timesteps) // 10)
+        
+        x_sr = self.dwsr(x_in)
+        
+        if not self.conditional:
+            shape = x_in.shape
+            img = torch.randn(shape, device=device)
+            ret_img = img.clone()
+            
+            # Sample through the timesteps
+            for i in range(len(timesteps)):
+                t = timesteps[i]
+                t_next = timesteps[i + 1] if i < len(timesteps) - 1 else -1
+                
+                img = self.ddim_step(img, t, t_next, eta=ddim_eta)
+                
+                if i % sample_inter == 0:
+                    ret_img = torch.cat([ret_img, img], dim=0)
+            
+            # Make sure we include the final result
+            if (len(timesteps) - 1) % sample_inter != 0:
+                ret_img = torch.cat([ret_img, img], dim=0)
+            
+        else:
+            x = x_in
+            shape = x.shape
+            img = torch.randn(shape, device=device)
+            ret_img = x.clone()
+            
+            # Sample through the timesteps
+            for i in range(len(timesteps)):
+                t = timesteps[i]
+                t_next = timesteps[i + 1] if i < len(timesteps) - 1 else -1
+                
+                img = self.ddim_step(img, t, t_next, condition_x=x, eta=ddim_eta)
+                
+                if i % sample_inter == 0:
+                    ret_img = torch.cat([ret_img, img], dim=0)
+            
+            # Make sure we include the final result
+            if (len(timesteps) - 1) % sample_inter != 0:
+                ret_img = torch.cat([ret_img, img], dim=0)
+
+        if continous:
+            result = self.apply_idwt((ret_img[0]).unsqueeze(0), w, h)
+            result = torch.cat([result, self.apply_idwt((ret_img[0] + x_sr[0]).unsqueeze(0), w, h)], 0)
+            for i in range(1, len(ret_img)):
+                result = torch.cat([result, self.apply_idwt((ret_img[i] + x_sr[0]).unsqueeze(0), w, h)], 0)
+            return result
+        else:
+            logger.debug("DDIM final reconstruction with x_sr=%s and ret_img=%s", x_sr.shape, ret_img.shape)
+            result = self.apply_idwt((ret_img[-x_sr.shape[0]:] + x_sr), w, h)
+            return result
 
     @torch.no_grad()
     def sample(self, batch_size=1, continous=False, sample_inter=None):
@@ -274,15 +431,39 @@ class GaussianDiffusion(nn.Module):
         return self.p_sample_loop((batch_size, channels, image_size, image_size), continous, sample_inter)
 
     @torch.no_grad()
-    def super_resolution(self, x_in, continous=False, sample_inter=None):
-        # print("Shape 4: ", x_in.shape)
+    def super_resolution(self, x_in, continous=False, sample_inter=None, use_ddim=False, ddim_steps=50, ddim_eta=0.0):
+        """
+        Super resolution with option to use DDIM or DDPM sampling.
+        
+        Args:
+            x_in: input low-resolution image
+            continous: whether to return intermediate results
+            sample_inter: interval for intermediate results
+            use_ddim: whether to use DDIM (True) or DDPM (False) sampling
+            ddim_steps: number of steps for DDIM (ignored if use_ddim=False)
+            ddim_eta: stochasticity for DDIM (0.0 = deterministic)
+        """
         logger.debug(f"Super resolution for {x_in.shape} with continous={continous}")
-        return self.p_sample_loop(x_in, continous, sample_inter)
+        
+        if use_ddim:
+            return self.ddim_sample_loop(x_in, ddim_num_steps=ddim_steps, ddim_eta=ddim_eta, 
+                                       continous=continous, sample_inter=sample_inter)
+        else:
+            return self.p_sample_loop(x_in, continous, sample_inter)
 
+    # ===== DDIM SAMPLE METHOD FOR COMPATIBILITY =====
+    @torch.no_grad()
+    def ddim_sample(self, batch_size=1, ddim_steps=50, ddim_eta=0.0, continous=False, sample_inter=None):
+        """DDIM sampling method for unconditional generation"""
+        image_size = self.image_size
+        channels = self.channels
+        dummy_input = torch.zeros(batch_size, channels, image_size, image_size)
+        return self.ddim_sample_loop(dummy_input, ddim_num_steps=ddim_steps, ddim_eta=ddim_eta, 
+                                   continous=continous, sample_inter=sample_inter)
+
+    # ===== TRAINING METHODS (UNCHANGED) =====
     def q_sample(self, x_start, continuous_sqrt_alpha_cumprod, noise=None):
         noise = default(noise, lambda: torch.randn_like(x_start))
-
-        # random gama
         return continuous_sqrt_alpha_cumprod * x_start + (1 - continuous_sqrt_alpha_cumprod**2).sqrt() * noise
 
     def p_losses(self, x_in, noise=None):

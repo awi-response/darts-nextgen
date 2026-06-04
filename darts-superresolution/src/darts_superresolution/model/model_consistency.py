@@ -16,53 +16,9 @@ from torchvision.utils import make_grid
 from pytorch_wavelets import DWTForward, DWTInverse
 import torch.nn.functional as F
 import tifffile
-from darts_superresolution.model.wave_modules import diffusion, unet
+from darts_superresolution.model import unet
+from darts_superresolution.model.diffusion import DWSR
 from darts_superresolution.config.configuration_inference import InferenceConfig as Config
-# from darts_superresolution.core import metrics as Metrics
-
-class DWSR(nn.Module):
-    """Deep Wavelet Super-Resolution network - copied from your diffusion model"""
-    def __init__(self, in_channels, features, out_channels, kernel_size=3, padding=1, stride=1, groups=1, depth=10):
-        super(DWSR, self).__init__()
-
-        self.conv_layers = [
-            nn.Conv2d(in_channels, 
-                      features, 
-                      kernel_size=kernel_size, 
-                      padding=padding,
-                      stride=stride, 
-                      bias=False, 
-                      groups=groups),
-            nn.ReLU()
-        ]
-        for i in range(depth):
-            self.conv_layers.append(
-                nn.Conv2d(
-                    features,
-                    features,
-                    kernel_size=kernel_size, 
-                    padding=padding,
-                    stride=stride, 
-                    bias=False, 
-                    groups=groups
-                    )
-                )
-            self.conv_layers.append(nn.ReLU())
-        self.conv_layers.append(
-            nn.Conv2d(
-                features,
-                out_channels,
-                kernel_size=kernel_size, 
-                padding=padding,
-                stride=stride, 
-                bias=False, 
-                groups=groups
-                )
-            )
-        self.convs = nn.Sequential(*self.conv_layers)
-
-    def forward(self, x):
-        return self.convs(x) + x
 
 
 class ConsistencyWavelet(LightningModule):
