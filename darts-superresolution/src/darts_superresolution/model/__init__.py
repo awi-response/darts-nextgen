@@ -10,9 +10,9 @@ import logging
 import torch
 import torch.nn as nn
 
-from darts_superresolution.config.model_parameters import DEFAULT_MODEL_CONFIG, ModelConfig
-from darts_superresolution.model import unet
-from darts_superresolution.model.diffusion import GaussianDiffusion as GaussianDiffusion
+from config.model_parameters import DEFAULT_MODEL_CONFIG, ModelConfig
+from model import unet
+from model.diffusion import GaussianDiffusion as GaussianDiffusion
 
 logger = logging.getLogger(__name__)
 

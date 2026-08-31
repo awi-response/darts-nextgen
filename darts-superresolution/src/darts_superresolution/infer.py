@@ -20,11 +20,72 @@ import numpy as np
 import tifffile
 import xarray as xr
 
-from darts_superresolution.config.config import InferenceConfig
-from darts_superresolution.util.upscale import Sentinel2Upscaler
-from darts_superresolution.util.patching import create_tile_from_patches
+from config.config import InferenceConfig
+from util.upscale import Sentinel2Upscaler
+from util.patching import create_tile_from_patches
 
 logger = logging.getLogger(__name__)
+
+
+def _normalize_colorfix(value: Any) -> str:
+    colorfix = str(value).strip().lower().replace("-", "_")
+    if colorfix in {"adaptive_instance_norm", "adaptive_instance_normalization"}:
+        return "adain"
+    return colorfix
+
+
+def _normalize_s2_dataarray(s2_da: xr.DataArray, source: Path) -> xr.DataArray:
+    """Normalize incoming raster to (band, y, x) with 1-based band coordinates."""
+    if s2_da.ndim != 3:
+        raise ValueError(f"Expected a 3D raster (band, y, x), got shape={s2_da.shape} from {source}")
+
+    if "band" not in s2_da.dims:
+        # Fall back to axis with 4 channels first, else keep first axis as band.
+        band_axis = next((idx for idx, size in enumerate(s2_da.shape) if size == 4), 0)
+        dims = list(s2_da.dims)
+        ordered_dims = [dims[band_axis]] + [d for i, d in enumerate(dims) if i != band_axis]
+        s2_da = s2_da.transpose(*ordered_dims)
+
+    rename_dims: dict[str, str] = {}
+    dims = list(s2_da.dims)
+    target_dims = ["band", "y", "x"]
+    for current_dim, target_dim in zip(dims, target_dims):
+        if current_dim != target_dim:
+            rename_dims[current_dim] = target_dim
+    if rename_dims:
+        s2_da = s2_da.rename(rename_dims)
+
+    if "band" not in s2_da.coords:
+        s2_da = s2_da.assign_coords(band=np.arange(1, s2_da.sizes["band"] + 1))
+
+    return s2_da
+
+
+def _open_s2_dataarray(s2_image: Path) -> xr.DataArray:
+    """Open Sentinel-2 TIFF robustly across xarray backend variants."""
+    try:
+        return xr.open_dataarray(s2_image)
+    except Exception as exc_dataarray:
+        logger.debug("xr.open_dataarray failed for %s: %s", s2_image, exc_dataarray)
+
+    try:
+        ds = xr.open_dataset(s2_image)
+        if len(ds.data_vars) == 1:
+            return next(iter(ds.data_vars.values()))
+
+        # Prefer a 3D variable when there are auxiliary variables/coordinates.
+        for var in ds.data_vars.values():
+            if var.ndim == 3:
+                return var
+        raise ValueError(f"No 3D data variable found in dataset variables={list(ds.data_vars)}")
+    except Exception as exc_dataset:
+        logger.debug("xr.open_dataset failed for %s: %s", s2_image, exc_dataset)
+
+    arr = tifffile.imread(s2_image)
+    if arr.ndim != 3:
+        raise ValueError(f"Expected TIFF with 3 dimensions, got shape={arr.shape} from {s2_image}")
+
+    return xr.DataArray(arr)
 
 
 def load_s2_scene(cfg: InferenceConfig, fpath: str | Path) -> tuple[int, int, int, int, xr.Dataset]:
@@ -38,8 +99,14 @@ def load_s2_scene(cfg: InferenceConfig, fpath: str | Path) -> tuple[int, int, in
     except StopIteration as exc:
         raise FileNotFoundError(f"No matching TIFF files found in {fpath} (.glob('*_SR_clip.tif'))") from exc
 
-    s2_da = xr.open_dataarray(s2_image)
+    s2_da = _normalize_s2_dataarray(_open_s2_dataarray(s2_image), s2_image)
     bands = {1: "blue", 2: "green", 3: "red", 4: "nir"}
+
+    if s2_da.sizes.get("band", 0) < len(bands):
+        raise ValueError(
+            f"Input image {s2_image} has {s2_da.sizes.get('band', 0)} band(s), "
+            f"but at least {len(bands)} bands are required."
+        )
 
     datasets = [
         s2_da.sel(band=index)
@@ -111,6 +178,18 @@ def _apply_overrides(cfg: InferenceConfig, overrides: dict[str, Any]) -> Inferen
         cfg.diffusion.diffusion_steps = int(overrides["ddim_steps"])
     if "ddim_eta" in overrides:
         cfg.diffusion.ddim_eta = float(overrides["ddim_eta"])
+    if "diffusion_ensemble" in overrides:
+        cfg.diffusion.diffusion_ensemble = bool(overrides["diffusion_ensemble"])
+    if "diffusion_ensemble_runs" in overrides:
+        cfg.diffusion.diffusion_ensemble_runs = int(overrides["diffusion_ensemble_runs"])
+    if "diffusion_ensemble_seed_offset" in overrides:
+        cfg.diffusion.diffusion_ensemble_seed_offset = int(overrides["diffusion_ensemble_seed_offset"])
+    if "diffusion_ensemble_space" in overrides:
+        cfg.diffusion.diffusion_ensemble_space = str(overrides["diffusion_ensemble_space"]).lower()
+    if "diffusion_output_scaling" in overrides:
+        cfg.diffusion.diffusion_output_scaling = str(overrides["diffusion_output_scaling"]).lower()
+    if "colorfix" in overrides:
+        cfg.diffusion.colorfix = _normalize_colorfix(overrides["colorfix"])
 
     if "consistency_steps" in overrides:
         cfg.consistency.steps = int(overrides["consistency_steps"])
@@ -145,6 +224,42 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--diffusion-steps", "--diffusion_steps", dest="diffusion_steps", type=int)
     parser.add_argument("--ddim-steps", "--ddim_steps", dest="ddim_steps", type=int)
     parser.add_argument("--ddim-eta", "--ddim_eta", dest="ddim_eta", type=float)
+    parser.add_argument(
+        "--diffusion-ensemble",
+        "--diffusion_ensemble",
+        dest="diffusion_ensemble",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+    )
+    parser.add_argument(
+        "--diffusion-ensemble-runs",
+        "--diffusion_ensemble_runs",
+        dest="diffusion_ensemble_runs",
+        type=int,
+    )
+    parser.add_argument(
+        "--diffusion-ensemble-seed-offset",
+        "--diffusion_ensemble_seed_offset",
+        dest="diffusion_ensemble_seed_offset",
+        type=int,
+    )
+    parser.add_argument(
+        "--diffusion-ensemble-space",
+        "--diffusion_ensemble_space",
+        dest="diffusion_ensemble_space",
+        choices=["image", "wavelet"],
+    )
+    parser.add_argument(
+        "--diffusion-output-scaling",
+        "--diffusion_output_scaling",
+        dest="diffusion_output_scaling",
+        choices=["fixed", "global_minmax"],
+    )
+    parser.add_argument(
+        "--colorfix",
+        dest="colorfix",
+        choices=["none", "wavelet", "adain", "adaptive_instance_norm", "adaptive_instance_normalization"],
+    )
 
     parser.add_argument("--consistency-steps", "--consistency_steps", dest="consistency_steps", type=int)
     parser.add_argument(
@@ -206,6 +321,15 @@ def run_inference(cfg: InferenceConfig | None = None, **overrides: Any) -> Path:
             else cfg.diffusion.diffusion_steps
         ),
         diffusion_ddim_eta=cfg.diffusion.ddim_eta,
+        diffusion_ensemble_runs=(
+            cfg.diffusion.diffusion_ensemble_runs
+            if cfg.diffusion.diffusion_ensemble
+            else 1
+        ),
+        diffusion_ensemble_seed_offset=cfg.diffusion.diffusion_ensemble_seed_offset,
+        diffusion_ensemble_space=cfg.diffusion.diffusion_ensemble_space,
+        diffusion_output_scaling=cfg.diffusion.diffusion_output_scaling,
+        colorfix=cfg.diffusion.colorfix,
     )
 
     upscaled_image = model.upscale_s2_to_planet(img)
@@ -217,7 +341,7 @@ def run_inference(cfg: InferenceConfig | None = None, **overrides: Any) -> Path:
         stride=cfg.patching.patch_stride,
         num_patches_x=num_patches_x,
         num_patches_y=num_patches_y,
-        method="crop",
+        method="average",
     )
 
     # Remove mirrored padding introduced in create_patches_from_tile.

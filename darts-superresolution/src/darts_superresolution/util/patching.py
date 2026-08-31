@@ -6,7 +6,7 @@ import torch
 import torch.nn.functional as F  # noqa: N812
 import numpy as np
 import tqdm as tqdm
-from darts_superresolution.util.util import transform_augment_tensor
+from util.util import transform_augment_tensor
 
 logger = logging.getLogger(__name__)
 

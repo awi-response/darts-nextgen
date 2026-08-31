@@ -119,8 +119,6 @@ class GaussianDiffusion(nn.Module):
             pass
             # self.set_new_noise_schedule(schedule_opt)
 
-        print("Channels: ", self.channels)
-
     def set_loss(self, device):
         if self.loss_type == "l1":
             self.loss_func = nn.L1Loss(reduction="sum").to(device)
@@ -132,12 +130,17 @@ class GaussianDiffusion(nn.Module):
     def set_new_noise_schedule(self, schedule_opt, device):
         to_torch = partial(torch.tensor, dtype=torch.float32, device=device)
 
-        betas = make_beta_schedule(
-            schedule=schedule_opt["schedule"],
-            n_timestep=schedule_opt["n_timestep"],
-            linear_start=schedule_opt["linear_start"],
-            linear_end=schedule_opt["linear_end"],
-        )
+        if "betas" in schedule_opt:
+            # Preserve the inference-time alpha trajectory when timesteps were
+            # respaced upstream for DDIM sampling.
+            betas = np.asarray(schedule_opt["betas"], dtype=np.float64)
+        else:
+            betas = make_beta_schedule(
+                schedule=schedule_opt["schedule"],
+                n_timestep=schedule_opt["n_timestep"],
+                linear_start=schedule_opt["linear_start"],
+                linear_end=schedule_opt["linear_end"],
+            )
         betas = betas.detach().cpu().numpy() if isinstance(betas, torch.Tensor) else betas
         alphas = 1.0 - betas
         alphas_cumprod = np.cumprod(alphas, axis=0)
@@ -292,35 +295,29 @@ class GaussianDiffusion(nn.Module):
         else:
             predicted_noise = self.denoise_fn(x, noise_level)
         
-        # Get alpha values for current and next timesteps
+        # Get alpha values for current and next timesteps.
         alpha_cumprod_t = self.alphas_cumprod[t]
-        alpha_cumprod_t_next = self.alphas_cumprod[t_next] if t_next >= 0 else torch.tensor(1.0).to(x.device)
-        
-        sqrt_alpha_cumprod_t = torch.sqrt(alpha_cumprod_t)
-        sqrt_one_minus_alpha_cumprod_t = torch.sqrt(1 - alpha_cumprod_t)
-        
-        # Predict original sample (x_0) - this should match your predict_start_from_noise method
-        pred_x0 = (x - sqrt_one_minus_alpha_cumprod_t * predicted_noise) / sqrt_alpha_cumprod_t
-        
+        alpha_cumprod_t_next = self.alphas_cumprod[t_next] if t_next >= 0 else torch.tensor(1.0, device=x.device)
+
+        # Predict original sample (x_0).
+        pred_x0 = (
+            x - (1 - alpha_cumprod_t).sqrt() * predicted_noise
+        ) / alpha_cumprod_t.sqrt()
+
         if clip_denoised:
-            pred_x0 = pred_x0.clamp(-1.0, 1.0)
-        
-        # DDIM sampling equation
-        sqrt_alpha_cumprod_t_next = torch.sqrt(alpha_cumprod_t_next)
-        sqrt_one_minus_alpha_cumprod_t_next = torch.sqrt(1 - alpha_cumprod_t_next)
-        
-        # Deterministic direction
-        dir_xt = sqrt_one_minus_alpha_cumprod_t_next * predicted_noise
-        
-        # Compute x_{t_next}
-        x_next = sqrt_alpha_cumprod_t_next * pred_x0 + dir_xt
-        
-        # Add stochastic component if eta > 0 (makes it more like DDPM)
-        if eta > 0 and t_next >= 0:
-            sigma = eta * torch.sqrt((1 - alpha_cumprod_t_next) / (1 - alpha_cumprod_t)) * torch.sqrt(1 - alpha_cumprod_t / alpha_cumprod_t_next)
-            noise = torch.randn_like(x)
-            x_next = x_next + sigma * noise
-            
+            pred_x0 = pred_x0.clamp(-3.0, 3.0)
+
+        if t_next < 0:
+            return pred_x0
+
+        sigma = (
+            eta
+            * ((1 - alpha_cumprod_t_next) / (1 - alpha_cumprod_t)).sqrt()
+            * (1 - alpha_cumprod_t / alpha_cumprod_t_next).sqrt()
+        )
+        direction = (1 - alpha_cumprod_t_next - sigma ** 2).sqrt() * predicted_noise
+        noise = sigma * torch.randn_like(x) if eta > 0 else 0.0
+        x_next = alpha_cumprod_t_next.sqrt() * pred_x0 + direction + noise
         return x_next
 
     def make_ddim_timesteps(self, ddim_num_steps, ddim_discr_method="uniform"):
@@ -332,14 +329,8 @@ class GaussianDiffusion(nn.Module):
             ddim_discr_method: how to choose timesteps ("uniform" or "quad")
         """
         if ddim_discr_method == 'uniform':
-            # Create uniform spacing, ensuring we include the last timestep
-            step_ratio = self.num_timesteps // ddim_num_steps
-            ddim_timesteps = np.arange(0, self.num_timesteps, step_ratio)
-            # Make sure we don't exceed num_timesteps-1
-            ddim_timesteps = ddim_timesteps[ddim_timesteps < self.num_timesteps]
-            # Ensure we end at the highest timestep
-            if ddim_timesteps[-1] != self.num_timesteps - 1:
-                ddim_timesteps = np.append(ddim_timesteps, self.num_timesteps - 1)
+            # Match consistency-repo DDIM discretization.
+            ddim_timesteps = np.linspace(0, self.num_timesteps - 1, ddim_num_steps, dtype=int)
         elif ddim_discr_method == 'quad':
             ddim_timesteps = ((np.linspace(0, np.sqrt(self.num_timesteps * .8), ddim_num_steps)) ** 2).astype(int)
             ddim_timesteps = np.clip(ddim_timesteps, 0, self.num_timesteps - 1)
@@ -364,10 +355,9 @@ class GaussianDiffusion(nn.Module):
         x_in = self.apply_dwt(x_in)
         device = self.betas.device
         
-        # Create timestep schedule - start from highest noise and go down
+        # Create timestep schedule - start from highest noise and go down.
         timesteps = self.make_ddim_timesteps(ddim_num_steps, ddim_discr_method="uniform")
-        # Reverse for sampling (start from highest timestep)
-        timesteps = timesteps[::-1]  
+        timesteps = list(reversed(timesteps))
         
         if sample_inter is None:
             sample_inter = max(1, len(timesteps) // 10)
@@ -379,11 +369,8 @@ class GaussianDiffusion(nn.Module):
             img = torch.randn(shape, device=device)
             ret_img = img.clone()
             
-            # Sample through the timesteps
-            for i in range(len(timesteps)):
-                t = timesteps[i]
-                t_next = timesteps[i + 1] if i < len(timesteps) - 1 else -1
-                
+            for i, t in enumerate(timesteps):
+                t_next = timesteps[i + 1] if i + 1 < len(timesteps) else -1
                 img = self.ddim_step(img, t, t_next, eta=ddim_eta)
                 
                 if i % sample_inter == 0:
@@ -399,11 +386,8 @@ class GaussianDiffusion(nn.Module):
             img = torch.randn(shape, device=device)
             ret_img = x.clone()
             
-            # Sample through the timesteps
-            for i in range(len(timesteps)):
-                t = timesteps[i]
-                t_next = timesteps[i + 1] if i < len(timesteps) - 1 else -1
-                
+            for i, t in enumerate(timesteps):
+                t_next = timesteps[i + 1] if i + 1 < len(timesteps) else -1
                 img = self.ddim_step(img, t, t_next, condition_x=x, eta=ddim_eta)
                 
                 if i % sample_inter == 0:

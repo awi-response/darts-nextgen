@@ -8,9 +8,9 @@ from torch import nn, optim, Tensor
 from torchvision.utils import make_grid
 from pytorch_wavelets import DWTForward, DWTInverse
 import torch.nn.functional as F
-from darts_superresolution.model import unet
-from darts_superresolution.model.diffusion import DWSR
-from darts_superresolution.config.model_parameters import ConsistencyConfig
+from model import unet
+from model.diffusion import DWSR
+from config.model_parameters import ConsistencyConfig
 
 
 class ConsistencyWavelet(LightningModule):

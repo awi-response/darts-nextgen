@@ -5,6 +5,7 @@ import numpy as np
 import torch
 import torchvision
 from PIL import Image
+from PIL.Image import Image as PILImage
 from torch import Tensor
 from torch.nn import functional as F  # noqa: N812
 from torchvision.transforms import ToPILImage, ToTensor
@@ -97,7 +98,7 @@ def transform_augment_tensor(imgs, split="val", min_max=(0, 1)):
     return ret_img
 
 
-def adain_color_fix(target: Image, source: Image):
+def adain_color_fix(target: PILImage | Tensor, source: PILImage | Tensor) -> PILImage | Tensor:
     """Color fix the target image using the style of the source image.
 
     Color fixed script from Li Yi (https://github.com/pkuliyi2015/sd-webui-stablesr/blob/master/srmodule/colorfix.py)
@@ -110,13 +111,26 @@ def adain_color_fix(target: Image, source: Image):
         Image: The color fixed image.
 
     """
-    # Convert images to tensors
+    # Convert images to tensors, while preserving tensor inputs from inference batches.
     to_tensor = ToTensor()
-    target_tensor = to_tensor(target).unsqueeze(0)
-    source_tensor = to_tensor(source).unsqueeze(0)
+    target_is_tensor = isinstance(target, torch.Tensor)
+    source_is_tensor = isinstance(source, torch.Tensor)
+
+    if target_is_tensor:
+        target_tensor = target
+    else:
+        target_tensor = to_tensor(target).unsqueeze(0)
+
+    if source_is_tensor:
+        source_tensor = source
+    else:
+        source_tensor = to_tensor(source).unsqueeze(0)
 
     # Apply adaptive instance normalization
     result_tensor = adaptive_instance_normalization(target_tensor, source_tensor)
+
+    if target_is_tensor or source_is_tensor:
+        return result_tensor
 
     # Convert tensor back to image
     to_image = ToPILImage()
@@ -157,12 +171,10 @@ def calc_mean_std(feat: Tensor, eps=1e-5):
             divide-by-zero. Default: 1e-5.
 
     """
-    print("Feat shape: ", feat.shape)
-    # feat=feat.transpose((2,0,1))
-    size = feat.size()
-    if size != 4:
+    if feat.dim() == 3:
         feat = feat.unsqueeze(0)
-    assert len(size) == 4, "The input feature should be 4D tensor."
+    assert feat.dim() == 4, "The input feature should be 4D tensor."
+    size = feat.size()
     b, c = size[:2]
     feat_var = feat.reshape(b, c, -1).var(dim=2) + eps
     feat_std = feat_var.sqrt().reshape(b, c, 1, 1)
@@ -181,9 +193,15 @@ def adaptive_instance_normalization(content_feat: Tensor, style_feat: Tensor):
         style_feat (Tensor): The degradate features.
 
     """
-    if content_feat.size() != 4:
+    if content_feat.dim() == 3:
         content_feat = content_feat.unsqueeze(0)
+    if style_feat.dim() == 3:
         style_feat = style_feat.unsqueeze(0)
+
+    assert content_feat.dim() == 4 and style_feat.dim() == 4, (
+        "adaptive_instance_normalization expects 4D tensors (N, C, H, W)."
+    )
+
     size = content_feat.size()
     style_mean, style_std = calc_mean_std(style_feat)
     content_mean, content_std = calc_mean_std(content_feat)

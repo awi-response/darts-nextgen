@@ -15,14 +15,14 @@ try:
 except ModuleNotFoundError:  # pragma: no cover - optional dependency
     tqdm = None
 
-from darts_superresolution.config.model_parameters import (
+from config.model_parameters import (
     ConsistencyConfig,
     DEFAULT_MODEL_CONFIG,
     ModelConfig,
 )
-from darts_superresolution.util.patching import create_patches_from_tile
-from darts_superresolution.util.util import wavelet_color_fix
-from darts_superresolution.model import define_net
+from util.patching import create_patches_from_tile
+from util.util import adain_color_fix, wavelet_color_fix
+from model import define_net
 
 logger = logging.getLogger(__name__)
 
@@ -61,6 +61,11 @@ class Sentinel2Upscaler:
         diffusion_use_ddim: bool = False,
         diffusion_ddim_steps: int = 50,
         diffusion_ddim_eta: float = 0.0,
+        diffusion_ensemble_runs: int = 1,
+        diffusion_ensemble_seed_offset: int = 0,
+        diffusion_ensemble_space: Literal["image", "wavelet"] = "wavelet",
+        diffusion_output_scaling: Literal["fixed", "global_minmax"] = "fixed",
+        colorfix: Literal["none", "wavelet", "adain"] = "none",
     ) -> None:
         """Initialize the Sentinel2Upscaler."""
         logger.debug("Loading model from %s", model_checkpoint)
@@ -77,6 +82,28 @@ class Sentinel2Upscaler:
         self.diffusion_use_ddim = bool(diffusion_use_ddim)
         self.diffusion_ddim_steps = max(1, int(diffusion_ddim_steps))
         self.diffusion_ddim_eta = float(diffusion_ddim_eta)
+        self.diffusion_ensemble_runs = max(1, int(diffusion_ensemble_runs))
+        self.diffusion_ensemble_seed_offset = int(diffusion_ensemble_seed_offset)
+        self.diffusion_ensemble_space = str(diffusion_ensemble_space).lower()
+        if self.diffusion_ensemble_space not in {"image", "wavelet"}:
+            raise ValueError(
+                f"Unsupported diffusion_ensemble_space={self.diffusion_ensemble_space}. "
+                "Use 'image' or 'wavelet'."
+            )
+        self.diffusion_output_scaling = str(diffusion_output_scaling).lower()
+        if self.diffusion_output_scaling not in {"fixed", "global_minmax"}:
+            raise ValueError(
+                f"Unsupported diffusion_output_scaling={self.diffusion_output_scaling}. "
+                "Use 'fixed' or 'global_minmax'."
+            )
+        self.colorfix = str(colorfix).strip().lower().replace("-", "_")
+        if self.colorfix in {"adaptive_instance_norm", "adaptive_instance_normalization"}:
+            self.colorfix = "adain"
+        if self.colorfix not in {"none", "wavelet", "adain"}:
+            raise ValueError(
+                f"Unsupported colorfix={self.colorfix}. "
+                "Use 'none', 'wavelet', or 'adain'."
+            )
         self.config = DEFAULT_MODEL_CONFIG
         logger.debug("Using backend: %s", self.backend)
 
@@ -122,7 +149,7 @@ class Sentinel2Upscaler:
     def _import_consistency_class(self):
         """Import consistency model lazily so diffusion-only installs still work."""
         try:
-            from darts_superresolution.model.consistency import ConsistencyWavelet as Consistency
+            from model.consistency import ConsistencyWavelet as Consistency
         except ModuleNotFoundError as exc:
             raise ModuleNotFoundError(
                 "Could not import consistency model modules. Set consistency_repo_root to the "
@@ -288,9 +315,43 @@ class Sentinel2Upscaler:
         _, _, orig_h, orig_w = input_batch.shape
         return self.model.apply_idwt(mean_dwt, orig_h, orig_w)
 
+    def _infer_batch_diffusion_ensemble(self, input_batch: torch.Tensor) -> torch.Tensor:
+        """Run seeded diffusion/DDIM ensemble and average in image or wavelet space."""
+        image_outputs = []
+        wavelet_outputs = []
+        _, _, out_h, out_w = input_batch.shape
+
+        for run_idx in range(self.diffusion_ensemble_runs):
+            seed = self.diffusion_ensemble_seed_offset + run_idx
+            torch.manual_seed(seed)
+            if torch.cuda.is_available():
+                torch.cuda.manual_seed_all(seed)
+
+            sr = self.model.super_resolution(
+                input_batch,
+                continous=False,
+                use_ddim=self.diffusion_use_ddim,
+                ddim_steps=self.diffusion_ddim_steps,
+                ddim_eta=self.diffusion_ddim_eta,
+            )
+
+            if self.diffusion_ensemble_space == "image":
+                image_outputs.append(sr)
+            else:
+                wavelet_outputs.append(self.model.apply_dwt(sr))
+
+        if self.diffusion_ensemble_space == "image":
+            return torch.stack(image_outputs, dim=0).mean(dim=0)
+
+        mean_dwt = torch.stack(wavelet_outputs, dim=0).mean(dim=0)
+        return self.model.apply_idwt(mean_dwt, out_h, out_w)
+
     @torch.no_grad()
     def _infer_batch(self, input_batch: torch.Tensor) -> torch.Tensor:
         if self.backend == "diffusion":
+            if self.diffusion_ensemble_runs > 1:
+                return self._infer_batch_diffusion_ensemble(input_batch)
+
             return self.model.super_resolution(
                 input_batch,
                 continous=False,
@@ -371,14 +432,27 @@ class Sentinel2Upscaler:
 
                 output_batch = [self._infer_batch(input_batch)]
 
-            output_batch = wavelet_color_fix(output_batch[0], input_batch)
-            output_batch = [output_batch.cpu().detach()]
+            batch_sr = output_batch[0]
+
+            if self.backend == "diffusion":
+                if self.colorfix == "wavelet":
+                    batch_sr = wavelet_color_fix(batch_sr, input_batch)
+                elif self.colorfix == "adain":
+                    batch_sr = adain_color_fix(batch_sr, input_batch)
+            elif self.backend == "consistency":
+                batch_sr = wavelet_color_fix(batch_sr, input_batch)
+
+            output_batch = [batch_sr.cpu().detach()]
             output += output_batch
 
         output = torch.cat(output, dim=0)
         logger.debug("Output shape after concatenation: %s", output.shape)
 
-        output = (output - output.min()) / (output.max() - output.min())
+        if self.backend == "diffusion":# and self.diffusion_output_scaling == "fixed":
+            # Diffusion model predicts in [-1, 1]; map directly back to [0, 1].
+            output = ((output + 1.0) / 2.0).clamp(0.0, 1.0)
+        else:
+            output = (output - output.min()) / (output.max() - output.min())
         logger.debug("Output range after normalization: min=%s max=%s", output.min(), output.max())
 
         output[:, 0, :, :] = output[:, 0, :, :] * 7248
